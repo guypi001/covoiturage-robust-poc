@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Palette & tokens très simples */
+:root{
+  --brand-500:#0ea5e9; /* sky-500 */
+  --brand-600:#0284c7; /* sky-600 */
+  --brand-700:#0369a1; /* sky-700 */
+}
+
+html,body { height: 100%; }
+body{ @apply bg-slate-50 text-slate-900 antialiased; }
+input[type="date"] {
+  color-scheme: light;
+}
+/*body {
+  background: radial-gradient(1200px 600px at 50% -200px, #0b1220 0%, #060a12 40%, #05070c 100%);
+  color: #e5e7eb;
+}*/
+
+/* Petits utilitaires de design */
+.btn-primary{
+  @apply inline-flex items-center justify-center gap-2 font-semibold text-white
+  rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700
+  px-5 py-3 shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-300
+  disabled:opacity-50 disabled:cursor-not-allowed;
+}
+.card{
+  @apply rounded-2xl bg-white border border-slate-200 shadow-sm;
+}
+.badge{
+  @apply inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700
+  text-sm px-3 py-1;
+}
+
+/* Barre de recherche segmentée */
+.segment{
+  @apply bg-white rounded-2xl border border-slate-200 shadow-sm
+  ring-1 ring-transparent focus-within:ring-sky-300 transition;
+}
+.segment-field{ @apply flex items-center gap-2 px-4 py-3 min-w-0; }
+.segment-sep{ @apply w-px bg-slate-200 mx-1; }
+.pill-input{ @apply w-full outline-none placeholder-slate-400 text-slate-900; }
+
+/* Section hero : titre lisible par dessus l’image */
+.hero-title{
+  text-shadow: 0 8px 24px rgba(0,0,0,.35), 0 2px 4px rgba(0,0,0,.25);
+}

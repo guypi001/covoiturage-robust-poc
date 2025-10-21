@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'redpanda'
+    static_configs:
+      - targets: ['redpanda:9644']
+
+  - job_name: 'services'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'bff:3000'
+          - 'identity:3000'
+          - 'ride:3000'
+          - 'search:3000'
+          - 'booking:3000'
+          - 'payment:3000'
+          - 'wallet:3000'
+          - 'payouts:3000'
+          - 'notification:3000'
+          - 'config:3000'

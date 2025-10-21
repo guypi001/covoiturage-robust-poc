@@ -1,0 +1,193 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: covoiturage
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+    restart: unless-stopped
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    environment:
+      MEILI_NO_ANALYTICS: "true"
+    ports: ["7700:7700"]
+    restart: unless-stopped
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --set
+      - redpanda.auto_create_topics_enabled=true
+      # listeners internes/externes
+      - --kafka-addr
+      - INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - INTERNAL://redpanda:9092,EXTERNAL://localhost:19092
+      - --rpc-addr
+      - 0.0.0.0:33145
+      - --advertise-rpc-addr
+      - redpanda:33145
+      # (optionnel) pandaproxy interne
+      - --pandaproxy-addr
+      - 0.0.0.0:8082
+      - --advertise-pandaproxy-addr
+      - redpanda:8082
+    ports:
+      - "19092:19092"   # accès Kafka depuis l’hôte => localhost:19092
+      - "9644:9644"     # Admin API
+    restart: unless-stopped
+
+  redpanda-console:
+    image: redpandadata/console:latest
+    environment:
+      KAFKA_BROKERS: "redpanda:9092"
+    ports: ["8082:8080"]
+    depends_on: [redpanda]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9091:9090"]  # évite le conflit avec un 9090 local déjà pris
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports: ["3007:3000"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  bff:
+    build: ./services/bff
+    env_file: ./services/bff/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [ride, search, booking]
+    ports: ["3000:3000"]
+    restart: unless-stopped
+
+  identity:
+    build: ./services/identity
+    env_file: ./services/identity/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [postgres, redpanda]
+    ports: ["3001:3000"]
+    restart: unless-stopped
+
+  ride:
+    build: ./services/ride
+    env_file: ./services/ride/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [postgres, redpanda]
+    ports: ["3002:3000"]
+    restart: unless-stopped
+
+  search:
+    build: ./services/search
+    env_file: ./services/search/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      MEILISEARCH_URL: http://meilisearch:7700
+    depends_on: [meilisearch, redpanda]
+    ports: ["3003:3000"]
+    restart: unless-stopped
+
+  booking:
+    build: ./services/booking
+    env_file: ./services/booking/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      REDIS_URL: redis://redis:6379
+    depends_on: [redis, redpanda, ride, wallet, postgres]
+    ports: ["3004:3000"]
+    restart: unless-stopped
+
+  payment:
+    build: ./services/payment
+    env_file: ./services/payment/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [redpanda]
+    ports: ["3005:3000"]
+    restart: unless-stopped
+
+  wallet:
+    build: ./services/wallet
+    env_file: ./services/wallet/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [postgres, redpanda]
+    ports: ["3008:3000"]
+    restart: unless-stopped
+
+  payouts:
+    build: ./services/payouts
+    env_file: ./services/payouts/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [redpanda, wallet, postgres]
+    ports: ["3009:3000"]
+    restart: unless-stopped
+
+  notification:
+    build: ./services/notification
+    env_file: ./services/notification/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [redpanda]
+    ports: ["3010:3000"]
+    restart: unless-stopped
+
+  webapp:
+    build:
+      context: ./services/webapp
+      dockerfile: Dockerfile
+      args:
+        VITE_SEARCH_URL:  http://localhost:3003
+        VITE_BOOKING_URL: http://localhost:3004
+        VITE_RIDE_URL:    http://localhost:3002
+    depends_on:
+      search:
+        condition: service_started
+      booking:
+        condition: service_started
+    ports: ["3006:80"]
+    restart: unless-stopped
+
+
+
+  config:
+    build: ./services/config
+    env_file: ./services/config/.env
+    ports: ["3011:3000"]
+    restart: unless-stopped
+
+volumes:
+  pgdata: {}
