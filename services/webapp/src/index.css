@@ -2,48 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Palette & tokens très simples */
+/* ============ Thème clair : dominance blanche ============ */
 :root{
-  --brand-500:#0ea5e9; /* sky-500 */
-  --brand-600:#0284c7; /* sky-600 */
-  --brand-700:#0369a1; /* sky-700 */
+  --bg-0: #f8fafc;        /* fond page (slate-50) */
+  --bg-1: #ffffff;        /* panneaux / cartes */
+  --bg-2: #f1f5f9;        /* hover doux (slate-100) */
+  --text-1: #0f172a;      /* texte principal (slate-900) */
+  --muted: #475569;       /* texte secondaire (slate-600) */
+
+  --brand: #0ea5e9;       /* cyan-500 */
+  --brand-600: #0284c7;   /* cyan-600 */
+  --ring: 14 165 233;     /* rgb du brand pour les focus-rings */
 }
 
-html,body { height: 100%; }
-body{ @apply bg-slate-50 text-slate-900 antialiased; }
-input[type="date"] {
-  color-scheme: light;
-}
-/*body {
-  background: radial-gradient(1200px 600px at 50% -200px, #0b1220 0%, #060a12 40%, #05070c 100%);
-  color: #e5e7eb;
-}*/
+html, body, #root{ height: 100%; }
 
-/* Petits utilitaires de design */
-.btn-primary{
-  @apply inline-flex items-center justify-center gap-2 font-semibold text-white
-  rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700
-  px-5 py-3 shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-300
-  disabled:opacity-50 disabled:cursor-not-allowed;
+body{
+  @apply antialiased;
+  color: var(--text-1);
+  /* fond très clair avec un léger accent bleu */
+  background:
+    radial-gradient(1200px 700px at 85% -10%, rgba(14,165,233,.08), transparent 55%),
+    radial-gradient(950px 550px at 10% -10%, rgba(2,132,199,.06), transparent 50%),
+    linear-gradient(180deg, #fff 0%, var(--bg-0) 100%);
 }
+
+/* ============ Primitives réutilisables ============ */
+.container-wide{ @apply max-w-6xl mx-auto px-4; }
+
+/* Carte claire */
 .card{
-  @apply rounded-2xl bg-white border border-slate-200 shadow-sm;
+  background: var(--bg-1);
+  border: 1px solid #e5e7eb;  /* slate-200 */
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.06),
+    0 10px 30px -12px rgba(14,165,233,.10);
 }
+
+/* Boutons */
+.btn{ @apply inline-flex items-center gap-2 font-semibold rounded-xl transition; }
+
+.btn-primary{
+  background: linear-gradient(135deg, var(--brand), var(--brand-600));
+  color:#fff; padding:.75rem 1rem;
+  box-shadow: 0 10px 26px -12px rgba(14,165,233,.35);
+}
+.btn-primary:hover{ filter:brightness(1.05); transform: translateY(-1px); }
+.btn-primary:active{ transform: translateY(0); }
+
+.btn-ghost{ @apply text-slate-600 hover:text-slate-800; }
+
+/* Inputs clairs */
+.input{
+  height: 46px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;       /* slate-200 */
+  color: var(--text-1);
+  border-radius: .875rem;
+  transition: box-shadow .16s, border-color .16s, background-color .16s;
+  padding: .65rem .9rem;
+}
+.input::placeholder{ color: #94a3b8; } /* slate-400 */
+.input:hover{ background:#fff; }
+.input:focus{
+  outline: none;
+  border-color: rgba(var(--ring) / .55);
+  box-shadow: 0 0 0 3px rgba(var(--ring) / .28);
+}
+
+/* Icône dans le champ (gauche) */
+.field { position: relative; display:block; }
+.field-icon{
+  position:absolute; left:.75rem; top:50%; transform:translateY(-50%);
+  color:#64748b; pointer-events:none;
+}
+.field-input{ padding-left: 2.25rem; }
+
+/* Date picker natif : réactive l’indicateur et le style natif */
+input[type="date"].input{
+  -webkit-appearance: auto;
+  appearance: auto;
+  padding-right: 2.25rem; /* laisse la place au bouton natif à droite */
+}
+
+/* sur Chrome/Safari */
+input[type="date"].input::-webkit-calendar-picker-indicator{
+  opacity: .9;
+  cursor: pointer;
+  margin: 0 .35rem 0 .25rem;
+  filter: none; /* évite qu'un filtre le rende invisible */
+}
+
+/* sur Firefox (icone pas affichée, mais on force l’UI) */
+@-moz-document url-prefix() {
+  input[type="date"].input{
+    background-color: #fff;
+  }
+}
+
+/* Badges */
 .badge{
-  @apply inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700
-  text-sm px-3 py-1;
+  @apply inline-flex items-center gap-1.5 text-sm;
+  padding: .35rem .6rem;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid #e2e8f0;
+  color: #334155; /* slate-700 */
 }
 
-/* Barre de recherche segmentée */
-.segment{
-  @apply bg-white rounded-2xl border border-slate-200 shadow-sm
-  ring-1 ring-transparent focus-within:ring-sky-300 transition;
-}
-.segment-field{ @apply flex items-center gap-2 px-4 py-3 min-w-0; }
-.segment-sep{ @apply w-px bg-slate-200 mx-1; }
-.pill-input{ @apply w-full outline-none placeholder-slate-400 text-slate-900; }
+/* Barre sticky (search) */
+.search-sticky{ position: sticky; top: .75rem; z-index: 25; }
 
-/* Section hero : titre lisible par dessus l’image */
-.hero-title{
-  text-shadow: 0 8px 24px rgba(0,0,0,.35), 0 2px 4px rgba(0,0,0,.25);
+/* Header clair */
+.header{
+  background: var(--bg-1);
+  @apply sticky top-0 z-40 border-b border-slate-200;
+  box-shadow: 0 4px 18px -14px rgba(2,132,199,.25);
 }

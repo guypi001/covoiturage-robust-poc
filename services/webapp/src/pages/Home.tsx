@@ -1,25 +1,38 @@
+// src/pages/Home.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SearchBar, { SearchPatch } from '../components/SearchBar';
+import RideCard from '../components/RideCard';
 import { useApp } from '../store';
 import { searchRides } from '../api';
-import RideCard from '../components/RideCard';
 
 export default function Home() {
   const nav = useNavigate();
+
   const {
-    lastSearch, setSearch, setResults, setLoading, setError, loading,
-    results, error,
+    lastSearch,
+    setSearch,
+    setResults,
+    setLoading,
+    setError,
+    loading,
+    results,
+    error,
   } = useApp();
 
+  // État local du formulaire (prérempli depuis la dernière recherche)
   const [form, setForm] = useState({
     from: lastSearch?.from ?? '',
     to: lastSearch?.to ?? '',
     date: lastSearch?.date ?? '',
   });
 
-  function onChange(p: SearchPatch) { setForm(prev => ({ ...prev, ...p })); }
+  // Patch partiel (vient de SearchBar)
+  function onChange(patch: SearchPatch) {
+    setForm(prev => ({ ...prev, ...patch }));
+  }
 
+  // Lance la recherche et affiche les résultats sur la même page
   async function onSubmit() {
     if (!form.from || !form.to) {
       setError('Renseigne départ et arrivée');
@@ -31,77 +44,80 @@ export default function Home() {
     try {
       const data = await searchRides(form);
       setResults(data);
-    } catch (e:any) {
+    } catch (e: any) {
       setError(e?.message ?? 'Erreur réseau');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="min-h-[calc(100vh-56px)]">
-      {/* HERO */}
-      <section className="relative">
-        <div
-          className="h-[320px] md:h-[380px] bg-cover bg-center"
-          style={{
-            backgroundImage:
-              "url('https://images.unsplash.com/photo-1516574187841-cb9cc2ca948b?q=80&w=1800&auto=format&fit=crop')",
-          }}
+      {/* Barre de recherche en haut, sticky et claire */}
+      <section className="container-wide pt-6 md:pt-8">
+        <SearchBar
+          from={form.from}
+          to={form.to}
+          date={form.date}
+          loading={loading}
+          onChange={onChange}
+          onSubmit={onSubmit}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-white/10 to-white/80" />
-        <div className="absolute inset-0 flex items-center">
-          <div className="max-w-6xl mx-auto w-full px-4">
-            <h1 className="hero-title text-4xl md:text-5xl font-extrabold tracking-tight text-white drop-shadow">
-              Vous avez vos plans, on a vos bons plans.
-            </h1>
-          </div>
-        </div>
-
-        {/* Barre de recherche posée en bas du hero */}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2 w-full max-w-6xl px-4">
-          <SearchBar
-            from={form.from}
-            to={form.to}
-            date={form.date}
-            loading={loading}
-            onChange={onChange}
-            onSubmit={onSubmit}
-          />
-        </div>
       </section>
 
-      {/* Contenu sous le hero */}
-      <div className="max-w-6xl mx-auto px-4 pt-20 pb-10 space-y-6">
-        {/* Infos / erreurs */}
+      {/* Corps : résumé + liste de résultats */}
+      <section className="container-wide pb-14 space-y-6">
+        {/* Erreur */}
         {error && (
-          <div className="border border-red-200 bg-red-50 text-red-700 rounded-xl px-4 py-3">
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3">
             {error}
           </div>
         )}
+
+        {/* Résumé de recherche */}
         {lastSearch && !loading && (
           <div className="text-sm text-slate-600">
             <span className="font-medium text-slate-900">{results.length}</span> résultat(s)
-            &nbsp;pour <span className="font-medium">{lastSearch.from}</span> → <span className="font-medium">{lastSearch.to}</span>
+            &nbsp;pour <span className="font-medium">{lastSearch.from}</span> →{' '}
+            <span className="font-medium">{lastSearch.to}</span>
             {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
           </div>
         )}
 
-        {/* Résultats */}
+        {/* Chargement */}
         {loading && (
           <div className="card p-4 animate-pulse">Recherche en cours…</div>
         )}
 
+        {/* Résultats */}
         {!loading && results.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2">
             {results.map(r => (
-              <RideCard key={r.rideId} {...r} onBook={() => nav(`/booking/${r.rideId}`)} />
+              <RideCard
+                key={r.rideId}
+                {...r}
+                onBook={() => nav(`/booking/${r.rideId}`)}
+              />
             ))}
           </div>
         )}
 
+        {/* Aucun résultat */}
         {!loading && !error && results.length === 0 && lastSearch && (
-          <div className="card p-5">Aucun trajet trouvé.</div>
+          <div className="card p-5">
+            Aucun trajet trouvé. Essaie d’ajuster la date ou la ville.
+          </div>
         )}
-      </div>
+
+        {/* État initial (pas encore de recherche) */}
+        {!lastSearch && !loading && results.length === 0 && !error && (
+          <div className="card p-5 text-slate-600">
+            Renseigne un <span className="font-medium text-slate-900">départ</span>, une{' '}
+            <span className="font-medium text-slate-900">arrivée</span> et une{' '}
+            <span className="font-medium text-slate-900">date</span> pour voir les trajets disponibles.
+          </div>
+        )}
+      </section>
     </div>
   );
 }
