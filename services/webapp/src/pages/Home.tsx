@@ -25,6 +25,7 @@ export default function Home() {
     from: lastSearch?.from ?? '',
     to: lastSearch?.to ?? '',
     date: lastSearch?.date ?? '',
+    seats: lastSearch?.seats ?? 1,
   });
 
   // Patch partiel (vient de SearchBar)
@@ -36,6 +37,10 @@ export default function Home() {
   async function onSubmit() {
     if (!form.from || !form.to) {
       setError('Renseigne départ et arrivée');
+      return;
+    }
+    if (!form.seats || form.seats <= 0) {
+      setError('Nombre de sièges invalide');
       return;
     }
     setSearch(form);
@@ -59,6 +64,7 @@ export default function Home() {
           from={form.from}
           to={form.to}
           date={form.date}
+          seats={form.seats}
           loading={loading}
           onChange={onChange}
           onSubmit={onSubmit}
@@ -81,6 +87,7 @@ export default function Home() {
             &nbsp;pour <span className="font-medium">{lastSearch.from}</span> →{' '}
             <span className="font-medium">{lastSearch.to}</span>
             {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
+            {lastSearch.seats ? ` • ${lastSearch.seats} siège(s)` : ''}
           </div>
         )}
 

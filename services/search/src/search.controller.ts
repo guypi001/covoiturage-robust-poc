@@ -2,7 +2,7 @@ import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { GeoService } from './geo/geo';
 import { MeiliService, RideDoc } from './meili.service';
 
-type SearchQuery = { from: string; to: string; date?: string };
+type SearchQuery = { from: string; to: string; date?: string; seats?: string };
 
 function normalizeDateRange(input: string): { start: string; end: string } | null {
   const trimmed = input?.trim();
@@ -36,6 +36,10 @@ export class SearchController {
     if (q.date && !rawDateRange) throw new BadRequestException('Date invalide');
     const dateRange = rawDateRange ?? undefined;
 
+    const minSeats = q.seats ? Number(q.seats) : undefined;
+    if (q.seats && (minSeats === undefined || !Number.isFinite(minSeats) || minSeats <= 0))
+      throw new BadRequestException('Seats invalide');
+
     const RADIUS_KM = Number(process.env.NEAR_RADIUS_KM ?? 80);
     const BUFFER_KM = Number(process.env.CORRIDOR_KM ?? 45);
     const LIMIT = Number(process.env.SEARCH_LIMIT ?? 60);
@@ -45,7 +49,13 @@ export class SearchController {
     const nearTo = this.geo.nearbyCities(to, RADIUS_KM);
 
     // 2) première passe Meili
-    const hits = await this.meili.searchByCities(nearFrom, nearTo, LIMIT, dateRange);
+    const hits = await this.meili.searchByCities(
+      nearFrom,
+      nearTo,
+      LIMIT,
+      dateRange,
+      minSeats,
+    );
     if (!hits.length) return [];
 
     // 3) filtrage corridor (trajet qui passe “près de” les points from/to) + sens (a.t < b.t)
@@ -55,7 +65,9 @@ export class SearchController {
       if (!o || !d) return false;
       const a = this.geo.isNearCorridor(cFrom, o, d, BUFFER_KM);
       const b = this.geo.isNearCorridor(cTo, o, d, BUFFER_KM);
-      return a.ok && b.ok && a.t < b.t;
+      if (!(a.ok && b.ok && a.t < b.t)) return false;
+      if (typeof minSeats === 'number' && r.seatsAvailable < minSeats) return false;
+      return true;
     });
 
     // 4) tri (heure de départ puis prix)

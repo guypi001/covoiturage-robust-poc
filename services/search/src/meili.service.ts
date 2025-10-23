@@ -44,6 +44,7 @@ export class MeiliService {
           'destinationCity',
           'departureAt',
           'pricePerSeat',
+          'seatsAvailable',
         ],
       });
       if (task?.taskUid) await this.client.waitForTask(task.taskUid);
@@ -80,6 +81,7 @@ export class MeiliService {
     toCandidates: string[],
     limit = 60,
     dateRange?: { start: string; end: string },
+    minSeats?: number,
   ): Promise<RideDoc[]> {
     const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
     const filters: string[] = [];
@@ -93,6 +95,9 @@ export class MeiliService {
       filters.push(`departureAt >= ${quote(dateRange.start)}`);
       filters.push(`departureAt < ${quote(dateRange.end)}`);
     }
+    if (typeof minSeats === 'number') {
+      filters.push(`seatsAvailable >= ${Math.max(1, Math.floor(minSeats))}`);
+    }
     const opts: any = { limit };
     if (filters.length) opts.filter = filters.join(' AND ');
     const res = await this.rides.search('', opts);
@@ -100,10 +105,10 @@ export class MeiliService {
   }
 
   /** 🔁 Compatibilité : ancienne signature `search(params)` */
-  async search(params: { from?: string; to?: string; limit?: number }) {
+  async search(params: { from?: string; to?: string; limit?: number; seats?: number }) {
     const limit = Number(params?.limit ?? process.env.SEARCH_LIMIT ?? 60);
     const from = params?.from ? [params.from] : [];
     const to = params?.to ? [params.to] : [];
-    return this.searchByCities(from, to, limit);
+    return this.searchByCities(from, to, limit, undefined, params?.seats);
   }
 }

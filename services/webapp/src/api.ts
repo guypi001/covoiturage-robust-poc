@@ -16,9 +16,15 @@ export type Ride = {
   status: 'PUBLISHED'|'CLOSED';
 };
 
-export async function searchRides(params: {from: string; to: string; date?: string}) {
-  const { from, to, date } = params;
-  const url = `${SEARCH_URL}/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${date ? `&date=${encodeURIComponent(date)}` : ''}`;
+export async function searchRides(params: {from: string; to: string; date?: string; seats?: number}) {
+  const { from, to, date, seats } = params;
+  const search = new URLSearchParams({
+    from,
+    to,
+  });
+  if (date) search.set('date', date);
+  if (typeof seats === 'number') search.set('seats', String(seats));
+  const url = `${SEARCH_URL}/search?${search.toString()}`;
   const { data } = await axios.get<Ride[]>(url, { withCredentials: false });
   return data;
 }

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Ride } from './api';
 
 type State = {
-  lastSearch?: { from: string; to: string; date?: string };
+  lastSearch?: { from: string; to: string; date?: string; seats?: number };
   results: Ride[];
   loading: boolean;
   error?: string;

@@ -3,12 +3,13 @@ import React, { useRef } from "react";
 import { Calendar, Search } from "lucide-react";
 import CityAutocomplete from "./CityAutocomplete";
 
-export type SearchPatch = Partial<{ from: string; to: string; date: string }>;
+export type SearchPatch = Partial<{ from: string; to: string; date: string; seats: number }>;
 
 type Props = {
   from: string;
   to: string;
   date?: string;
+  seats: number;
   loading?: boolean;
   onChange: (patch: SearchPatch) => void;
   onSubmit: () => void;
@@ -18,6 +19,7 @@ export default function SearchBar({
   from,
   to,
   date,
+  seats,
   loading,
   onChange,
   onSubmit,
@@ -43,7 +45,7 @@ export default function SearchBar({
       }}
       aria-label="Formulaire de recherche de trajets"
     >
-      <div className="grid grid-cols-1 md:grid-cols-[1fr,1fr,260px,150px] gap-3 md:gap-2 items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr,1fr,220px,140px,150px] gap-3 md:gap-2 items-stretch">
         <CityAutocomplete
           label="Départ"
           placeholder="Ville de départ"
@@ -94,6 +96,23 @@ export default function SearchBar({
               <Calendar size={16} className="text-slate-600" />
             </button>
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            Sièges
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            className="input w-full"
+            aria-label="Nombre de sièges souhaités"
+            value={seats}
+            onChange={(e) =>
+              onChange({ seats: Math.max(1, Number(e.currentTarget.value) || 1) })
+            }
+          />
         </div>
 
         <button
