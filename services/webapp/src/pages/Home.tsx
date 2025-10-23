@@ -104,6 +104,7 @@ export default function Home() {
                 key={r.rideId}
                 {...r}
                 onBook={() => nav(`/booking/${r.rideId}`)}
+                onDetails={() => nav(`/ride/${r.rideId}`)}
               />
             ))}
           </div>

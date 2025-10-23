@@ -1,126 +1,243 @@
-// src/pages/CreateRide.tsx
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createRide } from '../api';
-import { motion } from 'framer-motion';
 import CityAutocomplete from '../components/CityAutocomplete';
+import { createRide } from '../api';
+import { useApp } from '../store';
+
+type FormState = {
+  originCity: string;
+  destinationCity: string;
+  date: string;
+  time: string;
+  pricePerSeat: number;
+  seatsTotal: number;
+  driverId: string;
+};
+
+type Feedback = { type: 'error' | 'success'; message: string } | null;
+
+const toIsoUtc = (date: string, time: string) => {
+  if (!date || !time) return '';
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0)).toISOString();
+};
 
 export default function CreateRide() {
-  const [originCity, setOriginCity] = useState('Abidjan');
-  const [destinationCity, setDestinationCity] = useState('Yamoussoukro');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
-  const [pricePerSeat, setPricePerSeat] = useState(2000);
-  const [seatsTotal, setSeatsTotal] = useState(3);
-  const [driverId, setDriverId] = useState('drv-seed');
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const navigate = useNavigate();
+  const setSearch = useApp((state) => state.setSearch);
+  const setResults = useApp((state) => state.setResults);
+  const setLoading = useApp((state) => state.setLoading);
+  const setError = useApp((state) => state.setError);
 
-  const toISO = (d: string, t: string) => {
-    if (!d || !t) return '';
-    const [Y, M, D] = d.split('-').map(Number);
-    const [h, m] = t.split(':').map(Number);
-    return new Date(Date.UTC(Y, M - 1, D, h, m, 0)).toISOString();
+  const [form, setForm] = useState<FormState>({
+    originCity: 'Abidjan',
+    destinationCity: 'Yamoussoukro',
+    date: '',
+    time: '',
+    pricePerSeat: 2000,
+    seatsTotal: 3,
+    driverId: 'drv-seed',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+
+  const minDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const updateForm = (patch: Partial<FormState>) => {
+    setForm((prev) => ({ ...prev, ...patch }));
   };
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    const departureAt = toISO(date, time);
-    if (!departureAt) return setErr('Date/heure invalides');
+  const validate = (state: FormState): string | null => {
+    if (!state.originCity.trim() || !state.destinationCity.trim()) {
+      return 'Précise la ville de départ et d’arrivée.';
+    }
+    if (!state.date || !state.time) {
+      return 'Choisis une date et une heure de départ.';
+    }
+    if (!Number.isFinite(state.pricePerSeat) || state.pricePerSeat <= 0) {
+      return 'Le prix par siège doit être supérieur à 0.';
+    }
+    if (!Number.isFinite(state.seatsTotal) || state.seatsTotal <= 0) {
+      return 'Le nombre de sièges doit être positif.';
+    }
+    if (!state.driverId.trim()) {
+      return 'Indique un identifiant chauffeur.';
+    }
+    if (!toIsoUtc(state.date, state.time)) {
+      return 'Date ou heure invalide.';
+    }
+    return null;
+  };
+
+  const handleSubmit = async (evt: React.FormEvent) => {
+    evt.preventDefault();
+    setFeedback(null);
+
+    const error = validate(form);
+    if (error) {
+      setFeedback({ type: 'error', message: error });
+      return;
+    }
+
+    const departureAt = toIsoUtc(form.date, form.time);
+    const payload = {
+      originCity: form.originCity.trim(),
+      destinationCity: form.destinationCity.trim(),
+      departureAt,
+      pricePerSeat: Math.round(form.pricePerSeat),
+      seatsTotal: Math.round(form.seatsTotal),
+      driverId: form.driverId.trim(),
+    };
 
     try {
-      setLoading(true);
-      await createRide({
-        originCity,
-        destinationCity,
-        departureAt,
-        pricePerSeat: Number(pricePerSeat),
-        seatsTotal: Number(seatsTotal),
-        driverId,
+      setSubmitting(true);
+      await createRide(payload);
+      setFeedback({ type: 'success', message: 'Trajet publié avec succès !' });
+
+      setSearch({
+        from: payload.originCity,
+        to: payload.destinationCity,
+        date: form.date || undefined,
       });
-      navigate(`/results?from=${encodeURIComponent(originCity)}&to=${encodeURIComponent(destinationCity)}`);
+      setResults([]);
+      setError(undefined);
+      setLoading(true);
+
+      navigate('/results');
     } catch (e: any) {
-      setErr(e?.message || 'Échec de la création');
+      setFeedback({ type: 'error', message: e?.message || 'Échec de la création du trajet.' });
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  const feedbackStyles =
+    feedback?.type === 'success'
+      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+      : 'bg-red-50 border border-red-200 text-red-700';
+
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-gradient-to-b from-zinc-900 to-black text-zinc-100">
-      <div className="max-w-3xl mx-auto px-4 py-10">
-        <motion.h1 initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-          className="text-3xl md:text-4xl font-extrabold tracking-tight mb-6">
-          Proposer un trajet ✨
-        </motion.h1>
+    <div className="container-wide py-8 md:py-10">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-2xl md:text-3xl font-semibold text-slate-900">
+            Publier un trajet
+          </h1>
+          <p className="text-sm text-slate-600">
+            Renseigne les informations principales du trajet pour le rendre visible dans la
+            recherche.
+          </p>
+        </div>
 
-        <motion.form onSubmit={submit} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-zinc-900/60 backdrop-blur rounded-2xl p-5 md:p-7 shadow-xl shadow-black/30 border border-zinc-800 space-y-5">
+        {feedback && (
+          <div className={`px-4 py-3 rounded-xl text-sm ${feedbackStyles}`}>{feedback.message}</div>
+        )}
 
+        <form className="card p-6 md:p-8 space-y-6" onSubmit={handleSubmit}>
           <div className="grid md:grid-cols-2 gap-4">
             <CityAutocomplete
               label="Départ"
               placeholder="Ville de départ"
-              value={originCity}
-              onChange={setOriginCity}
-              onSelect={setOriginCity}
+              value={form.originCity}
+              onChange={(value) => updateForm({ originCity: value })}
+              onSelect={(value) => updateForm({ originCity: value })}
             />
             <CityAutocomplete
               label="Arrivée"
               placeholder="Ville d’arrivée"
-              value={destinationCity}
-              onChange={setDestinationCity}
-              onSelect={setDestinationCity}
+              value={form.destinationCity}
+              onChange={(value) => updateForm({ destinationCity: value })}
+              onSelect={(value) => updateForm({ destinationCity: value })}
             />
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Date</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl bg-zinc-800/80 border border-zinc-700 px-4 py-3 outline-none focus:ring-2 ring-indigo-500" required />
+              <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
+              <input
+                type="date"
+                className="input w-full"
+                min={minDate}
+                value={form.date}
+                onChange={(e) => updateForm({ date: e.currentTarget.value })}
+                required
+              />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Heure</label>
-              <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-                className="w-full rounded-xl bg-zinc-800/80 border border-zinc-700 px-4 py-3 outline-none focus:ring-2 ring-indigo-500" required />
+              <label className="block text-xs font-medium text-slate-600 mb-1">Heure</label>
+              <input
+                type="time"
+                className="input w-full"
+                value={form.time}
+                onChange={(e) => updateForm({ time: e.currentTarget.value })}
+                required
+              />
             </div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Prix / siège (XOF)</label>
-              <input type="number" min={0} step={100} value={pricePerSeat}
-                onChange={(e) => setPricePerSeat(Number(e.target.value))}
-                className="w-full rounded-xl bg-zinc-800/80 border border-zinc-700 px-4 py-3 outline-none focus:ring-2 ring-indigo-500" required />
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Prix par siège (XOF)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={100}
+                className="input w-full"
+                value={form.pricePerSeat}
+                onChange={(e) => updateForm({ pricePerSeat: Number(e.currentTarget.value || 0) })}
+                required
+              />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Sièges</label>
-              <input type="number" min={1} max={7} value={seatsTotal}
-                onChange={(e) => setSeatsTotal(Number(e.target.value))}
-                className="w-full rounded-xl bg-zinc-800/80 border border-zinc-700 px-4 py-3 outline-none focus:ring-2 ring-indigo-500" required />
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Nombre de sièges
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={7}
+                className="input w-full"
+                value={form.seatsTotal}
+                onChange={(e) => {
+                  const value = Number(e.currentTarget.value || 1);
+                  updateForm({ seatsTotal: Math.max(1, Math.min(7, value)) });
+                }}
+                required
+              />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Driver ID (PoC)</label>
-              <input value={driverId} onChange={(e) => setDriverId(e.target.value)}
-                className="w-full rounded-xl bg-zinc-800/80 border border-zinc-700 px-4 py-3 outline-none focus:ring-2 ring-indigo-500" required />
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Chauffeur (ID PoC)
+              </label>
+              <input
+                className="input w-full"
+                value={form.driverId}
+                onChange={(e) => updateForm({ driverId: e.currentTarget.value })}
+                required
+              />
             </div>
           </div>
 
-          {err && <div className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-xl px-4 py-3">{err}</div>}
-
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={loading}
-              className="inline-flex items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 font-semibold shadow-lg shadow-indigo-900/40 transition">
-              {loading ? 'Publication…' : 'Publier le trajet'}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-primary px-5 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Publication…' : 'Publier le trajet'}
             </button>
-            <span className="text-xs text-zinc-500">
-              * Au clic, on crée le trajet côté <code>ride</code> puis on revient sur la recherche.
-            </span>
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="px-4 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              Annuler
+            </button>
           </div>
-        </motion.form>
+        </form>
       </div>
     </div>
   );

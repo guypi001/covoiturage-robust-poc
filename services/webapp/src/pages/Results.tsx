@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { searchRides } from '../api';
 import { useApp } from '../store';
 import RideCard from '../components/RideCard';
 
 export function Results() {
+  const nav = useNavigate();
   const { lastSearch, results, setResults, setLoading, loading, error, setError } = useApp();
 
   useEffect(() => {
@@ -26,7 +28,14 @@ export function Results() {
 
   return (
     <div className="grid sm:grid-cols-2 gap-4">
-      {results.map(r => <RideCard key={r.rideId} r={r} />)}
+      {results.map(r => (
+        <RideCard
+          key={r.rideId}
+          {...r}
+          onBook={() => nav(`/booking/${r.rideId}`)}
+          onDetails={() => nav(`/ride/${r.rideId}`)}
+        />
+      ))}
     </div>
   );
 }

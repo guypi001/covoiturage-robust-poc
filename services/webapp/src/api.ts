@@ -3,6 +3,7 @@ import axios from 'axios';
 const SEARCH_URL  = import.meta.env.VITE_SEARCH_URL  || 'http://localhost:3003';
 const BOOKING_URL = import.meta.env.VITE_BOOKING_URL || 'http://localhost:3004';
 const RIDE_URL    = import.meta.env.VITE_RIDE_URL    || 'http://localhost:3002';
+const PAYMENT_URL = import.meta.env.VITE_PAYMENT_URL || 'http://localhost:3000';
 
 export type Ride = {
   rideId: string;
@@ -37,6 +38,11 @@ export async function getRide(rideId: string) {
 export async function createBooking(payload: { rideId: string; passengerId: string; seats: number }) {
   const { data } = await axios.post(`${BOOKING_URL}/bookings`, payload);
   return data; // { id, holdId?, amount, status, ... }
+}
+
+export async function captureBookingPayment(payload: { bookingId: string; amount: number; holdId?: string }) {
+  const { data } = await axios.post(`${PAYMENT_URL}/payments/capture`, payload);
+  return data;
 }
 
 // --- Types pour la création d’un trajet ---

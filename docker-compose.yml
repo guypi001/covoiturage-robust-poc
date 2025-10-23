@@ -173,6 +173,7 @@ services:
         VITE_SEARCH_URL:  http://localhost:3003
         VITE_BOOKING_URL: http://localhost:3004
         VITE_RIDE_URL:    http://localhost:3002
+        VITE_PAYMENT_URL: http://localhost:3000
     depends_on:
       search:
         condition: service_started
