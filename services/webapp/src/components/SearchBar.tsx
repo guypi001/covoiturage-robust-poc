@@ -38,17 +38,17 @@ export default function SearchBar({
 
   return (
     <form
-      className="search-sticky card p-3 md:p-4"
+      className="search-sticky rounded-3xl border border-white/70 bg-white/95 shadow-xl shadow-sky-100/40 backdrop-blur p-4 md:p-6 space-y-5"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
       }}
       aria-label="Formulaire de recherche de trajets"
     >
-      <div className="grid grid-cols-1 md:grid-cols-[1fr,1fr,220px,140px,150px] gap-3 md:gap-2 items-stretch">
+      <div className="grid gap-4 md:grid-cols-2">
         <CityAutocomplete
           label="Départ"
-          placeholder="Ville de départ"
+          placeholder="Abidjan, Bouaké, San-Pédro…"
           value={from}
           onChange={(v) => onChange({ from: v })}
           onSelect={(v) => onChange({ from: v })}
@@ -57,56 +57,51 @@ export default function SearchBar({
 
         <CityAutocomplete
           label="Arrivée"
-          placeholder="Ville d’arrivée"
+          placeholder="Yamoussoukro, Korhogo…"
           value={to}
           onChange={(v) => onChange({ to: v })}
           onSelect={(v) => onChange({ to: v })}
           className="w-full"
         />
+      </div>
 
-        {/* Champ date avec bouton calendrier à droite */}
-        <div className="relative">
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Date
-          </label>
+      <div className="grid gap-4 md:grid-cols-[minmax(0,220px),minmax(0,140px),minmax(0,1fr)] md:items-end">
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">Date</label>
           <div className="relative">
-            {/* Icône à gauche (cosmétique) */}
             <Calendar
               aria-hidden
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-sky-500/80"
               size={18}
             />
             <input
               ref={dateRef}
               type="date"
-              className="input pl-10 pr-11 w-full"
+              className="input input-lg w-full pl-12 pr-12"
               aria-label="Date de départ"
               min={minDate}
-              value={date ?? ""}
+              value={date ?? ''}
               onChange={(e) => onChange({ date: e.currentTarget.value })}
             />
-            {/* Bouton à droite qui ouvre le picker natif */}
             <button
               type="button"
               onClick={openNativePicker}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-lg hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-400"
               aria-label="Ouvrir le sélecteur de date"
               title="Choisir une date"
             >
-              <Calendar size={16} className="text-slate-600" />
+              <Calendar size={16} />
             </button>
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Sièges
-          </label>
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">Sièges</label>
           <input
             type="number"
             min={1}
             max={10}
-            className="input w-full"
+            className="input input-lg w-full"
             aria-label="Nombre de sièges souhaités"
             value={seats}
             onChange={(e) =>
@@ -118,11 +113,11 @@ export default function SearchBar({
         <button
           type="submit"
           disabled={loading}
-          className="btn-primary h-11 md:h-full flex items-center justify-center gap-2"
+          className="btn-primary h-12 md:h-14 flex items-center justify-center gap-2 text-base font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
           aria-label="Lancer la recherche"
         >
-          <Search size={18} />
-          {loading ? "Recherche…" : "Rechercher"}
+          <Search size={20} />
+          {loading ? 'Recherche…' : 'Rechercher'}
         </button>
       </div>
     </form>

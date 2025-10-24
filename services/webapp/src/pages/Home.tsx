@@ -1,10 +1,12 @@
 // src/pages/Home.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Sparkles, ShieldCheck, Clock } from 'lucide-react';
 import SearchBar, { SearchPatch } from '../components/SearchBar';
 import RideCard from '../components/RideCard';
 import { useApp } from '../store';
 import { searchRides } from '../api';
+import { GmailLogo } from '../components/icons/GmailLogo';
 
 export default function Home() {
   const nav = useNavigate();
@@ -58,20 +60,80 @@ export default function Home() {
 
   return (
     <div className="min-h-[calc(100vh-56px)]">
-      {/* Barre de recherche en haut, sticky et claire */}
-      <section className="container-wide pt-6 md:pt-8">
-        <SearchBar
-          from={form.from}
-          to={form.to}
-          date={form.date}
-          seats={form.seats}
-          loading={loading}
-          onChange={onChange}
-          onSubmit={onSubmit}
-        />
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white via-sky-50/60 to-white" />
+        <div className="absolute inset-y-0 right-0 -z-10 hidden lg:block">
+          <div className="h-full w-72 translate-x-24 rounded-full bg-sky-100/50 blur-3xl" />
+        </div>
+        <div className="container-wide py-12 md:py-16">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.95fr),minmax(0,1fr)] items-start">
+            <div className="space-y-6">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-sky-600 shadow-sm shadow-sky-100">
+                <Sparkles size={14} className="text-sky-500" />
+                Covoiturage harmonisé
+              </span>
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 leading-tight">
+                Voyage sereinement entre les villes de Côte d’Ivoire
+              </h1>
+              <p className="text-base text-slate-600 max-w-xl">
+                Coordonne tes trajets, retrouve ton historique et partage tes préférences de confort
+                avec une interface cohérente entre web et mobile.
+              </p>
+              <ul className="grid gap-3 sm:grid-cols-2 text-sm text-slate-600">
+                <li className="flex items-start gap-3 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-sm">
+                  <span className="mt-1 grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15 text-sky-600">
+                    <ShieldCheck size={18} />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-slate-800">Comptes sécurisés</p>
+                    <p>Mot de passe ou code Gmail : choisis la méthode qui te convient.</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-sm">
+                  <span className="mt-1 grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15 text-sky-600">
+                    <Clock size={18} />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-slate-800">OTP instantané</p>
+                    <p>Reçois un code Gmail en quelques secondes pour valider ton accès.</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-sm sm:col-span-2">
+                  <span className="mt-1 grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15">
+                    <GmailLogo className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-slate-800">Synchronisation Gmail</p>
+                    <p>Un design cohérent de la boîte mail à l’application pour éviter toute surprise.</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <div className="relative lg:pl-6">
+              <SearchBar
+                from={form.from}
+                to={form.to}
+                date={form.date}
+                seats={form.seats}
+                loading={loading}
+                onChange={onChange}
+                onSubmit={onSubmit}
+              />
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                <span className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
+                  <ShieldCheck size={14} className="text-sky-500" />
+                  Historique et préférences sauvegardés
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
+                  <GmailLogo className="h-4 w-4" />
+                  Connexion Gmail supportée
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Corps : résumé + liste de résultats */}
       <section className="container-wide pb-14 space-y-6">
         {/* Erreur */}
         {error && (

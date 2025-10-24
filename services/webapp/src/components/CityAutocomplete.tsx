@@ -74,13 +74,16 @@ export default function CityAutocomplete({
   return (
     <div ref={wrapRef} className={`relative ${className ?? ''}`}>
       {label && (
-        <label className="block text-[11px] uppercase tracking-wider text-slate-400 mb-1">
+        <label className="block text-xs font-semibold text-slate-600 mb-2">
           {label}
         </label>
       )}
 
       <div className="relative">
-        <MapPin size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <MapPin
+          size={20}
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-sky-500/80 pointer-events-none"
+        />
         <input
           ref={inputRef}
           autoFocus={autoFocus}
@@ -94,7 +97,7 @@ export default function CityAutocomplete({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="input w-full pl-10"
+          className="input input-lg w-full pl-12 pr-4"
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls="city-listbox"
@@ -103,27 +106,27 @@ export default function CityAutocomplete({
 
       {open && (
         <div
-          className="absolute left-0 right-0 mt-2 rounded-xl border border-white/10 bg-slate-900/95 backdrop-blur shadow-2xl max-h-64 overflow-auto z-[100]"
+          className="absolute left-0 right-0 mt-2 rounded-2xl border border-slate-200 bg-white shadow-2xl max-h-64 overflow-auto z-[100]"
           role="listbox"
           id="city-listbox"
         >
           {items.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-slate-400">Aucune ville trouvée</div>
+            <div className="px-3 py-2 text-sm text-slate-500">Aucune ville trouvée</div>
           ) : (
             items.map((c, i) => (
               <button
                 key={c.name}
                 type="button"
-                className={`w-full text-left px-3 py-2 hover:bg-slate-800 ${
-                  i === active ? 'bg-slate-800' : ''
+                className={`w-full text-left px-4 py-2 transition ${
+                  i === active ? 'bg-sky-50 text-sky-700' : 'hover:bg-slate-100'
                 }`}
                 onMouseDown={(e) => e.preventDefault()} // empêche la perte de focus avant onClick
                 onClick={() => choose(c.name)}
                 role="option"
                 aria-selected={i === active}
               >
-                <div className="text-slate-100">{c.name}</div>
-                {c.region && <div className="text-xs text-slate-400">{c.region}</div>}
+                <div className="text-sm font-semibold text-slate-800">{c.name}</div>
+                {c.region && <div className="text-xs text-slate-500">{c.region}</div>}
               </button>
             ))
           )}
