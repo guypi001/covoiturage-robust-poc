@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   NotFoundException,
+  Param,
   Patch,
   Query,
   Req,
@@ -62,6 +63,19 @@ export class ProfileController {
       throw new BadRequestException('email_required');
     }
     const account = await this.auth.lookupByEmail(email);
+    if (!account) {
+      throw new NotFoundException('account_not_found');
+    }
+    return account;
+  }
+
+  @Get(':id/public')
+  async publicProfile(@Req() req: Request, @Param('id') id: string) {
+    this.getPayload(req);
+    if (!id?.trim()) {
+      throw new BadRequestException('id_required');
+    }
+    const account = await this.auth.getPublicProfile(id);
     if (!account) {
       throw new NotFoundException('account_not_found');
     }

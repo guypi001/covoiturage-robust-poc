@@ -206,6 +206,11 @@ export class AuthService {
     return this.sanitize(saved);
   }
 
+  async getPublicProfile(accountId: string): Promise<SafeAccount | null> {
+    const account = await this.accounts.findOne({ where: { id: accountId } });
+    return account ? this.sanitize(account) : null;
+  }
+
   async lookupByEmail(email: string): Promise<SafeAccount | null> {
     const normalized = this.normalizeEmail(email);
     const account = await this.accounts.findOne({ where: { email: normalized } });

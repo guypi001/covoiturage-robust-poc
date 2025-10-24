@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Query, Req, Param, NotFoundException } from '@nestjs/common';
 import axios from 'axios';
 const RIDE = process.env.RIDE_URL || 'http://ride:3002';
 const SEARCH = process.env.SEARCH_URL || 'http://search:3003';
@@ -92,6 +92,21 @@ export class ProxyController {
     return (
       await axios.get(`${IDENTITY}/profiles/lookup`, {
         params: { email },
+        headers,
+      })
+    ).data;
+  }
+
+  @Get('profiles/:id/public')
+  async publicProfile(@Param('id') id: string, @Req() req: any) {
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!uuidRegex.test(id ?? '')) {
+      throw new NotFoundException('account_not_found');
+    }
+    const headers: Record<string, string> = {};
+    if (req.headers?.authorization) headers['authorization'] = req.headers.authorization;
+    return (
+      await axios.get(`${IDENTITY}/profiles/${id}/public`, {
         headers,
       })
     ).data;

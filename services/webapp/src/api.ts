@@ -217,6 +217,13 @@ export async function getMyProfile(token: string): Promise<Account> {
   return data;
 }
 
+export async function getPublicProfile(accountId: string, token: string): Promise<Account> {
+  const { data } = await axios.get<Account>(`${IDENTITY_URL}/profiles/${accountId}/public`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
 export async function lookupAccountByEmail(email: string, token?: string) {
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
