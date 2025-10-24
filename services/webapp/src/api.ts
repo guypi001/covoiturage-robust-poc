@@ -1,10 +1,12 @@
 import axios from 'axios';
+import type { LocationMeta } from './types/location';
 
 const SEARCH_URL  = import.meta.env.VITE_SEARCH_URL  || 'http://localhost:3003';
 const BOOKING_URL = import.meta.env.VITE_BOOKING_URL || 'http://localhost:3004';
 const RIDE_URL    = import.meta.env.VITE_RIDE_URL    || 'http://localhost:3002';
 const PAYMENT_URL = import.meta.env.VITE_PAYMENT_URL || 'http://localhost:3000';
 const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL || 'http://localhost:3000';
+const MESSAGING_URL = import.meta.env.VITE_MESSAGING_URL || 'http://localhost:3012';
 
 export type Ride = {
   rideId: string;
@@ -18,7 +20,61 @@ export type Ride = {
   status: 'PUBLISHED'|'CLOSED';
 };
 
-export async function searchRides(params: {from: string; to: string; date?: string; seats?: number}) {
+export type ConversationSummary = {
+  id: string;
+  otherParticipant: {
+    id: string;
+    type: AccountType;
+    label?: string | null;
+  };
+  lastMessageAt?: string;
+  lastMessagePreview?: string | null;
+  unreadCount: number;
+};
+
+export type ChatMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderType: AccountType;
+  senderLabel?: string | null;
+  recipientId: string;
+  recipientType: AccountType;
+  recipientLabel?: string | null;
+  body: string;
+  status: 'DELIVERED' | 'READ';
+  readAt?: string | null;
+  deliveredAt: string;
+  createdAt: string;
+};
+
+export type MessageNotificationSummary = {
+  unreadConversations: number;
+  unreadMessages: number;
+  items: Array<{
+    id: string;
+    conversationId: string;
+    messageId: string;
+    preview: string | null;
+    createdAt: string;
+    sender?: {
+      id: string;
+      type: AccountType;
+      label?: string | null;
+    } | null;
+  }>;
+};
+
+export type SearchRequest = {
+  from: string;
+  to: string;
+  date?: string;
+  seats?: number;
+  fromMeta?: LocationMeta;
+  toMeta?: LocationMeta;
+};
+
+export async function searchRides(params: SearchRequest) {
   const { from, to, date, seats } = params;
   const search = new URLSearchParams({
     from,
@@ -33,6 +89,54 @@ export async function searchRides(params: {from: string; to: string; date?: stri
 
 export async function getRide(rideId: string) {
   const { data } = await axios.get(`${RIDE_URL}/rides/${rideId}`);
+  return data;
+}
+
+export async function fetchConversations(userId: string): Promise<ConversationSummary[]> {
+  const { data } = await axios.get<ConversationSummary[]>(`${MESSAGING_URL}/conversations`, {
+    params: { userId },
+  });
+  return data;
+}
+
+export async function fetchConversationMessages(conversationId: string, userId: string, limit = 100) {
+  const { data } = await axios.get<ChatMessage[]>(
+    `${MESSAGING_URL}/conversations/${conversationId}/messages`,
+    { params: { userId, limit } },
+  );
+  return data;
+}
+
+export async function markConversationRead(conversationId: string, userId: string) {
+  const { data } = await axios.post<{ ok: boolean; unreadConversations: number }>(
+    `${MESSAGING_URL}/conversations/${conversationId}/read`,
+    { userId },
+  );
+  return data;
+}
+
+export type SendChatMessagePayload = {
+  senderId: string;
+  senderType: AccountType;
+  senderLabel?: string;
+  recipientId: string;
+  recipientType: AccountType;
+  recipientLabel?: string;
+  body: string;
+};
+
+export async function sendChatMessage(payload: SendChatMessagePayload) {
+  const { data } = await axios.post<{ message: ChatMessage; conversation: ConversationSummary }>(
+    `${MESSAGING_URL}/messages`,
+    payload,
+  );
+  return data;
+}
+
+export async function getMessageNotifications(userId: string): Promise<MessageNotificationSummary> {
+  const { data } = await axios.get<MessageNotificationSummary>(`${MESSAGING_URL}/notifications`, {
+    params: { userId },
+  });
   return data;
 }
 
@@ -110,6 +214,19 @@ export async function getMyProfile(token: string): Promise<Account> {
   const { data } = await axios.get<Account>(`${IDENTITY_URL}/profiles/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return data;
+}
+
+export async function lookupAccountByEmail(email: string, token?: string) {
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const { data } = await axios.get<{ id: string; email: string; type: AccountType; fullName?: string | null; companyName?: string | null }>(
+    `${IDENTITY_URL}/profiles/lookup`,
+    {
+      params: { email },
+      headers,
+    },
+  );
   return data;
 }
 

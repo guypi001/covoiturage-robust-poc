@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Patch, Req, UseGuards, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Patch,
+  Query,
+  Req,
+  UseGuards,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { UpdateCompanyProfileDto, UpdateIndividualProfileDto } from './dto';
@@ -41,5 +53,18 @@ export class ProfileController {
       throw new ForbiddenException('invalid_account_type');
     }
     return this.auth.updateCompanyProfile(payload.sub, dto);
+  }
+
+  @Get('lookup')
+  async lookup(@Req() req: Request, @Query('email') email?: string) {
+    this.getPayload(req); // assure que l'appelant est authentifié
+    if (!email?.trim()) {
+      throw new BadRequestException('email_required');
+    }
+    const account = await this.auth.lookupByEmail(email);
+    if (!account) {
+      throw new NotFoundException('account_not_found');
+    }
+    return account;
   }
 }

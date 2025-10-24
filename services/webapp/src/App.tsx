@@ -7,6 +7,7 @@ import CreateRide from './pages/CreateRide';
 import { RideDetail } from './pages/RideDetail';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Messages from './pages/Messages';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
 
@@ -16,6 +17,12 @@ function ProtectedLayout() {
   const token = useApp((state) => state.token);
   const account = useApp((state) => state.account);
   const clearSession = useApp((state) => state.clearSession);
+  const messageBadge = useApp((state) => state.messageBadge);
+  const refreshMessageBadge = useApp((state) => state.refreshMessageBadge);
+
+  useEffect(() => {
+    refreshMessageBadge();
+  }, [refreshMessageBadge]);
 
   if (!authReady || authLoading) {
     return (
@@ -45,6 +52,14 @@ function ProtectedLayout() {
           <nav className="flex items-center gap-6 text-sm text-slate-700">
             <Link to="/" className="hover:text-sky-600">
               Rechercher
+            </Link>
+            <Link to="/messages" className="relative hover:text-sky-600 flex items-center gap-2">
+              Messages
+              {messageBadge > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 rounded-full bg-sky-500 text-white text-[11px] px-1">
+                  {messageBadge > 9 ? '9+' : messageBadge}
+                </span>
+              )}
             </Link>
             <Link to="/create" className="btn-primary px-4 py-2">
               Publier un trajet
@@ -87,6 +102,7 @@ export default function App() {
           <Route path="/booking/:rideId" element={<Booking />} />
           <Route path="/ride/:rideId" element={<RideDetail />} />
           <Route path="/create" element={<CreateRide />} />
+          <Route path="/messages" element={<Messages />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -7,6 +7,19 @@ import RideCard from '../components/RideCard';
 import { useApp } from '../store';
 import { searchRides } from '../api';
 import { GmailLogo } from '../components/icons/GmailLogo';
+import { findCityByName, isKnownCiCity } from '../data/cities-ci';
+import type { LocationMeta } from '../types/location';
+
+type SearchFormState = {
+  from: string;
+  fromLabel: string;
+  fromMeta: LocationMeta | null;
+  to: string;
+  toLabel: string;
+  toMeta: LocationMeta | null;
+  date: string;
+  seats: number;
+};
 
 export default function Home() {
   const nav = useNavigate();
@@ -23,33 +36,87 @@ export default function Home() {
   } = useApp();
 
   // État local du formulaire (prérempli depuis la dernière recherche)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SearchFormState>({
     from: lastSearch?.from ?? '',
+    fromLabel: lastSearch?.fromMeta?.label ?? lastSearch?.from ?? '',
+    fromMeta: lastSearch?.fromMeta ?? null,
     to: lastSearch?.to ?? '',
+    toLabel: lastSearch?.toMeta?.label ?? lastSearch?.to ?? '',
+    toMeta: lastSearch?.toMeta ?? null,
     date: lastSearch?.date ?? '',
     seats: lastSearch?.seats ?? 1,
   });
 
   // Patch partiel (vient de SearchBar)
   function onChange(patch: SearchPatch) {
-    setForm(prev => ({ ...prev, ...patch }));
+    setForm(prev => ({ ...prev, ...patch } as SearchFormState));
   }
+
+  const ensureMeta = (meta: LocationMeta | null, city: string): LocationMeta => {
+    const cityNorm = city.trim();
+    if (meta && meta.city.toLowerCase() === cityNorm.toLowerCase()) {
+      return meta;
+    }
+    const found = findCityByName(cityNorm);
+    if (found) {
+      return {
+        city: found.name,
+        label: meta?.label?.trim() || found.name,
+        lat: found.lat,
+        lng: found.lng,
+        mode: 'city',
+      };
+    }
+    return {
+      city: cityNorm,
+      label: meta?.label?.trim() || cityNorm,
+      lat: meta?.lat,
+      lng: meta?.lng,
+      distanceKm: meta?.distanceKm,
+      accuracyMeters: meta?.accuracyMeters,
+      note: meta?.note,
+      mode: meta?.mode ?? 'manual',
+    };
+  };
 
   // Lance la recherche et affiche les résultats sur la même page
   async function onSubmit() {
-    if (!form.from || !form.to) {
+    const fromCity = form.from.trim();
+    const toCity = form.to.trim();
+    if (!fromCity || !toCity) {
       setError('Renseigne départ et arrivée');
+      return;
+    }
+    if (!isKnownCiCity(fromCity)) {
+      setError('Sélectionne un point de départ valide.');
+      return;
+    }
+    if (!isKnownCiCity(toCity)) {
+      setError('Sélectionne une arrivée valide.');
       return;
     }
     if (!form.seats || form.seats <= 0) {
       setError('Nombre de sièges invalide');
       return;
     }
-    setSearch(form);
+    const nextSearch = {
+      from: fromCity,
+      to: toCity,
+      date: form.date || undefined,
+      seats: form.seats,
+      fromMeta: ensureMeta(form.fromMeta, fromCity),
+      toMeta: ensureMeta(form.toMeta, toCity),
+    };
+    setSearch(nextSearch);
     setLoading(true);
     setError(undefined);
     try {
-      const data = await searchRides(form);
+      const data = await searchRides({
+        from: nextSearch.from,
+        to: nextSearch.to,
+        date: nextSearch.date,
+        seats: nextSearch.seats,
+      });
       setResults(data);
     } catch (e: any) {
       setError(e?.message ?? 'Erreur réseau');
@@ -57,6 +124,9 @@ export default function Home() {
       setLoading(false);
     }
   }
+
+  const displayLastFrom = lastSearch?.fromMeta?.label ?? lastSearch?.from ?? '';
+  const displayLastTo = lastSearch?.toMeta?.label ?? lastSearch?.to ?? '';
 
   return (
     <div className="min-h-[calc(100vh-56px)]">
@@ -112,7 +182,11 @@ export default function Home() {
             <div className="relative lg:pl-6">
               <SearchBar
                 from={form.from}
+                fromLabel={form.fromLabel}
+                fromMeta={form.fromMeta}
                 to={form.to}
+                toLabel={form.toLabel}
+                toMeta={form.toMeta}
                 date={form.date}
                 seats={form.seats}
                 loading={loading}
@@ -146,8 +220,8 @@ export default function Home() {
         {lastSearch && !loading && (
           <div className="text-sm text-slate-600">
             <span className="font-medium text-slate-900">{results.length}</span> résultat(s)
-            &nbsp;pour <span className="font-medium">{lastSearch.from}</span> →{' '}
-            <span className="font-medium">{lastSearch.to}</span>
+            &nbsp;pour <span className="font-medium">{displayLastFrom}</span> →{' '}
+            <span className="font-medium">{displayLastTo}</span>
             {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
             {lastSearch.seats ? ` • ${lastSearch.seats} siège(s)` : ''}
           </div>

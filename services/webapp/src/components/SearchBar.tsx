@@ -2,12 +2,26 @@
 import React, { useRef } from "react";
 import { Calendar, Search } from "lucide-react";
 import CityAutocomplete from "./CityAutocomplete";
+import type { LocationMeta } from "../types/location";
 
-export type SearchPatch = Partial<{ from: string; to: string; date: string; seats: number }>;
+export type SearchPatch = Partial<{
+  from: string;
+  fromLabel: string;
+  fromMeta: LocationMeta | null;
+  to: string;
+  toLabel: string;
+  toMeta: LocationMeta | null;
+  date: string;
+  seats: number;
+}>;
 
 type Props = {
   from: string;
+  fromLabel: string;
+  fromMeta: LocationMeta | null;
   to: string;
+  toLabel: string;
+  toMeta: LocationMeta | null;
   date?: string;
   seats: number;
   loading?: boolean;
@@ -17,7 +31,11 @@ type Props = {
 
 export default function SearchBar({
   from,
+  fromLabel,
+  fromMeta: _fromMeta,
   to,
+  toLabel,
+  toMeta: _toMeta,
   date,
   seats,
   loading,
@@ -49,18 +67,26 @@ export default function SearchBar({
         <CityAutocomplete
           label="Départ"
           placeholder="Abidjan, Bouaké, San-Pédro…"
-          value={from}
+          value={fromLabel}
           onChange={(v) => onChange({ from: v })}
           onSelect={(v) => onChange({ from: v })}
+          onDisplayChange={(v) => onChange({ fromLabel: v })}
+          onMetaChange={(meta) => onChange({ fromMeta: meta })}
+          allowCurrentLocation
+          enablePlacesLookup
           className="w-full"
         />
 
         <CityAutocomplete
           label="Arrivée"
           placeholder="Yamoussoukro, Korhogo…"
-          value={to}
+          value={toLabel}
           onChange={(v) => onChange({ to: v })}
           onSelect={(v) => onChange({ to: v })}
+          onDisplayChange={(v) => onChange({ toLabel: v })}
+          onMetaChange={(meta) => onChange({ toMeta: meta })}
+          allowCurrentLocation
+          enablePlacesLookup
           className="w-full"
         />
       </div>

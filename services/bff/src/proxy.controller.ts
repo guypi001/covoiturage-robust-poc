@@ -84,4 +84,16 @@ export class ProxyController {
       })
     ).data;
   }
+
+  @Get('profiles/lookup')
+  async lookupProfile(@Query('email') email: string, @Req() req: any) {
+    const headers: Record<string, string> = {};
+    if (req.headers?.authorization) headers['authorization'] = req.headers.authorization;
+    return (
+      await axios.get(`${IDENTITY}/profiles/lookup`, {
+        params: { email },
+        headers,
+      })
+    ).data;
+  }
 }

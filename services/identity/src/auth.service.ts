@@ -205,4 +205,10 @@ export class AuthService {
     const saved = await this.accounts.save(account);
     return this.sanitize(saved);
   }
+
+  async lookupByEmail(email: string): Promise<SafeAccount | null> {
+    const normalized = this.normalizeEmail(email);
+    const account = await this.accounts.findOne({ where: { email: normalized } });
+    return account ? this.sanitize(account) : null;
+  }
 }

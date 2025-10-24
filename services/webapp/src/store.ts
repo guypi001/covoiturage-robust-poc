@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Ride, Account } from './api';
-import { getMyProfile } from './api';
+import { getMyProfile, getMessageNotifications } from './api';
+import type { LocationMeta } from './types/location';
 
 const TOKEN_KEY = 'kari_token';
 const getStoredToken = () =>
@@ -12,7 +13,14 @@ const persistToken = (token?: string) => {
 };
 const initialToken = getStoredToken();
 
-type LastSearch = { from: string; to: string; date?: string; seats?: number };
+type LastSearch = {
+  from: string;
+  to: string;
+  date?: string;
+  seats?: number;
+  fromMeta?: LocationMeta;
+  toMeta?: LocationMeta;
+};
 
 type State = {
   lastSearch?: LastSearch;
@@ -25,6 +33,7 @@ type State = {
   authLoading: boolean;
   authReady: boolean;
   authError?: string;
+  messageBadge: number;
 };
 
 type Actions = {
@@ -36,6 +45,7 @@ type Actions = {
   setSession: (token: string, account: Account) => void;
   clearSession: () => void;
   initializeAuth: () => Promise<void>;
+  refreshMessageBadge: () => Promise<void>;
 };
 
 export const useApp = create<State & Actions>((set, get) => ({
@@ -45,6 +55,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   token: initialToken,
   authLoading: false,
   authReady: initialToken ? false : true,
+  messageBadge: 0,
   setPassenger: (id) => set({ passengerId: id }),
   setSearch: (q) => set({ lastSearch: q }),
   setResults: (r) => set({ results: r }),
@@ -60,6 +71,7 @@ export const useApp = create<State & Actions>((set, get) => ({
       authError: undefined,
       passengerId: account.id || 'usr-demo',
     });
+    get().refreshMessageBadge();
   },
   clearSession: () => {
     persistToken(undefined);
@@ -72,6 +84,7 @@ export const useApp = create<State & Actions>((set, get) => ({
       lastSearch: undefined,
       results: [],
       passengerId: 'usr-demo',
+      messageBadge: 0,
     });
   },
   initializeAuth: async () => {
@@ -92,6 +105,7 @@ export const useApp = create<State & Actions>((set, get) => ({
         authError: undefined,
         passengerId: account.id || 'usr-demo',
       });
+      await get().refreshMessageBadge();
     } catch (e: any) {
       persistToken(undefined);
       set({
@@ -101,6 +115,19 @@ export const useApp = create<State & Actions>((set, get) => ({
         authLoading: false,
         authError: e?.message || 'Session invalide',
       });
+    }
+  },
+  refreshMessageBadge: async () => {
+    const account = get().account;
+    if (!account?.id) {
+      set({ messageBadge: 0 });
+      return;
+    }
+    try {
+      const summary = await getMessageNotifications(account.id);
+      set({ messageBadge: summary.unreadConversations });
+    } catch {
+      // garde la valeur actuelle
     }
   },
 }));

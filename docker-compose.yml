@@ -165,6 +165,15 @@ services:
     ports: ["3010:3000"]
     restart: unless-stopped
 
+  messaging:
+    build: ./services/messaging
+    env_file: ./services/messaging/.env
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on: [postgres, redpanda]
+    ports: ["3012:3012"]
+    restart: unless-stopped
+
   webapp:
     build:
       context: ./services/webapp
@@ -175,6 +184,7 @@ services:
         VITE_RIDE_URL:    http://localhost:3002
         VITE_PAYMENT_URL: http://localhost:3000
         VITE_IDENTITY_URL: http://localhost:3000
+        VITE_MESSAGING_URL: http://localhost:3012
     depends_on:
       search:
         condition: service_started
