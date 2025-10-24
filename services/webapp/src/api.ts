@@ -4,6 +4,7 @@ const SEARCH_URL  = import.meta.env.VITE_SEARCH_URL  || 'http://localhost:3003';
 const BOOKING_URL = import.meta.env.VITE_BOOKING_URL || 'http://localhost:3004';
 const RIDE_URL    = import.meta.env.VITE_RIDE_URL    || 'http://localhost:3002';
 const PAYMENT_URL = import.meta.env.VITE_PAYMENT_URL || 'http://localhost:3000';
+const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL || 'http://localhost:3000';
 
 export type Ride = {
   rideId: string;
@@ -42,6 +43,93 @@ export async function createBooking(payload: { rideId: string; passengerId: stri
 
 export async function captureBookingPayment(payload: { bookingId: string; amount: number; holdId?: string }) {
   const { data } = await axios.post(`${PAYMENT_URL}/payments/capture`, payload);
+  return data;
+}
+
+export type AccountType = 'INDIVIDUAL' | 'COMPANY';
+
+export type Account = {
+  id: string;
+  email: string;
+  type: AccountType;
+  fullName?: string | null;
+  companyName?: string | null;
+  registrationNumber?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  comfortPreferences?: string[] | null;
+  tagline?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AuthResponse = {
+  token: string;
+  account: Account;
+};
+
+export async function registerIndividualAccount(payload: {
+  email: string;
+  password: string;
+  fullName: string;
+  comfortPreferences?: string[];
+  tagline?: string;
+}): Promise<AuthResponse> {
+  const { data } = await axios.post<AuthResponse>(`${IDENTITY_URL}/auth/register/individual`, payload);
+  return data;
+}
+
+export async function registerCompanyAccount(payload: {
+  email: string;
+  password: string;
+  companyName: string;
+  registrationNumber?: string;
+  contactName?: string;
+  contactPhone?: string;
+}): Promise<AuthResponse> {
+  const { data } = await axios.post<AuthResponse>(`${IDENTITY_URL}/auth/register/company`, payload);
+  return data;
+}
+
+export async function loginAccount(payload: { email: string; password: string }): Promise<AuthResponse> {
+  const { data } = await axios.post<AuthResponse>(`${IDENTITY_URL}/auth/login`, payload);
+  return data;
+}
+
+export async function requestGmailOtp(payload: { email: string }) {
+  const { data } = await axios.post(`${IDENTITY_URL}/auth/gmail/request`, payload);
+  return data;
+}
+
+export async function verifyGmailOtp(payload: { email: string; code: string }): Promise<AuthResponse> {
+  const { data } = await axios.post<AuthResponse>(`${IDENTITY_URL}/auth/gmail/verify`, payload);
+  return data;
+}
+
+export async function getMyProfile(token: string): Promise<Account> {
+  const { data } = await axios.get<Account>(`${IDENTITY_URL}/profiles/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function updateIndividualProfile(
+  token: string,
+  payload: { comfortPreferences?: string[]; tagline?: string },
+): Promise<Account> {
+  const { data } = await axios.patch<Account>(`${IDENTITY_URL}/profiles/me/individual`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function updateCompanyProfile(
+  token: string,
+  payload: { companyName?: string; registrationNumber?: string; contactName?: string; contactPhone?: string },
+): Promise<Account> {
+  const { data } = await axios.patch<Account>(`${IDENTITY_URL}/profiles/me/company`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return data;
 }
 
