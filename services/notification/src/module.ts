@@ -1,8 +1,81 @@
-import { Module, OnModuleInit, MiddlewareConsumer } from '@nestjs/common'; import { EventBus } from './event-bus';
+import { Logger, MiddlewareConsumer, Module, OnModuleInit } from '@nestjs/common';
+import { EventBus } from './event-bus';
 import { MetricsController, MetricsMiddleware } from './metrics';
-@Module({ controllers:[MetricsController], providers:[EventBus] })
-export class AppModule implements OnModuleInit { constructor(private bus:EventBus){} configure(c:MiddlewareConsumer){ c.apply(MetricsMiddleware).forRoutes('*'); }
-  async onModuleInit(){ await this.bus.subscribe('notif-group','payment.captured', async (evt)=>{ console.log('[NOTIF] payment captured', evt); });
-    await this.bus.subscribe('notif-group','ride.published', async (evt)=>{ console.log('[NOTIF] new ride', (evt as any).originCity, '→', (evt as any).destinationCity); });
-    await this.bus.subscribe('notif-group','message.sent', async (evt)=>{ console.log('[NOTIF] nouveau message pour', (evt as any).recipientId, 'depuis', (evt as any).senderId); });
-    await this.bus.subscribe('notif-group','message.read', async (evt)=>{ console.log('[NOTIF] conversation', (evt as any).conversationId, 'lus par', (evt as any).readerId); }); } }
+import { MailerService } from './mailer.service';
+import { IdentityClient, AccountSummary } from './identity.client';
+
+type MessageSentEvent = {
+  messageId: string;
+  conversationId: string;
+  senderId: string;
+  recipientId: string;
+  body?: string;
+  createdAt?: string;
+};
+
+@Module({ controllers: [MetricsController], providers: [EventBus, MailerService, IdentityClient] })
+export class AppModule implements OnModuleInit {
+  private readonly logger = new Logger(AppModule.name);
+
+  constructor(
+    private readonly bus: EventBus,
+    private readonly mailer: MailerService,
+    private readonly identity: IdentityClient,
+  ) {}
+
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(MetricsMiddleware).forRoutes('*');
+  }
+
+  async onModuleInit() {
+    await this.bus.subscribe('notif-group', 'payment.captured', async (evt) => {
+      this.logger.log(`[payment] capture confirmee: ${JSON.stringify(evt)}`);
+    });
+
+    await this.bus.subscribe('notif-group', 'ride.published', async (evt) => {
+      this.logger.log(
+        `[ride] nouvelle annonce ${evt?.originCity || '?'} -> ${evt?.destinationCity || '?'}`,
+      );
+    });
+
+    await this.bus.subscribe('notif-group', 'message.sent', async (evt) => {
+      await this.handleMessageSent(evt as MessageSentEvent);
+    });
+
+    await this.bus.subscribe('notif-group', 'message.read', async (evt) => {
+      this.logger.log(
+        `[message] conversation ${evt?.conversationId} lue par ${evt?.readerId} (${evt?.count ?? 0} msgs)`,
+      );
+    });
+  }
+
+  private resolveName(account: AccountSummary | null): string {
+    if (!account) return 'un utilisateur KariGo';
+    return account.fullName || account.companyName || account.email;
+  }
+
+  private async handleMessageSent(evt: MessageSentEvent) {
+    if (!evt?.recipientId) {
+      this.logger.warn('message.sent event missing recipientId');
+      return;
+    }
+
+    const recipient = await this.identity.getAccountById(evt.recipientId);
+    if (!recipient?.email) {
+      this.logger.warn(`Impossible d'envoyer un email: destinataire ${evt.recipientId} introuvable.`);
+      return;
+    }
+
+    const sender = evt.senderId ? await this.identity.getAccountById(evt.senderId) : null;
+    const sent = await this.mailer.sendMessageEmail(recipient.email, {
+      recipientName: this.resolveName(recipient),
+      senderName: this.resolveName(sender),
+      preview: evt.body,
+      conversationId: evt.conversationId,
+    });
+
+    if (!sent) {
+      this.logger.warn(`Echec de l'envoi de l'email de notification pour ${recipient.email}`);
+    }
+  }
+}

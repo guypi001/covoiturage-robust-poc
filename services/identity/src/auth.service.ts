@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Account } from './entities';
@@ -15,6 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { accountCreatedCounter, accountLoginCounter } from './metrics';
 import * as bcrypt from 'bcryptjs';
 import { OtpService } from './otp.service';
+import { MailerService } from './mailer.service';
 
 type SafeAccount = Omit<Account, 'passwordHash'>;
 
@@ -22,10 +23,12 @@ const PASSWORD_SALT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectRepository(Account) private readonly accounts: Repository<Account>,
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
+    private readonly mailer: MailerService,
   ) {}
 
   private sanitize(account: Account): SafeAccount {
@@ -91,6 +94,7 @@ export class AuthService {
     });
     const saved = await this.accounts.save(account);
     accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
+    await this.sendWelcomeEmail(saved);
     return this.buildResponse(saved);
   }
 
@@ -109,6 +113,7 @@ export class AuthService {
     });
     const saved = await this.accounts.save(account);
     accountCreatedCounter.inc({ type: 'COMPANY' });
+    await this.sendWelcomeEmail(saved);
     return this.buildResponse(saved);
   }
 
@@ -149,6 +154,7 @@ export class AuthService {
       account = await this.accounts.save(account);
       accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
       created = true;
+      await this.sendWelcomeEmail(account);
     }
 
     accountLoginCounter.inc({ type: account.type });
@@ -215,5 +221,23 @@ export class AuthService {
     const normalized = this.normalizeEmail(email);
     const account = await this.accounts.findOne({ where: { email: normalized } });
     return account ? this.sanitize(account) : null;
+  }
+
+  private async sendWelcomeEmail(account: Account) {
+    try {
+      const displayName =
+        account.type === 'COMPANY'
+          ? account.companyName || account.contactName || 'equipe'
+          : account.fullName || account.email.split('@')[0];
+      const sent = await this.mailer.sendWelcomeEmail(account.email, {
+        name: displayName,
+        type: account.type,
+      });
+      if (!sent) {
+        this.logger.warn(`Welcome email skipped for account ${account.id}`);
+      }
+    } catch (err) {
+      this.logger.error(`Welcome email failed for account ${account.id}: ${(err as Error)?.message || err}`);
+    }
   }
 }

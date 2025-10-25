@@ -52,4 +52,34 @@ export class MailerService {
       return false;
     }
   }
+
+  async sendWelcomeEmail(to: string, context: { name: string; type: 'INDIVIDUAL' | 'COMPANY' }) {
+    const friendlyName = context.name?.trim() || 'nouvel utilisateur';
+    if (!this.transporter) {
+      this.logger.warn(`sendWelcomeEmail skipped (no transporter). Welcome for ${to}`);
+      return false;
+    }
+
+    const subject = 'Bienvenue chez KariGo';
+    const intro =
+      context.type === 'COMPANY'
+        ? 'Merci de faire confiance a KariGo pour vos trajets professionnels.'
+        : 'Ravi de vous compter parmi les conducteurs et passagers KariGo.';
+    const text = `Bonjour ${friendlyName},\n\n${intro}\n\nPubliez un trajet ou consultez les offres des autres membres pour demarrer rapidement.\n\nA tres vite sur la route !`;
+    const html = `<p>Bonjour ${friendlyName},</p><p>${intro}</p><p>Publiez un trajet ou explorez les offres des autres membres pour demarrer rapidement.</p><p>A tres vite sur la route !</p>`;
+
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to,
+        subject,
+        text,
+        html,
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(`sendWelcomeEmail failed for ${to}: ${(err as Error)?.message || err}`);
+      return false;
+    }
+  }
 }

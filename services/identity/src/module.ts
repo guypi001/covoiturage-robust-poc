@@ -5,11 +5,13 @@ import { AuthController } from './auth.controller';
 import { ProfileController } from './profile.controller';
 import { HealthController } from './health.controller';
 import { MetricsController, MetricsMiddleware } from './metrics';
+import { InternalController } from './internal.controller';
 import { Account, OtpToken } from './entities';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { OtpService } from './otp.service';
 import { MailerService } from './mailer.service';
+import { InternalGuard } from './internal.guard';
 
 @Module({
   imports: [
@@ -25,8 +27,8 @@ import { MailerService } from './mailer.service';
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '1h' },
     }),
   ],
-  controllers: [AuthController, ProfileController, HealthController, MetricsController],
-  providers: [AuthService, JwtAuthGuard, OtpService, MailerService],
+  controllers: [AuthController, ProfileController, HealthController, MetricsController, InternalController],
+  providers: [AuthService, JwtAuthGuard, OtpService, MailerService, InternalGuard],
 })
 export class AppModule {
   configure(c: MiddlewareConsumer) {
