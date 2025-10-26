@@ -6,61 +6,7 @@ databases:
     region: frankfurt
 
 services:
-  # ---------- BROKER (TCP privé) ----------
-  - type: private_service
-    name: redpanda
-    env: docker
-    plan: starter
-    region: frankfurt
-    dockerContext: .
-    dockerfilePath: ops/render/redpanda/Dockerfile
-    autoDeploy: true
-    disk:
-      name: redpanda-data
-      mountPath: /var/lib/redpanda/data
-      sizeGB: 5
-    ports:
-      - port: 9092   # Kafka
-        protocol: tcp
-      - port: 33145  # RPC interne Redpanda (utile au cluster)
-        protocol: tcp
-      - port: 8082   # (optionnel) pandaproxy interne
-        protocol: tcp
-
-  # ---------- REDIS (TCP privé) ----------
-  - type: private_service
-    name: redis
-    env: image
-    plan: starter
-    region: frankfurt
-    image:
-      url: redis:7-alpine
-    autoDeploy: true
-    ports:
-      - port: 6379
-        protocol: tcp
-
-  # ---------- MEILISEARCH (HTTP privé) ----------
-  - type: private_service
-    name: meilisearch
-    env: image
-    plan: starter
-    region: frankfurt
-    image:
-      url: getmeili/meilisearch:latest
-    autoDeploy: true
-    envVars:
-      - key: MEILI_NO_ANALYTICS
-        value: "true"
-    disk:
-      name: meili-data
-      mountPath: /meili_data
-      sizeGB: 2
-    ports:
-      - port: 7700
-        protocol: tcp
-
-  # ---------- IDENTITY ----------
+  # ================= HTTP SERVICES =================
   - type: web_service
     name: identity
     env: docker
@@ -75,11 +21,15 @@ services:
         fromDatabase:
           name: covoiturage-postgres
           property: connectionString
-      - key: KAFKA_BROKERS
-        value: redpanda:9092
+      - key: KAFKA_BROKERS        # e.g. SASL brokers from Upstash/Confluent
+        sync: false
+      - key: KAFKA_USERNAME       # if your Kafka requires SASL
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3000"
-      # OTP et mail
+      # OTP defaults (override if needed)
       - key: GMAIL_OTP_TTL_MINUTES
         value: "10"
       - key: GMAIL_OTP_LENGTH
@@ -89,7 +39,6 @@ services:
     healthCheckPath: /health
     autoDeploy: true
 
-  # ---------- RIDE ----------
   - type: web_service
     name: ride
     env: docker
@@ -103,12 +52,15 @@ services:
           name: covoiturage-postgres
           property: connectionString
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- SEARCH ----------
   - type: web_service
     name: search
     env: docker
@@ -118,14 +70,17 @@ services:
     dockerfilePath: Dockerfile
     envVars:
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: MEILISEARCH_URL
-        value: http://meilisearch:7700
+        value: http://meilisearch:7700    # internal URL to the service below
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- BOOKING ----------
   - type: web_service
     name: booking
     env: docker
@@ -138,15 +93,18 @@ services:
         fromDatabase:
           name: covoiturage-postgres
           property: connectionString
-      - key: REDIS_URL
-        value: redis://redis:6379
+      - key: REDIS_URL              # put your managed Redis URL here
+        sync: false
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- PAYMENT ----------
   - type: web_service
     name: payment
     env: docker
@@ -156,12 +114,15 @@ services:
     dockerfilePath: Dockerfile
     envVars:
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- WALLET ----------
   - type: web_service
     name: wallet
     env: docker
@@ -175,12 +136,15 @@ services:
           name: covoiturage-postgres
           property: connectionString
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- PAYOUTS ----------
   - type: web_service
     name: payouts
     env: docker
@@ -194,12 +158,15 @@ services:
           name: covoiturage-postgres
           property: connectionString
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- NOTIFICATION ----------
   - type: web_service
     name: notification
     env: docker
@@ -211,14 +178,17 @@ services:
       - shared-secrets
     envVars:
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: IDENTITY_INTERNAL_URL
         value: http://identity:3000
       - key: PORT
         value: "3000"
     autoDeploy: true
 
-  # ---------- MESSAGING (WS 3012) ----------
   - type: web_service
     name: messaging
     env: docker
@@ -232,12 +202,15 @@ services:
           name: covoiturage-postgres
           property: connectionString
       - key: KAFKA_BROKERS
-        value: redpanda:9092
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
       - key: PORT
         value: "3012"
     autoDeploy: true
 
-  # ---------- BFF ----------
   - type: web_service
     name: bff
     env: docker
@@ -249,8 +222,12 @@ services:
       - shared-secrets
     envVars:
       - key: KAFKA_BROKERS
-        value: redpanda:9092
-      # URLs internes vers les microservices
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
+      # Internal URLs to other services
       - key: IDENTITY_URL
         value: http://identity:3000
       - key: RIDE_URL
@@ -273,7 +250,6 @@ services:
         value: "3000"
     autoDeploy: true
 
-  # ---------- CONFIG (feature-flags / settings) ----------
   - type: web_service
     name: config
     env: docker
@@ -286,7 +262,6 @@ services:
         value: "3000"
     autoDeploy: true
 
-  # ---------- WEBAPP (Nginx/SPA) ----------
   - type: web_service
     name: webapp
     env: docker
@@ -294,11 +269,10 @@ services:
     region: frankfurt
     dockerContext: ./services/webapp
     dockerfilePath: Dockerfile
-    autoDeploy: true
     envVars:
-      # ⚠️ Assure-toi que le Dockerfile lit ces ARG/ENV pour builder le front
+      # Make sure your Dockerfile uses these at build time (ARG -> ENV)
       - key: VITE_SEARCH_URL
-        value: https://search.onrender.com     # ou URL publique de ton service "search"
+        value: https://search.onrender.com
       - key: VITE_BOOKING_URL
         value: https://booking.onrender.com
       - key: VITE_RIDE_URL
@@ -309,29 +283,21 @@ services:
         value: https://identity.onrender.com
       - key: VITE_MESSAGING_URL
         value: https://messaging.onrender.com
+    autoDeploy: true
 
-envVarGroups:
-  - name: shared-secrets
+  # ============ INTERNAL-ONLY HTTP SERVICE ============
+  - type: web_service
+    name: meilisearch
+    env: image
+    plan: starter
+    region: frankfurt
+    internal: true              # <— internal/private within Render network
+    image:
+      url: getmeili/meilisearch:latest
     envVars:
-      # JWT et app
-      - key: JWT_SECRET
-        sync: false
-      - key: JWT_EXPIRES_IN
-        value: "2h"
-      - key: FRONTEND_URL
-        sync: false
-      - key: INTERNAL_API_KEY
-        sync: false
-      # SMTP (pour OTP/email)
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_SECURE
-        value: "false"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: SMTP_FROM
-        value: "KariGo <noreply@example.com>"
+      - key: MEILI_NO_ANALYTICS
+        value: "true"
+      # Optional master key if you want auth on Meili:
+      # - key: MEILI_MASTER_KEY
+      #   sync: false
+    autoDeploy: true
