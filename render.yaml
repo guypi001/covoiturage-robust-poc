@@ -6,8 +6,7 @@ databases:
     region: frankfurt
 
 envVarGroups:
-  # ⚠️ Les environment groups ne doivent PAS contenir de variables avec `sync: false`.
-  # On y met seulement les valeurs non sensibles/partagées.
+  # Valeurs non sensibles partagées entre plusieurs services
   - name: shared-config
     envVars:
       - key: SMTP_PORT
@@ -16,9 +15,52 @@ envVarGroups:
         value: "false"
       - key: SMTP_FROM
         value: "KariGo <noreply@example.com>"
+      - key: FRONTEND_URL
+        value: https://webapp.onrender.com
+      - key: IDENTITY_INTERNAL_URL
+        value: https://identity.onrender.com
+      - key: GMAIL_OTP_TTL_MINUTES
+        value: "10"
+      - key: GMAIL_OTP_LENGTH
+        value: "6"
+      - key: GMAIL_OTP_MAX_ATTEMPTS
+        value: "5"
+
+  - name: shared-infra
+    envVars:
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: REDIS_URL
+        value: redis://redis:6379
+
+  - name: service-urls
+    envVars:
+      - key: IDENTITY_URL
+        value: https://identity.onrender.com
+      - key: RIDE_URL
+        value: https://ride.onrender.com
+      - key: SEARCH_URL
+        value: https://search.onrender.com
+      - key: BOOKING_URL
+        value: https://booking.onrender.com
+      - key: PAYMENT_URL
+        value: https://payment.onrender.com
+      - key: WALLET_URL
+        value: https://wallet.onrender.com
+
+  - name: search-config
+    envVars:
+      - key: MEILISEARCH_URL
+        value: http://meilisearch:7700
+      - key: NEAR_RADIUS_KM
+        value: "80"
+      - key: CORRIDOR_KM
+        value: "45"
+      - key: SEARCH_LIMIT
+        value: "60"
 
 services:
-  # Redpanda en service privé (non exposé publiquement)
+  # Streaming (Kafka) backbone
   - type: pserv
     name: redpanda
     runtime: docker
@@ -26,10 +68,59 @@ services:
     plan: standard
     rootDir: ops/render/redpanda
     dockerfilePath: Dockerfile
-    # Disque persistant pour les données Redpanda
-    # disks property removed because it is not allowed
 
-  # Service Identity (HTTP public)
+  # Redis cache / locking layer
+  - type: pserv
+    name: redis
+    runtime: docker
+    region: frankfurt
+    plan: standard
+    rootDir: ops/render/redis
+    dockerfilePath: Dockerfile
+
+  # Meilisearch for ride discovery
+  - type: pserv
+    name: meilisearch
+    runtime: docker
+    region: frankfurt
+    plan: standard
+    rootDir: ops/render/meilisearch
+    dockerfilePath: Dockerfile
+
+  # Observability - Prometheus
+  - type: web
+    name: prometheus
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: ops
+    dockerfilePath: render/prometheus/Dockerfile
+
+  # Observability - Grafana
+  - type: web
+    name: grafana
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: ops/render/grafana
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: GF_SECURITY_ADMIN_PASSWORD
+        sync: false
+
+  # Redpanda console (Kafka UI)
+  - type: web
+    name: redpanda-console
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: ops/render/redpanda-console
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+
+  # Identity service (JWT + mailing)
   - type: web
     name: identity
     runtime: docker
@@ -37,31 +128,127 @@ services:
     plan: starter
     rootDir: services/identity
     dockerfilePath: Dockerfile
-    healthCheckPath: /health
     envVars:
       - fromGroup: shared-config
+      - fromGroup: shared-infra
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
           property: connectionString
-      # Redpanda accessible via le réseau privé Render par son nom de service
-      - key: KAFKA_BROKERS
-        value: redpanda:9092
-      - key: PORT
-        value: "3000"
-      # Secrets à saisir depuis le Dashboard (sync:false)
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 2h
       - key: SMTP_HOST
         sync: false
       - key: SMTP_USER
         sync: false
       - key: SMTP_PASS
         sync: false
-      - key: FRONTEND_URL
+      - key: INTERNAL_API_KEY
+        sync: false
+
+  # Ride management microservice
+  - type: web
+    name: ride
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/ride
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+
+  # Search / discovery service
+  - type: web
+    name: search
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/search
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+      - fromGroup: search-config
+
+  # Booking orchestration service
+  - type: web
+    name: booking
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/booking
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+      - fromGroup: service-urls
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+
+  # Payment mock service
+  - type: web
+    name: payment
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/payment
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+
+  # Wallet / ledger
+  - type: web
+    name: wallet
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/wallet
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+
+  # Payouts simulation
+  - type: web
+    name: payouts
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/payouts
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+
+  # Notification service (emails + Kafka consumers)
+  - type: web
+    name: notification
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/notification
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-config
+      - fromGroup: shared-infra
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
         sync: false
       - key: INTERNAL_API_KEY
         sync: false
 
-  # Service Messaging (WebSocket/HTTP public)
+  # Messaging / WebSocket service
   - type: web
     name: messaging
     runtime: docker
@@ -70,34 +257,40 @@ services:
     rootDir: services/messaging
     dockerfilePath: Dockerfile
     envVars:
+      - fromGroup: shared-infra
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
           property: connectionString
-      - key: KAFKA_BROKERS
-        value: redpanda:9092
-      - key: PORT
-        value: "3012"
 
-  # Service Notification (peut rester privé s’il n’a pas d’UI publique)
-  - type: pserv
-    name: notification
+  # API gateway / BFF
+  - type: web
+    name: bff
     runtime: docker
     region: frankfurt
-    plan: standard
-    rootDir: services/notification
+    plan: starter
+    rootDir: services/bff
     dockerfilePath: Dockerfile
     envVars:
-      - fromGroup: shared-config
-      - key: KAFKA_BROKERS
-        value: redpanda:9092
-      # URL interne vers Identity (host:port interne)
-      - key: IDENTITY_INTERNAL_URL
-        value: http://identity:3000
-      - key: PORT
-        value: "3000"
-      # Secrets
-      - key: FRONTEND_URL
-        sync: false
-      - key: INTERNAL_API_KEY
-        sync: false
+      - fromGroup: shared-infra
+      - fromGroup: service-urls
+
+  # Config service (feature flags, etc.)
+  - type: web
+    name: config
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/config
+    dockerfilePath: Dockerfile
+    envVars:
+      - fromGroup: shared-infra
+
+  # Web SPA (Vite + Nginx)
+  - type: web
+    name: webapp
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: services/webapp
+    dockerfilePath: Dockerfile

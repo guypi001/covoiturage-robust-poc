@@ -1,0 +1,1 @@
+FROM redpandadata/console:latest
