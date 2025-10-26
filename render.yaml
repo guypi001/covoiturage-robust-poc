@@ -6,20 +6,61 @@ databases:
     region: frankfurt
 
 services:
-  - type: background_worker
+  # ---------- BROKER (TCP privé) ----------
+  - type: private_service
     name: redpanda
     env: docker
     plan: starter
     region: frankfurt
     dockerContext: .
     dockerfilePath: ops/render/redpanda/Dockerfile
-    numInstances: 1
     autoDeploy: true
     disk:
       name: redpanda-data
       mountPath: /var/lib/redpanda/data
       sizeGB: 5
+    ports:
+      - port: 9092   # Kafka
+        protocol: tcp
+      - port: 33145  # RPC interne Redpanda (utile au cluster)
+        protocol: tcp
+      - port: 8082   # (optionnel) pandaproxy interne
+        protocol: tcp
 
+  # ---------- REDIS (TCP privé) ----------
+  - type: private_service
+    name: redis
+    env: image
+    plan: starter
+    region: frankfurt
+    image:
+      url: redis:7-alpine
+    autoDeploy: true
+    ports:
+      - port: 6379
+        protocol: tcp
+
+  # ---------- MEILISEARCH (HTTP privé) ----------
+  - type: private_service
+    name: meilisearch
+    env: image
+    plan: starter
+    region: frankfurt
+    image:
+      url: getmeili/meilisearch:latest
+    autoDeploy: true
+    envVars:
+      - key: MEILI_NO_ANALYTICS
+        value: "true"
+    disk:
+      name: meili-data
+      mountPath: /meili_data
+      sizeGB: 2
+    ports:
+      - port: 7700
+        protocol: tcp
+
+  # ---------- IDENTITY ----------
   - type: web_service
     name: identity
     env: docker
@@ -38,15 +79,23 @@ services:
         value: redpanda:9092
       - key: PORT
         value: "3000"
+      # OTP et mail
+      - key: GMAIL_OTP_TTL_MINUTES
+        value: "10"
+      - key: GMAIL_OTP_LENGTH
+        value: "6"
+      - key: GMAIL_OTP_MAX_ATTEMPTS
+        value: "5"
     healthCheckPath: /health
     autoDeploy: true
 
+  # ---------- RIDE ----------
   - type: web_service
-    name: messaging
+    name: ride
     env: docker
     plan: starter
     region: frankfurt
-    dockerContext: ./services/messaging
+    dockerContext: ./services/ride
     dockerfilePath: Dockerfile
     envVars:
       - key: DATABASE_URL
@@ -56,9 +105,101 @@ services:
       - key: KAFKA_BROKERS
         value: redpanda:9092
       - key: PORT
-        value: "3012"
+        value: "3000"
     autoDeploy: true
 
+  # ---------- SEARCH ----------
+  - type: web_service
+    name: search
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/search
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: MEILISEARCH_URL
+        value: http://meilisearch:7700
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- BOOKING ----------
+  - type: web_service
+    name: booking
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/booking
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+      - key: REDIS_URL
+        value: redis://redis:6379
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- PAYMENT ----------
+  - type: web_service
+    name: payment
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/payment
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- WALLET ----------
+  - type: web_service
+    name: wallet
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/wallet
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- PAYOUTS ----------
+  - type: web_service
+    name: payouts
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/payouts
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- NOTIFICATION ----------
   - type: web_service
     name: notification
     env: docker
@@ -77,9 +218,111 @@ services:
         value: "3000"
     autoDeploy: true
 
+  # ---------- MESSAGING (WS 3012) ----------
+  - type: web_service
+    name: messaging
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/messaging
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3012"
+    autoDeploy: true
+
+  # ---------- BFF ----------
+  - type: web_service
+    name: bff
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/bff
+    dockerfilePath: Dockerfile
+    envVarGroups:
+      - shared-secrets
+    envVars:
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      # URLs internes vers les microservices
+      - key: IDENTITY_URL
+        value: http://identity:3000
+      - key: RIDE_URL
+        value: http://ride:3000
+      - key: SEARCH_URL
+        value: http://search:3000
+      - key: BOOKING_URL
+        value: http://booking:3000
+      - key: PAYMENT_URL
+        value: http://payment:3000
+      - key: WALLET_URL
+        value: http://wallet:3000
+      - key: PAYOUTS_URL
+        value: http://payouts:3000
+      - key: NOTIFICATION_URL
+        value: http://notification:3000
+      - key: MESSAGING_URL
+        value: http://messaging:3012
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- CONFIG (feature-flags / settings) ----------
+  - type: web_service
+    name: config
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/config
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+  # ---------- WEBAPP (Nginx/SPA) ----------
+  - type: web_service
+    name: webapp
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/webapp
+    dockerfilePath: Dockerfile
+    autoDeploy: true
+    envVars:
+      # ⚠️ Assure-toi que le Dockerfile lit ces ARG/ENV pour builder le front
+      - key: VITE_SEARCH_URL
+        value: https://search.onrender.com     # ou URL publique de ton service "search"
+      - key: VITE_BOOKING_URL
+        value: https://booking.onrender.com
+      - key: VITE_RIDE_URL
+        value: https://ride.onrender.com
+      - key: VITE_PAYMENT_URL
+        value: https://payment.onrender.com
+      - key: VITE_IDENTITY_URL
+        value: https://identity.onrender.com
+      - key: VITE_MESSAGING_URL
+        value: https://messaging.onrender.com
+
 envVarGroups:
   - name: shared-secrets
     envVars:
+      # JWT et app
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: "2h"
+      - key: FRONTEND_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      # SMTP (pour OTP/email)
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -92,7 +335,3 @@ envVarGroups:
         sync: false
       - key: SMTP_FROM
         value: "KariGo <noreply@example.com>"
-      - key: FRONTEND_URL
-        sync: false
-      - key: INTERNAL_API_KEY
-        sync: false
