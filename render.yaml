@@ -23,7 +23,7 @@ services:
     name: redpanda
     runtime: docker
     region: frankfurt
-    plan: starter
+    plan: standard
     rootDir: ops/render/redpanda
     dockerfilePath: Dockerfile
     # Disque persistant pour les données Redpanda
@@ -84,7 +84,7 @@ services:
     name: notification
     runtime: docker
     region: frankfurt
-    plan: starter
+    plan: standard
     rootDir: services/notification
     dockerfilePath: Dockerfile
     envVars:
