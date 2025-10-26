@@ -1,0 +1,99 @@
+databases:
+  - name: covoiturage-postgres
+    databaseName: covoiturage
+    user: app
+    plan: starter
+    region: frankfurt
+
+services:
+  - type: private_service
+    name: redpanda
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: .
+    dockerfilePath: ops/render/redpanda/Dockerfile
+    numInstances: 1
+    healthCheckPath: /v1/status/ready
+    autoDeploy: true
+    disk:
+      name: redpanda-data
+      mountPath: /var/lib/redpanda/data
+      sizeGB: 5
+
+  - type: web
+    name: identity
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/identity
+    dockerfilePath: Dockerfile
+    envVarGroups:
+      - shared-secrets
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3000"
+    healthCheckPath: /health
+    autoDeploy: true
+
+  - type: private_service
+    name: messaging
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/messaging
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: covoiturage-postgres
+          property: connectionString
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: PORT
+        value: "3012"
+    autoDeploy: true
+
+  - type: private_service
+    name: notification
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerContext: ./services/notification
+    dockerfilePath: Dockerfile
+    envVarGroups:
+      - shared-secrets
+    envVars:
+      - key: KAFKA_BROKERS
+        value: redpanda:9092
+      - key: IDENTITY_INTERNAL_URL
+        value: http://identity:3000
+      - key: PORT
+        value: "3000"
+    autoDeploy: true
+
+envVarGroups:
+  - name: shared-secrets
+    envVars:
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: "KariGo <noreply@example.com>"
+      - key: FRONTEND_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
