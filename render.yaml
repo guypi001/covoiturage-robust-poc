@@ -2,7 +2,7 @@ databases:
   - name: covoiturage-postgres
     databaseName: covoiturage
     user: app
-    plan: starter
+    plan: standard
     region: frankfurt
 
 envVarGroups:
