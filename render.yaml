@@ -6,7 +6,7 @@ databases:
     region: frankfurt
 
 services:
-  - type: private_service
+  - type: background_worker
     name: redpanda
     env: docker
     plan: starter
@@ -14,14 +14,13 @@ services:
     dockerContext: .
     dockerfilePath: ops/render/redpanda/Dockerfile
     numInstances: 1
-    healthCheckPath: /v1/status/ready
     autoDeploy: true
     disk:
       name: redpanda-data
       mountPath: /var/lib/redpanda/data
       sizeGB: 5
 
-  - type: web
+  - type: web_service
     name: identity
     env: docker
     plan: starter
@@ -42,7 +41,7 @@ services:
     healthCheckPath: /health
     autoDeploy: true
 
-  - type: private_service
+  - type: web_service
     name: messaging
     env: docker
     plan: starter
@@ -60,7 +59,7 @@ services:
         value: "3012"
     autoDeploy: true
 
-  - type: private_service
+  - type: web_service
     name: notification
     env: docker
     plan: starter
