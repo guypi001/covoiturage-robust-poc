@@ -27,10 +27,7 @@ services:
     rootDir: ops/render/redpanda
     dockerfilePath: Dockerfile
     # Disque persistant pour les données Redpanda
-    disks:
-      - name: redpanda-data
-        mountPath: /var/lib/redpanda/data
-        sizeGB: 5
+    # disks property removed because it is not allowed
 
   # Service Identity (HTTP public)
   - type: web
