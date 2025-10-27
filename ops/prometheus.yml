@@ -20,3 +20,8 @@ scrape_configs:
           - 'payouts:3000'
           - 'notification:3000'
           - 'config:3000'
+          - 'messaging:3012'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']

@@ -2,6 +2,21 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './module';
 import { ValidationPipe } from '@nestjs/common';
+import * as client from 'prom-client';
+import { Request, Response } from 'express';
+
+function setupMetrics(app: any) {
+  const registry = new client.Registry();
+  client.collectDefaultMetrics({ register: registry });
+
+  const express = app.getHttpAdapter().getInstance();
+  express.get('/metrics', async (_req: Request, res: Response) => {
+    res.set('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  });
+
+  express.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
@@ -19,6 +34,8 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  setupMetrics(app);
 
   const port = Number(process.env.PORT) || 3012;
   await app.listen(port, '0.0.0.0');

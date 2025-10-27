@@ -7,5 +7,6 @@ Microservices: **bff, identity, ride (outbox), search (idempotence + DLQ), booki
 docker compose up -d --build
 # Console Redpanda: http://localhost:8082
 # Grafana: http://localhost:3007  (admin / admin)
-# Prometheus: http://localhost:9090
+# Prometheus: http://localhost:9091
+# pgAdmin: http://localhost:5050  (connexion directe, aucun mot de passe demandé)
 ```

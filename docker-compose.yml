@@ -73,6 +73,11 @@ services:
       - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports: ["9091:9090"]  # évite le conflit avec un 9090 local déjà pris
     restart: unless-stopped
+    depends_on:
+      - postgres-exporter
+      - redpanda
+      - redis
+      - meilisearch
 
   grafana:
     image: grafana/grafana:latest
@@ -80,6 +85,26 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     ports: ["3007:3000"]
     depends_on: [prometheus]
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://app:app@postgres:5432/covoiturage?sslmode=disable
+    depends_on: [postgres]
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8.8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.test
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports: ["5050:80"]
+    depends_on: [postgres]
     restart: unless-stopped
 
   bff:
@@ -203,3 +228,4 @@ services:
 
 volumes:
   pgdata: {}
+  pgadmin: {}
