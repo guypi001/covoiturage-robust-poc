@@ -19,6 +19,41 @@ export const accountLoginCounter = new client.Counter({
   registers: [registry],
 });
 
+export const accountTypeGauge = new client.Gauge({
+  name: 'identity_accounts_by_type',
+  help: 'Nombre total de comptes par type',
+  labelNames: ['type'],
+  registers: [registry],
+});
+
+export const accountStatusGauge = new client.Gauge({
+  name: 'identity_accounts_by_status',
+  help: 'Nombre total de comptes par statut',
+  labelNames: ['status'],
+  registers: [registry],
+});
+
+export const accountProfileUpdateCounter = new client.Counter({
+  name: 'identity_profile_update_total',
+  help: 'Nombre de personnalisations de profil',
+  labelNames: ['actor', 'type'],
+  registers: [registry],
+});
+
+export const otpRequestCounter = new client.Counter({
+  name: 'identity_otp_request_total',
+  help: 'Demandes OTP par canal',
+  labelNames: ['channel'],
+  registers: [registry],
+});
+
+export const otpValidationCounter = new client.Counter({
+  name: 'identity_otp_validation_total',
+  help: 'Résultat des validations OTP',
+  labelNames: ['result'],
+  registers: [registry],
+});
+
 @Injectable()
 export class MetricsMiddleware implements NestMiddleware {
   private histogram = new client.Histogram({

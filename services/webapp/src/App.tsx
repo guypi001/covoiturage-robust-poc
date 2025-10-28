@@ -8,6 +8,8 @@ import { RideDetail } from './pages/RideDetail';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Messages from './pages/Messages';
+import AdminAccounts from './pages/AdminAccounts';
+import ProfileSettings from './pages/ProfileSettings';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
 
@@ -19,6 +21,7 @@ function ProtectedLayout() {
   const clearSession = useApp((state) => state.clearSession);
   const messageBadge = useApp((state) => state.messageBadge);
   const refreshMessageBadge = useApp((state) => state.refreshMessageBadge);
+  const isAdmin = account?.role === 'ADMIN';
 
   useEffect(() => {
     refreshMessageBadge();
@@ -41,6 +44,8 @@ function ProtectedLayout() {
     account?.companyName ||
     account?.email ||
     'Utilisateur';
+  const avatarUrl = account?.profilePhotoUrl?.trim();
+  const displayInitial = displayName?.charAt(0)?.toUpperCase() ?? 'U';
 
   return (
     <>
@@ -53,6 +58,35 @@ function ProtectedLayout() {
             <Link to="/" className="hover:text-sky-600">
               Rechercher
             </Link>
+            <Link
+              to="/profile"
+              className="relative flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-sky-200 hover:text-sky-700"
+              title="Mon profil"
+            >
+              <div className="h-7 w-7 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt="Profil"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-500">
+                    {displayInitial}
+                  </div>
+                )}
+              </div>
+              <span className="hidden md:inline">{displayName}</span>
+            </Link>
+            {isAdmin && (
+              <Link to="/admin/accounts" className="hover:text-sky-600">
+                Administration
+              </Link>
+            )}
             <Link to="/messages" className="relative hover:text-sky-600 flex items-center gap-2">
               Messages
               {messageBadge > 0 && (
@@ -65,7 +99,11 @@ function ProtectedLayout() {
               Publier un trajet
             </Link>
             <span className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-medium text-slate-700">{displayName}</span>
+              {isAdmin && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                  Admin
+                </span>
+              )}
             </span>
             <button
               onClick={() => clearSession()}
@@ -103,6 +141,8 @@ export default function App() {
           <Route path="/ride/:rideId" element={<RideDetail />} />
           <Route path="/create" element={<CreateRide />} />
           <Route path="/messages" element={<Messages />} />
+          <Route path="/profile" element={<ProfileSettings />} />
+          <Route path="/admin/accounts" element={<AdminAccounts />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

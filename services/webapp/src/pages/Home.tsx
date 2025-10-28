@@ -1,14 +1,15 @@
 // src/pages/Home.tsx
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Sparkles, ShieldCheck, Clock } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Sparkles, ShieldCheck, Clock, Star, Wand2 } from 'lucide-react';
 import SearchBar, { SearchPatch } from '../components/SearchBar';
 import RideCard from '../components/RideCard';
 import { useApp } from '../store';
-import { searchRides } from '../api';
+import { searchRides, type FavoriteRoute } from '../api';
 import { GmailLogo } from '../components/icons/GmailLogo';
 import { findCityByName, isKnownCiCity } from '../data/cities-ci';
 import type { LocationMeta } from '../types/location';
+import { HOME_THEME_STYLE, QUICK_ACTION_OPTIONS } from '../constants/homePreferences';
 
 type SearchFormState = {
   from: string;
@@ -34,6 +35,26 @@ export default function Home() {
     results,
     error,
   } = useApp();
+  const account = useApp((state) => state.account);
+
+  const homePreferences = account?.homePreferences;
+  const theme = homePreferences?.theme ?? 'default';
+  const themeStyle = HOME_THEME_STYLE[theme] ?? HOME_THEME_STYLE.default;
+  const isDarkTheme = theme === 'night';
+  const heroMessage = homePreferences?.heroMessage?.trim() ||
+    'Voyage sereinement entre les villes de Côte d’Ivoire';
+  const showTips = homePreferences?.showTips ?? true;
+  const quickActions = homePreferences?.quickActions ?? [];
+  const favoriteRoutes = homePreferences?.favoriteRoutes ?? [];
+  const quickActionItems = QUICK_ACTION_OPTIONS.filter((option) => quickActions.includes(option.id));
+  const heroTitleColor = isDarkTheme ? 'text-white' : 'text-slate-900';
+  const heroTextColor = isDarkTheme ? 'text-slate-200' : 'text-slate-600';
+  const heroBadgeClass = isDarkTheme
+    ? 'bg-white/10 text-white'
+    : 'bg-white/80 text-sky-600 shadow-sm shadow-sky-100';
+  const heroCardClass = isDarkTheme
+    ? 'border-white/15 bg-white/10 text-slate-200'
+    : 'border-white/60 bg-white/80 text-slate-600 shadow-sm';
 
   // État local du formulaire (prérempli depuis la dernière recherche)
   const [form, setForm] = useState<SearchFormState>({
@@ -128,56 +149,95 @@ export default function Home() {
   const displayLastFrom = lastSearch?.fromMeta?.label ?? lastSearch?.from ?? '';
   const displayLastTo = lastSearch?.toMeta?.label ?? lastSearch?.to ?? '';
 
+  const prefillFavoriteRoute = (route: FavoriteRoute) => {
+    setForm((prev) => ({
+      ...prev,
+      from: route.from,
+      fromLabel: route.from,
+      fromMeta: ensureMeta(prev.fromMeta, route.from),
+      to: route.to,
+      toLabel: route.to,
+      toMeta: ensureMeta(prev.toMeta, route.to),
+    }));
+    setError(undefined);
+  };
+
   return (
     <div className="min-h-[calc(100vh-56px)]">
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white via-sky-50/60 to-white" />
+        <div className={`absolute inset-0 -z-10 bg-gradient-to-br ${themeStyle.gradient}`} />
         <div className="absolute inset-y-0 right-0 -z-10 hidden lg:block">
-          <div className="h-full w-72 translate-x-24 rounded-full bg-sky-100/50 blur-3xl" />
+          <div
+            className={`h-full w-72 translate-x-24 rounded-full blur-3xl ${
+              isDarkTheme ? 'bg-indigo-500/20' : 'bg-sky-100/50'
+            }`}
+          />
         </div>
         <div className="container-wide py-12 md:py-16">
           <div className="grid gap-10 lg:grid-cols-[minmax(0,0.95fr),minmax(0,1fr)] items-start">
             <div className="space-y-6">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-sky-600 shadow-sm shadow-sky-100">
-                <Sparkles size={14} className="text-sky-500" />
+              <span
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-wide ${heroBadgeClass}`}
+              >
+                <Sparkles size={14} className={isDarkTheme ? 'text-amber-300' : 'text-sky-500'} />
                 Covoiturage harmonisé
               </span>
-              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 leading-tight">
-                Voyage sereinement entre les villes de Côte d’Ivoire
+              <h1 className={`text-3xl md:text-4xl font-bold leading-tight ${heroTitleColor}`}>
+                {heroMessage}
               </h1>
-              <p className="text-base text-slate-600 max-w-xl">
+              <p className={`text-base max-w-xl ${heroTextColor}`}>
                 Coordonne tes trajets, retrouve ton historique et partage tes préférences de confort
                 avec une interface cohérente entre web et mobile.
               </p>
-              <ul className="grid gap-3 sm:grid-cols-2 text-sm text-slate-600">
-                <li className="flex items-start gap-3 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-sm">
-                  <span className="mt-1 grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15 text-sky-600">
-                    <ShieldCheck size={18} />
-                  </span>
-                  <div>
-                    <p className="font-semibold text-slate-800">Comptes sécurisés</p>
-                    <p>Mot de passe ou code Gmail : choisis la méthode qui te convient.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-sm">
-                  <span className="mt-1 grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15 text-sky-600">
-                    <Clock size={18} />
-                  </span>
-                  <div>
-                    <p className="font-semibold text-slate-800">OTP instantané</p>
-                    <p>Reçois un code Gmail en quelques secondes pour valider ton accès.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-sm sm:col-span-2">
-                  <span className="mt-1 grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15">
-                    <GmailLogo className="h-6 w-6" />
-                  </span>
-                  <div>
-                    <p className="font-semibold text-slate-800">Synchronisation Gmail</p>
-                    <p>Un design cohérent de la boîte mail à l’application pour éviter toute surprise.</p>
-                  </div>
-                </li>
-              </ul>
+              {showTips && (
+                <ul className={`grid gap-3 sm:grid-cols-2 text-sm ${heroTextColor}`}>
+                  <li className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${heroCardClass}`}>
+                    <span
+                      className={`mt-1 grid h-10 w-10 place-items-center rounded-xl ${
+                        isDarkTheme ? 'bg-white/15 text-amber-200' : 'bg-sky-500/15 text-sky-600'
+                      }`}
+                    >
+                      <ShieldCheck size={18} />
+                    </span>
+                    <div>
+                      <p className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-800'}`}>
+                        Comptes sécurisés
+                      </p>
+                      <p>Mot de passe ou code Gmail : choisis la méthode qui te convient.</p>
+                    </div>
+                  </li>
+                  <li className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${heroCardClass}`}>
+                    <span
+                      className={`mt-1 grid h-10 w-10 place-items-center rounded-xl ${
+                        isDarkTheme ? 'bg-white/15 text-amber-200' : 'bg-sky-500/15 text-sky-600'
+                      }`}
+                    >
+                      <Clock size={18} />
+                    </span>
+                    <div>
+                      <p className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-800'}`}>
+                        OTP instantané
+                      </p>
+                      <p>Reçois un code Gmail en quelques secondes pour valider ton accès.</p>
+                    </div>
+                  </li>
+                  <li className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${heroCardClass} sm:col-span-2`}>
+                    <span
+                      className={`mt-1 grid h-10 w-10 place-items-center rounded-xl ${
+                        isDarkTheme ? 'bg-white/15 text-amber-200' : 'bg-sky-500/15'
+                      }`}
+                    >
+                      <GmailLogo className={`h-6 w-6 ${isDarkTheme ? 'text-amber-300' : ''}`} />
+                    </span>
+                    <div>
+                      <p className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-800'}`}>
+                        Synchronisation Gmail
+                      </p>
+                      <p>Un design cohérent de la boîte mail à l’application pour éviter toute surprise.</p>
+                    </div>
+                  </li>
+                </ul>
+              )}
             </div>
             <div className="relative lg:pl-6">
               <SearchBar
@@ -193,6 +253,20 @@ export default function Home() {
                 onChange={onChange}
                 onSubmit={onSubmit}
               />
+              {quickActionItems.length > 0 && (
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                  {quickActionItems.map((action) => (
+                    <Link
+                      key={action.id}
+                      to={action.to}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-100"
+                    >
+                      <Wand2 size={14} className="text-sky-500" />
+                      {action.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                 <span className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
                   <ShieldCheck size={14} className="text-sky-500" />
@@ -207,6 +281,35 @@ export default function Home() {
           </div>
         </div>
       </section>
+      {favoriteRoutes.length > 0 && (
+        <section className="container-wide mt-4">
+          <div className="rounded-2xl border border-slate-200 bg-white/80 backdrop-blur px-4 py-5 shadow-sm">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <Star size={18} className="text-amber-500" />
+                <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+                  Trajets favoris
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500">
+                Préremplis instantanément ta recherche avec les itinéraires que tu utilises souvent.
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {favoriteRoutes.map((route, index) => (
+                <button
+                  key={`${route.from}-${route.to}-${index}`}
+                  type="button"
+                  onClick={() => prefillFavoriteRoute(route)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  {route.from} → {route.to}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="container-wide pb-14 space-y-6">
         {/* Erreur */}

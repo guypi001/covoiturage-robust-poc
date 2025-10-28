@@ -15,9 +15,16 @@ import {
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { UpdateCompanyProfileDto, UpdateIndividualProfileDto } from './dto';
+import type { AccountRole, AccountStatus, AccountType } from './entities';
 import { Request } from 'express';
 
-type JwtPayload = { sub: string; email: string; type: 'INDIVIDUAL' | 'COMPANY' };
+type JwtPayload = {
+  sub: string;
+  email: string;
+  type: AccountType;
+  role: AccountRole;
+  status: AccountStatus;
+};
 
 @Controller('profiles')
 @UseGuards(JwtAuthGuard)

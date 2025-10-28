@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import type { Ride, Account } from './api';
-import { getMyProfile, getMessageNotifications } from './api';
+import {
+  getMyProfile,
+  getMessageNotifications,
+  registerUnauthorizedHandler,
+  setApiAuthToken,
+  clearApiAuthToken,
+} from './api';
 import type { LocationMeta } from './types/location';
 
 const TOKEN_KEY = 'kari_token';
@@ -63,6 +69,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   setError: (e) => set({ error: e }),
   setSession: (token, account) => {
     persistToken(token);
+    setApiAuthToken(token);
     set({
       token,
       account,
@@ -75,6 +82,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   },
   clearSession: () => {
     persistToken(undefined);
+    clearApiAuthToken();
     set({
       token: undefined,
       account: undefined,
@@ -92,12 +100,27 @@ export const useApp = create<State & Actions>((set, get) => ({
     if (authReady || authLoading) return;
     const token = get().token;
     if (!token) {
+      clearApiAuthToken();
       set({ authReady: true, authLoading: false, authError: undefined });
       return;
     }
     try {
       set({ authLoading: true, authError: undefined });
       const account = await getMyProfile(token);
+      setApiAuthToken(token);
+      if (account.status && account.status !== 'ACTIVE') {
+        persistToken(undefined);
+        clearApiAuthToken();
+        set({
+          token: undefined,
+          account: undefined,
+          authReady: true,
+          authLoading: false,
+          authError: 'Compte suspendu. Contacte le support.',
+          passengerId: 'usr-demo',
+        });
+        return;
+      }
       set({
         account,
         authReady: true,
@@ -108,6 +131,7 @@ export const useApp = create<State & Actions>((set, get) => ({
       await get().refreshMessageBadge();
     } catch (e: any) {
       persistToken(undefined);
+      clearApiAuthToken();
       set({
         token: undefined,
         account: undefined,
@@ -131,3 +155,14 @@ export const useApp = create<State & Actions>((set, get) => ({
     }
   },
 }));
+
+if (initialToken) {
+  setApiAuthToken(initialToken);
+}
+
+registerUnauthorizedHandler(() => {
+  const state = useApp.getState();
+  if (state.token) {
+    state.clearSession();
+  }
+});

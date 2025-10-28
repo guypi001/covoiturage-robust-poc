@@ -68,7 +68,12 @@ export default function Login() {
       setSession(res.token, res.account);
       navigate('/', { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Connexion impossible.');
+      const message = err?.response?.data?.message;
+      if (message === 'account_suspended') {
+        setError('Ton compte est suspendu. Contacte un administrateur.');
+      } else {
+        setError(message || err?.message || 'Connexion impossible.');
+      }
       clearSession();
     } finally {
       setSubmitting(false);
@@ -110,7 +115,12 @@ export default function Login() {
       setSession(res.token, res.account);
       navigate('/', { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Code invalide.');
+      const message = err?.response?.data?.message;
+      if (message === 'account_suspended') {
+        setError('Ton compte est suspendu. Contacte un administrateur.');
+      } else {
+        setError(message || err?.message || 'Code invalide.');
+      }
     } finally {
       setOtpVerifying(false);
     }

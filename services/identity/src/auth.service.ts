@@ -1,7 +1,16 @@
-import { ConflictException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Account } from './entities';
+import { Not, Repository } from 'typeorm';
+import { Account, AccountRole, AccountStatus, HomePreferences } from './entities';
 import {
   RegisterCompanyDto,
   RegisterIndividualDto,
@@ -10,9 +19,20 @@ import {
   UpdateIndividualProfileDto,
   RequestGmailOtpDto,
   VerifyGmailOtpDto,
+  ListAccountsQueryDto,
+  HomePreferencesDto,
+  UpdateAccountProfileDto,
+  HOME_THEME_OPTIONS,
+  HOME_QUICK_ACTION_OPTIONS,
 } from './dto';
 import { JwtService } from '@nestjs/jwt';
-import { accountCreatedCounter, accountLoginCounter } from './metrics';
+import {
+  accountCreatedCounter,
+  accountLoginCounter,
+  accountProfileUpdateCounter,
+  accountStatusGauge,
+  accountTypeGauge,
+} from './metrics';
 import * as bcrypt from 'bcryptjs';
 import { OtpService } from './otp.service';
 import { MailerService } from './mailer.service';
@@ -20,9 +40,11 @@ import { MailerService } from './mailer.service';
 type SafeAccount = Omit<Account, 'passwordHash'>;
 
 const PASSWORD_SALT_ROUNDS = 10;
+const ACCOUNT_STATUS_VALUES: AccountStatus[] = ['ACTIVE', 'SUSPENDED'];
+const ACCOUNT_ROLE_VALUES: AccountRole[] = ['USER', 'ADMIN'];
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectRepository(Account) private readonly accounts: Repository<Account>,
@@ -30,6 +52,10 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly mailer: MailerService,
   ) {}
+
+  async onModuleInit() {
+    await this.refreshAccountMetrics();
+  }
 
   private sanitize(account: Account): SafeAccount {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -42,6 +68,8 @@ export class AuthService {
       sub: account.id,
       email: account.email,
       type: account.type,
+      role: account.role,
+      status: account.status,
     });
   }
 
@@ -76,6 +104,156 @@ export class AuthService {
     return bcrypt.compare(password, hash);
   }
 
+  private ensureAccountActive(account: Account) {
+    if (account.status !== 'ACTIVE') {
+      throw new ForbiddenException('account_suspended');
+    }
+  }
+
+  private ensureValidStatus(status: AccountStatus) {
+    if (!ACCOUNT_STATUS_VALUES.includes(status)) {
+      throw new BadRequestException('invalid_status');
+    }
+  }
+
+  private ensureValidRole(role: AccountRole) {
+    if (!ACCOUNT_ROLE_VALUES.includes(role)) {
+      throw new BadRequestException('invalid_role');
+    }
+  }
+
+  private normalizeProfilePhoto(url?: string | null, remove?: boolean): string | null {
+    if (remove) return null;
+    const trimmed = url?.trim();
+    if (!trimmed) return null;
+    if (!/^https?:\/\//i.test(trimmed)) {
+      throw new BadRequestException('invalid_photo_url');
+    }
+    return trimmed.slice(0, 1024);
+  }
+
+  private sanitizeHomePreferencesInput(input?: HomePreferencesDto | null): HomePreferences | null {
+    if (!input) return null;
+    const result: HomePreferences = {};
+
+    if (Array.isArray(input.favoriteRoutes) && input.favoriteRoutes.length) {
+      const items = input.favoriteRoutes
+        .map((item) => ({
+          from: item.from?.trim(),
+          to: item.to?.trim(),
+        }))
+        .filter((item): item is { from: string; to: string } => Boolean(item.from) && Boolean(item.to))
+        .slice(0, 5);
+      if (items.length) {
+        result.favoriteRoutes = items.map((item) => ({
+          from: item.from.slice(0, 128),
+          to: item.to.slice(0, 128),
+        }));
+      }
+    }
+
+    if (Array.isArray(input.quickActions) && input.quickActions.length) {
+      const actions = input.quickActions
+        .map((action) => action?.trim())
+        .filter(
+          (action): action is string =>
+            Boolean(action) && (HOME_QUICK_ACTION_OPTIONS as readonly string[]).includes(action),
+        )
+        .slice(0, 6)
+        .map((action) => action.slice(0, 64));
+      if (actions.length) {
+        result.quickActions = Array.from(new Set(actions));
+      }
+    }
+
+    if (input.theme && HOME_THEME_OPTIONS.includes(input.theme)) {
+      result.theme = input.theme;
+    }
+
+    if (typeof input.heroMessage === 'string') {
+      const trimmed = input.heroMessage.trim();
+      if (trimmed) {
+        result.heroMessage = trimmed.slice(0, 160);
+      }
+    }
+
+    if (typeof input.showTips === 'boolean') {
+      result.showTips = input.showTips;
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+  }
+
+  private async refreshAccountMetrics() {
+    try {
+      const typeRows = await this.accounts
+        .createQueryBuilder('account')
+        .select('account.type', 'type')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('account.type')
+        .getRawMany();
+
+      accountTypeGauge.reset();
+      for (const type of ['INDIVIDUAL', 'COMPANY'] as const) {
+        const row = typeRows.find((r) => r.type === type);
+        accountTypeGauge.set({ type }, Number(row?.count ?? 0));
+      }
+
+      const statusRows = await this.accounts
+        .createQueryBuilder('account')
+        .select('account.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('account.status')
+        .getRawMany();
+
+      accountStatusGauge.reset();
+      for (const status of ['ACTIVE', 'SUSPENDED'] as const) {
+        const row = statusRows.find((r) => r.status === status);
+        accountStatusGauge.set({ status }, Number(row?.count ?? 0));
+      }
+    } catch (err) {
+      this.logger.error(`refreshAccountMetrics failed: ${(err as Error)?.message ?? err}`);
+    }
+  }
+
+  private async recordSuccessfulLogin(account: Account) {
+    account.lastLoginAt = new Date();
+    account.loginCount = (account.loginCount ?? 0) + 1;
+    return this.accounts.save(account);
+  }
+
+  private async ensureAdminBootstrap(account: Account) {
+    const adminCount = await this.accounts.count({ where: { role: 'ADMIN' } });
+    if (adminCount === 0) {
+      account.role = 'ADMIN';
+      this.logger.log(`Bootstrap: promoted ${account.email} to ADMIN`);
+    }
+  }
+
+  private buildStats(
+    statusRaw: Array<{ status: AccountStatus; count: string }>,
+    roleRaw: Array<{ role: AccountRole; count: string }>,
+  ) {
+    const byStatus: Record<AccountStatus, number> = { ACTIVE: 0, SUSPENDED: 0 };
+    for (const row of statusRaw ?? []) {
+      if (!row?.status) continue;
+      const value = row.status as AccountStatus;
+      if (ACCOUNT_STATUS_VALUES.includes(value)) {
+        byStatus[value] = Number(row.count) || 0;
+      }
+    }
+
+    const byRole: Record<AccountRole, number> = { USER: 0, ADMIN: 0 };
+    for (const row of roleRaw ?? []) {
+      if (!row?.role) continue;
+      const value = row.role as AccountRole;
+      if (ACCOUNT_ROLE_VALUES.includes(value)) {
+        byRole[value] = Number(row.count) || 0;
+      }
+    }
+    return { byStatus, byRole };
+  }
+
   private buildResponse(account: Account) {
     return { token: this.sign(account), account: this.sanitize(account) };
   }
@@ -91,11 +269,20 @@ export class AuthService {
       fullName: dto.fullName.trim(),
       comfortPreferences: this.formatPreferences(dto.comfortPreferences),
       tagline: dto.tagline?.trim() || null,
+      role: 'USER',
+      status: 'ACTIVE',
+      loginCount: 0,
+      profilePhotoUrl: null,
+      homePreferences: null,
     });
+    await this.ensureAdminBootstrap(account);
     const saved = await this.accounts.save(account);
+    const logged = await this.recordSuccessfulLogin(saved);
     accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
-    await this.sendWelcomeEmail(saved);
-    return this.buildResponse(saved);
+    accountLoginCounter.inc({ type: 'INDIVIDUAL' });
+    await this.sendWelcomeEmail(logged);
+    await this.refreshAccountMetrics();
+    return this.buildResponse(logged);
   }
 
   async registerCompany(dto: RegisterCompanyDto) {
@@ -110,11 +297,20 @@ export class AuthService {
       registrationNumber: dto.registrationNumber?.trim() || null,
       contactName: dto.contactName?.trim() || null,
       contactPhone: dto.contactPhone?.trim() || null,
+      role: 'USER',
+      status: 'ACTIVE',
+      loginCount: 0,
+      profilePhotoUrl: null,
+      homePreferences: null,
     });
+    await this.ensureAdminBootstrap(account);
     const saved = await this.accounts.save(account);
+    const logged = await this.recordSuccessfulLogin(saved);
     accountCreatedCounter.inc({ type: 'COMPANY' });
-    await this.sendWelcomeEmail(saved);
-    return this.buildResponse(saved);
+    accountLoginCounter.inc({ type: 'COMPANY' });
+    await this.sendWelcomeEmail(logged);
+    await this.refreshAccountMetrics();
+    return this.buildResponse(logged);
   }
 
   async login(dto: LoginDto) {
@@ -127,8 +323,10 @@ export class AuthService {
     if (!ok) {
       throw new UnauthorizedException('invalid_credentials');
     }
-    accountLoginCounter.inc({ type: account.type });
-    return this.buildResponse(account);
+    this.ensureAccountActive(account);
+    const logged = await this.recordSuccessfulLogin(account);
+    accountLoginCounter.inc({ type: logged.type });
+    return this.buildResponse(logged);
   }
 
   async requestGmailOtp(dto: RequestGmailOtpDto) {
@@ -150,15 +348,25 @@ export class AuthService {
         passwordHash: await this.hashPassword(this.generateRandomPassword()),
         type: 'INDIVIDUAL',
         fullName: email.split('@')[0],
+        role: 'USER',
+        status: 'ACTIVE',
+        loginCount: 0,
+        profilePhotoUrl: null,
+        homePreferences: null,
       });
+      await this.ensureAdminBootstrap(account);
       account = await this.accounts.save(account);
       accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
       created = true;
       await this.sendWelcomeEmail(account);
+      await this.refreshAccountMetrics();
+    } else {
+      this.ensureAccountActive(account);
     }
 
-    accountLoginCounter.inc({ type: account.type });
-    return { ...this.buildResponse(account), created };
+    const logged = await this.recordSuccessfulLogin(account);
+    accountLoginCounter.inc({ type: logged.type });
+    return { ...this.buildResponse(logged), created };
   }
 
   private generateRandomPassword() {
@@ -181,10 +389,20 @@ export class AuthService {
     if (typeof dto.tagline === 'string') {
       account.tagline = dto.tagline.trim() || null;
     }
+    if (dto.removeTagline) {
+      account.tagline = null;
+    }
     if (dto.comfortPreferences) {
       account.comfortPreferences = this.formatPreferences(dto.comfortPreferences) ?? null;
     }
+    if (dto.profilePhotoUrl !== undefined || dto.removeProfilePhoto) {
+      account.profilePhotoUrl = this.normalizeProfilePhoto(dto.profilePhotoUrl, dto.removeProfilePhoto);
+    }
+    if (dto.homePreferences !== undefined) {
+      account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
+    }
     const saved = await this.accounts.save(account);
+    accountProfileUpdateCounter.inc({ actor: 'self', type: 'INDIVIDUAL' });
     return this.sanitize(saved);
   }
 
@@ -208,7 +426,19 @@ export class AuthService {
     if (typeof dto.contactPhone === 'string') {
       account.contactPhone = dto.contactPhone.trim() || null;
     }
+    if (dto.removeTagline) {
+      account.tagline = null;
+    } else if (typeof dto.tagline === 'string') {
+      account.tagline = dto.tagline.trim() || null;
+    }
+    if (dto.profilePhotoUrl !== undefined || dto.removeProfilePhoto) {
+      account.profilePhotoUrl = this.normalizeProfilePhoto(dto.profilePhotoUrl, dto.removeProfilePhoto);
+    }
+    if (dto.homePreferences !== undefined) {
+      account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
+    }
     const saved = await this.accounts.save(account);
+    accountProfileUpdateCounter.inc({ actor: 'self', type: 'COMPANY' });
     return this.sanitize(saved);
   }
 
@@ -221,6 +451,170 @@ export class AuthService {
     const normalized = this.normalizeEmail(email);
     const account = await this.accounts.findOne({ where: { email: normalized } });
     return account ? this.sanitize(account) : null;
+  }
+
+  async adminUpdateAccountProfile(id: string, dto: UpdateAccountProfileDto) {
+    const trimmed = id?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('id_required');
+    }
+    const account = await this.accounts.findOne({ where: { id: trimmed } });
+    if (!account) {
+      throw new NotFoundException('account_not_found');
+    }
+
+    if (dto.fullName && account.type === 'INDIVIDUAL') {
+      account.fullName = dto.fullName.trim();
+    }
+    if (dto.removeTagline) {
+      account.tagline = null;
+    } else if (dto.tagline !== undefined) {
+      account.tagline = dto.tagline.trim() || null;
+    }
+    if (dto.comfortPreferences && account.type === 'INDIVIDUAL') {
+      account.comfortPreferences = this.formatPreferences(dto.comfortPreferences) ?? null;
+    }
+
+    if (account.type === 'COMPANY') {
+      if (typeof dto.companyName === 'string') {
+        account.companyName = dto.companyName.trim();
+      }
+      if (typeof dto.registrationNumber === 'string') {
+        account.registrationNumber = dto.registrationNumber.trim() || null;
+      }
+      if (typeof dto.contactName === 'string') {
+        account.contactName = dto.contactName.trim() || null;
+      }
+      if (typeof dto.contactPhone === 'string') {
+        account.contactPhone = dto.contactPhone.trim() || null;
+      }
+    }
+
+    if (dto.profilePhotoUrl !== undefined || dto.removeProfilePhoto) {
+      account.profilePhotoUrl = this.normalizeProfilePhoto(dto.profilePhotoUrl, dto.removeProfilePhoto);
+    }
+
+    if (dto.homePreferences !== undefined) {
+      account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
+    }
+
+    const saved = await this.accounts.save(account);
+    accountProfileUpdateCounter.inc({ actor: 'admin', type: account.type });
+    return this.sanitize(saved);
+  }
+
+  async listAccounts(query: ListAccountsQueryDto) {
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 20;
+    const qb = this.accounts.createQueryBuilder('account');
+
+    if (query.status) {
+      qb.andWhere('account.status = :status', { status: query.status });
+    }
+    if (query.type) {
+      qb.andWhere('account.type = :type', { type: query.type });
+    }
+    const search = query.search?.trim();
+    if (search) {
+      const pattern = `%${search}%`;
+      qb.andWhere(
+        '(account.email ILIKE :pattern OR account.fullName ILIKE :pattern OR account.companyName ILIKE :pattern)',
+        { pattern },
+      );
+    }
+
+    qb.orderBy('account.createdAt', 'DESC');
+    qb.skip(offset);
+    qb.take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+
+    const [statusCountsRaw, roleCountsRaw] = await Promise.all([
+      this.accounts
+        .createQueryBuilder('a')
+        .select('a.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('a.status')
+        .getRawMany(),
+      this.accounts
+        .createQueryBuilder('a')
+        .select('a.role', 'role')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('a.role')
+        .getRawMany(),
+    ]);
+
+    const stats = this.buildStats(statusCountsRaw as any, roleCountsRaw as any);
+
+    return {
+      data: items.map((item) => this.sanitize(item)),
+      total,
+      offset,
+      limit,
+      filters: {
+        status: query.status ?? null,
+        type: query.type ?? null,
+        search: search || null,
+      },
+      stats,
+    };
+  }
+
+  async updateAccountStatus(id: string, status: AccountStatus, actorId?: string) {
+    this.ensureValidStatus(status);
+    const trimmed = id?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('id_required');
+    }
+    const account = await this.accounts.findOne({ where: { id: trimmed } });
+    if (!account) {
+      throw new NotFoundException('account_not_found');
+    }
+    if (actorId && actorId === account.id && status !== 'ACTIVE') {
+      throw new BadRequestException('cannot_suspend_self');
+    }
+    if (account.role === 'ADMIN' && status !== 'ACTIVE') {
+      const otherAdmins = await this.accounts.count({
+        where: { role: 'ADMIN', status: 'ACTIVE', id: Not(account.id) },
+      });
+      if (otherAdmins === 0) {
+        throw new BadRequestException('cannot_suspend_last_admin');
+      }
+    }
+    if (account.status === status) {
+      return this.sanitize(account);
+    }
+    account.status = status;
+    const saved = await this.accounts.save(account);
+    await this.refreshAccountMetrics();
+    return this.sanitize(saved);
+  }
+
+  async updateAccountRole(id: string, role: AccountRole, actorId?: string) {
+    this.ensureValidRole(role);
+    const trimmed = id?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('id_required');
+    }
+    const account = await this.accounts.findOne({ where: { id: trimmed } });
+    if (!account) {
+      throw new NotFoundException('account_not_found');
+    }
+    if (actorId && actorId === account.id && role !== 'ADMIN') {
+      throw new BadRequestException('cannot_demote_self');
+    }
+    if (account.role === 'ADMIN' && role !== 'ADMIN') {
+      const otherAdmins = await this.accounts.count({ where: { role: 'ADMIN', id: Not(account.id) } });
+      if (otherAdmins === 0) {
+        throw new BadRequestException('cannot_remove_last_admin');
+      }
+    }
+    if (account.role === role) {
+      return this.sanitize(account);
+    }
+    account.role = role;
+    const saved = await this.accounts.save(account);
+    return this.sanitize(saved);
   }
 
   private async sendWelcomeEmail(account: Account) {

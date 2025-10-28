@@ -4,6 +4,7 @@ import { Repository, LessThan } from 'typeorm';
 import { OtpToken } from './entities';
 import * as bcrypt from 'bcryptjs';
 import { MailerService } from './mailer.service';
+import { otpRequestCounter, otpValidationCounter } from './metrics';
 
 const OTP_TTL_MINUTES = Number(process.env.GMAIL_OTP_TTL_MINUTES || 10);
 const OTP_LENGTH = Number(process.env.GMAIL_OTP_LENGTH || 6);
@@ -52,6 +53,7 @@ export class OtpService {
     if (!sent) {
       throw new ServiceUnavailableException('otp_email_failed');
     }
+    otpRequestCounter.inc({ channel: 'gmail' });
   }
 
   async verifyOtp(rawEmail: string, code: string) {
@@ -59,15 +61,20 @@ export class OtpService {
     this.assertGmail(email);
 
     const entry = await this.tokens.findOne({ where: { email } });
-    if (!entry) throw new UnauthorizedException('otp_not_found');
+    if (!entry) {
+      otpValidationCounter.inc({ result: 'not_found' });
+      throw new UnauthorizedException('otp_not_found');
+    }
 
     if (entry.expiresAt.getTime() < Date.now()) {
       await this.tokens.delete(entry.id);
+      otpValidationCounter.inc({ result: 'expired' });
       throw new UnauthorizedException('otp_expired');
     }
 
     if (entry.attempts >= OTP_MAX_ATTEMPTS) {
       await this.tokens.delete(entry.id);
+      otpValidationCounter.inc({ result: 'blocked' });
       throw new UnauthorizedException('otp_blocked');
     }
 
@@ -75,11 +82,13 @@ export class OtpService {
     if (!ok) {
       entry.attempts += 1;
       await this.tokens.save(entry);
+      otpValidationCounter.inc({ result: 'invalid' });
       throw new UnauthorizedException('otp_invalid');
     }
 
     await this.tokens.delete(entry.id);
     await this.cleanupExpired();
+    otpValidationCounter.inc({ result: 'success' });
   }
 
   private async cleanupExpired() {

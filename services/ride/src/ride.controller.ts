@@ -1,17 +1,36 @@
-import { Body, Controller, Get, Param, Post, Res, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res, HttpStatus, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Ride, Outbox } from './entities';
 import { EventBus } from './event-bus';
 import { Response } from 'express';
+import {
+  refreshRideGauges,
+  rideLockAttemptCounter,
+  rideLockLatencyHistogram,
+  ridePriceHistogram,
+  ridePublishedCounter,
+} from './metrics';
 
 @Controller('rides')
 export class RideController {
+  private readonly logger = new Logger(RideController.name);
+
   constructor(
     @InjectRepository(Ride) private rides: Repository<Ride>,
     @InjectRepository(Outbox) private outboxes: Repository<Outbox>,
     private bus: EventBus,
-  ) {}
+  ) {
+    void this.refreshAggregates();
+  }
+
+  private async refreshAggregates() {
+    try {
+      await refreshRideGauges(this.rides);
+    } catch (err) {
+      this.logger.warn(`refreshAggregates failed: ${(err as Error)?.message ?? err}`);
+    }
+  }
 
   @Post()
   async create(@Body() dto: Partial<Ride>, @Res() res: Response) {
@@ -45,8 +64,13 @@ export class RideController {
       // Outbox (optionnel mais utile pour observabilité)
       await this.outboxes.save(this.outboxes.create({ topic: 'ride.published', payload: evt, sent: false }));
 
+      ridePublishedCounter.inc({ origin_city: saved.originCity, destination_city: saved.destinationCity });
+      ridePriceHistogram.observe(saved.pricePerSeat);
+      await this.refreshAggregates();
+
       return res.status(HttpStatus.CREATED).json(saved);
     } catch (e: any) {
+      this.logger.error(`Ride creation failed: ${e?.message ?? e}`);
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'create_failed', detail: e?.message });
     }
   }
@@ -60,15 +84,35 @@ export class RideController {
   // Utilisé par "booking" pour réserver des places
   @Post(':id/lock')
   async lock(@Param('id') id: string, @Body() body: { seats: number }, @Res() res: Response) {
-    const ride = await this.rides.findOne({ where: { id } });
-    if (!ride) return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+    const endTimer = rideLockLatencyHistogram.startTimer();
+    try {
+      const ride = await this.rides.findOne({ where: { id } });
+      if (!ride) {
+        rideLockAttemptCounter.inc({ result: 'not_found' });
+        return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+      }
 
-    const n = Number(body?.seats ?? 1);
-    if (!Number.isFinite(n) || n <= 0) return res.status(HttpStatus.BAD_REQUEST).json({ error: 'invalid_seats' });
-    if (ride.seatsAvailable < n) return res.status(HttpStatus.CONFLICT).json({ error: 'not_enough_seats' });
+      const n = Number(body?.seats ?? 1);
+      if (!Number.isFinite(n) || n <= 0) {
+        rideLockAttemptCounter.inc({ result: 'invalid_request' });
+        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'invalid_seats' });
+      }
+      if (ride.seatsAvailable < n) {
+        rideLockAttemptCounter.inc({ result: 'conflict' });
+        return res.status(HttpStatus.CONFLICT).json({ error: 'not_enough_seats' });
+      }
 
-    ride.seatsAvailable -= n;
-    await this.rides.save(ride);
-    return res.status(HttpStatus.OK).json({ ok: true, seatsAvailable: ride.seatsAvailable });
+      ride.seatsAvailable -= n;
+      await this.rides.save(ride);
+      rideLockAttemptCounter.inc({ result: 'success' });
+      await this.refreshAggregates();
+      return res.status(HttpStatus.OK).json({ ok: true, seatsAvailable: ride.seatsAvailable });
+    } catch (err: any) {
+      rideLockAttemptCounter.inc({ result: 'error' });
+      this.logger.error(`Ride lock failed: ${err?.message ?? err}`);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'lock_failed' });
+    } finally {
+      endTimer();
+    }
   }
 }

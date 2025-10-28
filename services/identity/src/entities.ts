@@ -8,6 +8,15 @@ import {
 } from 'typeorm';
 
 export type AccountType = 'INDIVIDUAL' | 'COMPANY';
+export type AccountRole = 'USER' | 'ADMIN';
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED';
+export type HomePreferences = {
+  favoriteRoutes?: Array<{ from: string; to: string }>;
+  quickActions?: string[];
+  theme?: 'default' | 'sunset' | 'night';
+  heroMessage?: string;
+  showTips?: boolean;
+};
 
 @Entity('accounts')
 export class Account {
@@ -44,6 +53,24 @@ export class Account {
 
   @Column({ name: 'tagline', type: 'text', nullable: true })
   tagline?: string | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'USER' })
+  role!: AccountRole;
+
+  @Column({ type: 'varchar', length: 20, default: 'ACTIVE' })
+  status!: AccountStatus;
+
+  @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
+  lastLoginAt?: Date | null;
+
+  @Column({ name: 'login_count', type: 'int', default: 0 })
+  loginCount!: number;
+
+  @Column({ name: 'profile_photo_url', type: 'text', nullable: true })
+  profilePhotoUrl?: string | null;
+
+  @Column({ name: 'home_preferences', type: 'jsonb', nullable: true })
+  homePreferences?: HomePreferences | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

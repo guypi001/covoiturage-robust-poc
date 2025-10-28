@@ -4,6 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './entities';
 import { BookingController } from './booking.controller';
 import { EventBus } from './event-bus';
+import { AdminBookingController } from './admin.controller';
+import { InternalGuard } from './internal.guard';
+import { MetricsController, MetricsMiddleware } from './metrics';
 
 @Module({
   imports: [
@@ -15,11 +18,11 @@ import { EventBus } from './event-bus';
     }),
     TypeOrmModule.forFeature([Booking]),
   ],
-  controllers: [BookingController],
-  providers: [EventBus],
+  controllers: [BookingController, AdminBookingController, MetricsController],
+  providers: [EventBus, InternalGuard],
 })
 export class AppModule {
-  configure(_c: MiddlewareConsumer) {
-    // Ne pas brancher de MetricsMiddleware ici
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(MetricsMiddleware).forRoutes('*');
   }
 }
