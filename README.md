@@ -20,6 +20,7 @@ docker compose up -d --build
 - L’espace d’administration affiche maintenant le détail des trajets publiés et des réservations effectuées par chaque utilisateur (statistiques agrégées, volumes financiers, prochaines dates de départ). Les données proviennent des endpoints `identity`/`ride`/`booking` sécurisés par la clé interne (`INTERNAL_API_KEY` dans les fichiers `.env` des services BFF/Ride/Booking/Identity).
 - Chaque utilisateur dispose d’un espace « Mon profil » pour définir sa photo, ses préférences de confort et personnaliser l’accueil (thème, message, trajets favoris, raccourcis). Les administrateurs peuvent éditer ces mêmes paramètres pour leurs passagers/conducteurs directement depuis l’onglet Administration.
 - Les métriques Prometheus ont été enrichies : comptes par statut/type, activité OTP et personnalisations (`identity`), sièges disponibles et latence de verrouillage (`ride`), montants et taux d’échec des réservations (`booking`), ainsi que la latence/succès des appels proxy (`bff`). Les dashboards Grafana peuvent ainsi suivre la santé métier et la chaîne de réservation de bout en bout.
+- Les filtres de recherche s’alignent désormais sur les usages BlaBlaCar : prix maximal, fenêtre horaire (« après/avant »), et tri (plus tôt, moins cher, plus de places). Les résultats affichent aussi des chips récapitulatives pour partager les critères appliqués.
 
 ### Idées de panneaux Grafana
 

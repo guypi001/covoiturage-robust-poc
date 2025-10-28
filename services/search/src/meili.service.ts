@@ -82,6 +82,7 @@ export class MeiliService {
     limit = 60,
     dateRange?: { start: string; end: string },
     minSeats?: number,
+    maxPrice?: number,
   ): Promise<RideDoc[]> {
     const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
     const filters: string[] = [];
@@ -98,6 +99,9 @@ export class MeiliService {
     if (typeof minSeats === 'number') {
       filters.push(`seatsAvailable >= ${Math.max(1, Math.floor(minSeats))}`);
     }
+    if (typeof maxPrice === 'number') {
+      filters.push(`pricePerSeat <= ${Math.max(0, Math.floor(maxPrice))}`);
+    }
     const opts: any = { limit };
     if (filters.length) opts.filter = filters.join(' AND ');
     const res = await this.rides.search('', opts);
@@ -109,6 +113,6 @@ export class MeiliService {
     const limit = Number(params?.limit ?? process.env.SEARCH_LIMIT ?? 60);
     const from = params?.from ? [params.from] : [];
     const to = params?.to ? [params.to] : [];
-    return this.searchByCities(from, to, limit, undefined, params?.seats);
+    return this.searchByCities(from, to, limit, undefined, params?.seats, undefined);
   }
 }

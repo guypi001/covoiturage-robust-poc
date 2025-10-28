@@ -13,6 +13,10 @@ export type SearchPatch = Partial<{
   toMeta: LocationMeta | null;
   date: string;
   seats: number;
+  priceMax: number | undefined;
+  departureAfter: string | undefined;
+  departureBefore: string | undefined;
+  sort: 'soonest' | 'cheapest' | 'seats';
 }>;
 
 type Props = {
@@ -24,6 +28,10 @@ type Props = {
   toMeta: LocationMeta | null;
   date?: string;
   seats: number;
+  priceMax?: number;
+  departureAfter?: string;
+  departureBefore?: string;
+  sort: 'soonest' | 'cheapest' | 'seats';
   loading?: boolean;
   onChange: (patch: SearchPatch) => void;
   onSubmit: () => void;
@@ -38,6 +46,10 @@ export default function SearchBar({
   toMeta: _toMeta,
   date,
   seats,
+  priceMax,
+  departureAfter,
+  departureBefore,
+  sort,
   loading,
   onChange,
   onSubmit,
@@ -145,6 +157,71 @@ export default function SearchBar({
           <Search size={20} />
           {loading ? 'Recherche…' : 'Rechercher'}
         </button>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-[repeat(3,minmax(0,1fr))]">
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">Prix max (XOF)</label>
+          <input
+            type="number"
+            min={0}
+            step={500}
+            className="input input-sm w-full"
+            placeholder="Aucun"
+            value={typeof priceMax === 'number' ? priceMax : ''}
+            onChange={(e) => {
+              const raw = e.currentTarget.value;
+              const parsed = Number(raw);
+              if (!raw) {
+                onChange({ priceMax: undefined });
+                return;
+              }
+              if (!Number.isFinite(parsed) || parsed <= 0) {
+                onChange({ priceMax: undefined });
+                return;
+              }
+              onChange({ priceMax: parsed });
+            }}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">Départ après</label>
+          <input
+            type="time"
+            className="input input-sm w-full"
+            value={departureAfter ?? ''}
+            onChange={(e) => onChange({ departureAfter: e.currentTarget.value || undefined })}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">Départ avant</label>
+          <input
+            type="time"
+            className="input input-sm w-full"
+            value={departureBefore ?? ''}
+            onChange={(e) => onChange({ departureBefore: e.currentTarget.value || undefined })}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-[minmax(0,220px),minmax(0,1fr)] md:items-end">
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">Tri</label>
+          <select
+            className="input input-sm w-full"
+            value={sort}
+            onChange={(e) => onChange({ sort: e.currentTarget.value as 'soonest' | 'cheapest' | 'seats' })}
+          >
+            <option value="soonest">Le plus tôt</option>
+            <option value="cheapest">Le moins cher</option>
+            <option value="seats">Plus de places</option>
+          </select>
+        </div>
+        <p className="text-xs text-slate-500">
+          Astuce : combine un prix maximal et une fenêtre horaire pour trouver des trajets proches de tes préférences.
+        </p>
       </div>
     </form>
   );

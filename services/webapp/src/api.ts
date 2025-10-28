@@ -117,18 +117,26 @@ export type SearchRequest = {
   to: string;
   date?: string;
   seats?: number;
+  priceMax?: number;
+  departureAfter?: string;
+  departureBefore?: string;
+  sort?: 'soonest' | 'cheapest' | 'seats';
   fromMeta?: LocationMeta;
   toMeta?: LocationMeta;
 };
 
 export async function searchRides(params: SearchRequest) {
-  const { from, to, date, seats } = params;
+  const { from, to, date, seats, priceMax, departureAfter, departureBefore, sort } = params;
   const search = new URLSearchParams({
     from,
     to,
   });
   if (date) search.set('date', date);
   if (typeof seats === 'number') search.set('seats', String(seats));
+  if (typeof priceMax === 'number' && priceMax > 0) search.set('priceMax', String(Math.floor(priceMax)));
+  if (departureAfter) search.set('departureAfter', departureAfter);
+  if (departureBefore) search.set('departureBefore', departureBefore);
+  if (sort) search.set('sort', sort);
   const url = `${SEARCH_URL}/search?${search.toString()}`;
   const { data } = await api.get<Ride[]>(url, { withCredentials: false });
   return data;

@@ -24,6 +24,10 @@ type LastSearch = {
   to: string;
   date?: string;
   seats?: number;
+  priceMax?: number;
+  departureAfter?: string;
+  departureBefore?: string;
+  sort?: 'soonest' | 'cheapest' | 'seats';
   fromMeta?: LocationMeta;
   toMeta?: LocationMeta;
 };

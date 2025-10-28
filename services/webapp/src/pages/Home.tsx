@@ -20,6 +20,10 @@ type SearchFormState = {
   toMeta: LocationMeta | null;
   date: string;
   seats: number;
+  priceMax?: number;
+  departureAfter?: string;
+  departureBefore?: string;
+  sort: 'soonest' | 'cheapest' | 'seats';
 };
 
 export default function Home() {
@@ -66,6 +70,10 @@ export default function Home() {
     toMeta: lastSearch?.toMeta ?? null,
     date: lastSearch?.date ?? '',
     seats: lastSearch?.seats ?? 1,
+    priceMax: lastSearch?.priceMax,
+    departureAfter: lastSearch?.departureAfter,
+    departureBefore: lastSearch?.departureBefore,
+    sort: lastSearch?.sort ?? 'soonest',
   });
 
   // Patch partiel (vient de SearchBar)
@@ -120,11 +128,19 @@ export default function Home() {
       setError('Nombre de sièges invalide');
       return;
     }
+    if (form.departureAfter && form.departureBefore && form.departureAfter > form.departureBefore) {
+      setError('Plage horaire incohérente. “Après” doit précéder “avant”.');
+      return;
+    }
     const nextSearch = {
       from: fromCity,
       to: toCity,
       date: form.date || undefined,
       seats: form.seats,
+      priceMax: typeof form.priceMax === 'number' && form.priceMax > 0 ? form.priceMax : undefined,
+      departureAfter: form.departureAfter || undefined,
+      departureBefore: form.departureBefore || undefined,
+      sort: form.sort || 'soonest',
       fromMeta: ensureMeta(form.fromMeta, fromCity),
       toMeta: ensureMeta(form.toMeta, toCity),
     };
@@ -137,6 +153,10 @@ export default function Home() {
         to: nextSearch.to,
         date: nextSearch.date,
         seats: nextSearch.seats,
+        priceMax: nextSearch.priceMax,
+        departureAfter: nextSearch.departureAfter,
+        departureBefore: nextSearch.departureBefore,
+        sort: nextSearch.sort,
       });
       setResults(data);
     } catch (e: any) {
@@ -249,6 +269,10 @@ export default function Home() {
                 toMeta={form.toMeta}
                 date={form.date}
                 seats={form.seats}
+                priceMax={form.priceMax}
+                departureAfter={form.departureAfter}
+                departureBefore={form.departureBefore}
+                sort={form.sort}
                 loading={loading}
                 onChange={onChange}
                 onSubmit={onSubmit}

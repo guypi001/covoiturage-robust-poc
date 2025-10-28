@@ -2,7 +2,16 @@ import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { GeoService } from './geo/geo';
 import { MeiliService, RideDoc } from './meili.service';
 
-type SearchQuery = { from: string; to: string; date?: string; seats?: string };
+type SearchQuery = {
+  from: string;
+  to: string;
+  date?: string;
+  seats?: string;
+  priceMax?: string;
+  departureAfter?: string;
+  departureBefore?: string;
+  sort?: 'soonest' | 'cheapest' | 'seats';
+};
 
 function normalizeDateRange(input: string): { start: string; end: string } | null {
   const trimmed = input?.trim();
@@ -13,6 +22,26 @@ function normalizeDateRange(input: string): { start: string; end: string } | nul
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
   return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function parseTimeOfDay(value?: string): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const [hh, mm = '0'] = trimmed.split(':', 2);
+  const hour = Number(hh);
+  const minutes = Number(mm);
+  if (
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minutes) ||
+    hour < 0 ||
+    hour > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return undefined;
+  }
+  return hour * 60 + minutes;
 }
 
 @Controller('search')
@@ -40,6 +69,30 @@ export class SearchController {
     if (q.seats && (minSeats === undefined || !Number.isFinite(minSeats) || minSeats <= 0))
       throw new BadRequestException('Seats invalide');
 
+    const maxPrice = q.priceMax ? Number(q.priceMax) : undefined;
+    if (q.priceMax && (maxPrice === undefined || !Number.isFinite(maxPrice) || maxPrice <= 0))
+      throw new BadRequestException('priceMax invalide');
+
+    const departureAfterMinutes = parseTimeOfDay(q.departureAfter);
+    if (q.departureAfter && departureAfterMinutes === undefined)
+      throw new BadRequestException('departureAfter invalide (HH:mm)');
+
+    const departureBeforeMinutes = parseTimeOfDay(q.departureBefore);
+    if (q.departureBefore && departureBeforeMinutes === undefined)
+      throw new BadRequestException('departureBefore invalide (HH:mm)');
+    if (
+      departureAfterMinutes !== undefined &&
+      departureBeforeMinutes !== undefined &&
+      departureAfterMinutes > departureBeforeMinutes
+    ) {
+      throw new BadRequestException('Fenêtre horaire incohérente');
+    }
+
+    let sort = q.sort ?? 'soonest';
+    if (!['soonest', 'cheapest', 'seats'].includes(sort)) {
+      sort = 'soonest';
+    }
+
     const RADIUS_KM = Number(process.env.NEAR_RADIUS_KM ?? 80);
     const BUFFER_KM = Number(process.env.CORRIDOR_KM ?? 45);
     const LIMIT = Number(process.env.SEARCH_LIMIT ?? 60);
@@ -55,6 +108,7 @@ export class SearchController {
       LIMIT,
       dateRange,
       minSeats,
+      maxPrice,
     );
     if (!hits.length) return [];
 
@@ -67,11 +121,36 @@ export class SearchController {
       const b = this.geo.isNearCorridor(cTo, o, d, BUFFER_KM);
       if (!(a.ok && b.ok && a.t < b.t)) return false;
       if (typeof minSeats === 'number' && r.seatsAvailable < minSeats) return false;
+      if (typeof maxPrice === 'number' && r.pricePerSeat > maxPrice) return false;
+
+      if (departureAfterMinutes !== undefined || departureBeforeMinutes !== undefined) {
+        const dep = new Date(r.departureAt);
+        const depMinutes = dep.getUTCHours() * 60 + dep.getUTCMinutes();
+        if (departureAfterMinutes !== undefined && depMinutes < departureAfterMinutes) {
+          return false;
+        }
+        if (departureBeforeMinutes !== undefined && depMinutes > departureBeforeMinutes) {
+          return false;
+        }
+      }
       return true;
     });
 
     // 4) tri (heure de départ puis prix)
     filtered.sort((x, y) => {
+      if (sort === 'cheapest') {
+        if (x.pricePerSeat === y.pricePerSeat) {
+          return x.departureAt < y.departureAt ? -1 : 1;
+        }
+        return x.pricePerSeat - y.pricePerSeat;
+      }
+      if (sort === 'seats') {
+        if (x.seatsAvailable === y.seatsAvailable) {
+          return x.departureAt < y.departureAt ? -1 : 1;
+        }
+        return y.seatsAvailable - x.seatsAvailable;
+      }
+      // default: soonest
       if (x.departureAt === y.departureAt) {
         return x.pricePerSeat - y.pricePerSeat;
       }
