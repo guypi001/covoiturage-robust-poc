@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Messages from './pages/Messages';
 import AdminAccounts from './pages/AdminAccounts';
+import CompanyFleet from './pages/CompanyFleet';
 import ProfileSettings from './pages/ProfileSettings';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
@@ -22,6 +23,7 @@ function ProtectedLayout() {
   const messageBadge = useApp((state) => state.messageBadge);
   const refreshMessageBadge = useApp((state) => state.refreshMessageBadge);
   const isAdmin = account?.role === 'ADMIN';
+  const isCompany = account?.type === 'COMPANY';
 
   useEffect(() => {
     refreshMessageBadge();
@@ -87,6 +89,11 @@ function ProtectedLayout() {
                 Administration
               </Link>
             )}
+            {isCompany && (
+              <Link to="/company/fleet" className="hover:text-sky-600">
+                Ma flotte
+              </Link>
+            )}
             <Link to="/messages" className="relative hover:text-sky-600 flex items-center gap-2">
               Messages
               {messageBadge > 0 && (
@@ -142,6 +149,7 @@ export default function App() {
           <Route path="/create" element={<CreateRide />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/profile" element={<ProfileSettings />} />
+          <Route path="/company/fleet" element={<CompanyFleet />} />
           <Route path="/admin/accounts" element={<AdminAccounts />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

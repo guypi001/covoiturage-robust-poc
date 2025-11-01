@@ -9,7 +9,11 @@ import { searchRides, type FavoriteRoute } from '../api';
 import { GmailLogo } from '../components/icons/GmailLogo';
 import { findCityByName, isKnownCiCity } from '../data/cities-ci';
 import type { LocationMeta } from '../types/location';
-import { HOME_THEME_STYLE, QUICK_ACTION_OPTIONS } from '../constants/homePreferences';
+import {
+  HOME_THEME_STYLE,
+  QUICK_ACTION_OPTIONS,
+  type HomeThemeStyle,
+} from '../constants/homePreferences';
 
 type SearchFormState = {
   from: string;
@@ -43,22 +47,54 @@ export default function Home() {
 
   const homePreferences = account?.homePreferences;
   const theme = homePreferences?.theme ?? 'default';
-  const themeStyle = HOME_THEME_STYLE[theme] ?? HOME_THEME_STYLE.default;
-  const isDarkTheme = theme === 'night';
+  const themeStyle: HomeThemeStyle =
+    HOME_THEME_STYLE[theme] ?? HOME_THEME_STYLE.default;
+  const heroTokens = themeStyle.hero;
+  const chipsStyle = themeStyle.chips;
+  const quickTokens = themeStyle.quickActions;
+  const surfaceClass = themeStyle.surface;
+  const baseTextClass = theme === 'night' ? 'text-slate-300' : 'text-slate-600';
+  const primaryTextClass = theme === 'night' ? 'text-white' : 'text-slate-900';
+  const panelBaseClass =
+    theme === 'night'
+      ? 'rounded-xl border border-slate-800 bg-slate-900/70 backdrop-blur px-4 py-4 text-slate-200'
+      : 'rounded-xl border border-slate-200 bg-white px-4 py-4 text-slate-600 shadow-sm';
+  const panelMutedClass =
+    theme === 'night'
+      ? 'rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur px-4 py-4 text-slate-300'
+      : 'rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-600';
+  const errorAlertClass =
+    theme === 'night'
+      ? 'rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-3 text-red-200 shadow-lg shadow-red-900/30'
+      : 'rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700';
   const heroMessage = homePreferences?.heroMessage?.trim() ||
     'Voyage sereinement entre les villes de Côte d’Ivoire';
   const showTips = homePreferences?.showTips ?? true;
   const quickActions = homePreferences?.quickActions ?? [];
   const favoriteRoutes = homePreferences?.favoriteRoutes ?? [];
-  const quickActionItems = QUICK_ACTION_OPTIONS.filter((option) => quickActions.includes(option.id));
-  const heroTitleColor = isDarkTheme ? 'text-white' : 'text-slate-900';
-  const heroTextColor = isDarkTheme ? 'text-slate-200' : 'text-slate-600';
-  const heroBadgeClass = isDarkTheme
-    ? 'bg-white/10 text-white'
-    : 'bg-white/80 text-sky-600 shadow-sm shadow-sky-100';
-  const heroCardClass = isDarkTheme
-    ? 'border-white/15 bg-white/10 text-slate-200'
-    : 'border-white/60 bg-white/80 text-slate-600 shadow-sm';
+  const quickActionItems = QUICK_ACTION_OPTIONS.filter(
+    (option) =>
+      quickActions.includes(option.id) &&
+      (option.id !== 'manage_fleet' || account?.type === 'COMPANY'),
+  );
+
+  const heroHighlights = [
+    {
+      title: 'Sécurité renforcée',
+      text: 'Mots de passe, OTP Gmail et contrôle des sessions pour des comptes sereins.',
+      renderIcon: (className: string) => <ShieldCheck size={20} className={className} />,
+    },
+    {
+      title: 'Recherche intelligente',
+      text: 'Filtre tes trajets par prix, créneaux horaires ou nombre de places en un clic.',
+      renderIcon: (className: string) => <Clock size={20} className={className} />,
+    },
+    {
+      title: 'Profil connecté',
+      text: 'Avatar, préférences et page d’accueil synchronisés et éditables par les admins.',
+      renderIcon: (_className: string) => <GmailLogo className="h-6 w-6" />,
+    },
+  ];
 
   // État local du formulaire (prérempli depuis la dernière recherche)
   const [form, setForm] = useState<SearchFormState>({
@@ -185,77 +221,51 @@ export default function Home() {
   return (
     <div className="min-h-[calc(100vh-56px)]">
       <section className="relative overflow-hidden">
-        <div className={`absolute inset-0 -z-10 bg-gradient-to-br ${themeStyle.gradient}`} />
+        <div className={`absolute inset-0 -z-20 bg-gradient-to-br ${themeStyle.gradient}`} />
+        {themeStyle.pattern && (
+          <div className={`absolute inset-0 -z-10 opacity-80 ${themeStyle.pattern}`} />
+        )}
         <div className="absolute inset-y-0 right-0 -z-10 hidden lg:block">
-          <div
-            className={`h-full w-72 translate-x-24 rounded-full blur-3xl ${
-              isDarkTheme ? 'bg-indigo-500/20' : 'bg-sky-100/50'
-            }`}
-          />
+          <div className={`h-full w-72 translate-x-24 rounded-full blur-3xl ${themeStyle.glow}`} />
         </div>
         <div className="container-wide py-12 md:py-16">
           <div className="grid gap-10 lg:grid-cols-[minmax(0,0.95fr),minmax(0,1fr)] items-start">
             <div className="space-y-6">
               <span
-                className={`inline-flex items-center gap-2 rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-wide ${heroBadgeClass}`}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-wide ${heroTokens.badge}`}
               >
-                <Sparkles size={14} className={isDarkTheme ? 'text-amber-300' : 'text-sky-500'} />
+                <Sparkles size={14} className={heroTokens.badgeIcon} />
                 Covoiturage harmonisé
               </span>
-              <h1 className={`text-3xl md:text-4xl font-bold leading-tight ${heroTitleColor}`}>
+              <h1 className={`text-3xl md:text-4xl font-bold leading-tight ${heroTokens.title}`}>
                 {heroMessage}
               </h1>
-              <p className={`text-base max-w-xl ${heroTextColor}`}>
+              <p className={`text-base max-w-xl ${heroTokens.text}`}>
                 Coordonne tes trajets, retrouve ton historique et partage tes préférences de confort
                 avec une interface cohérente entre web et mobile.
               </p>
               {showTips && (
-                <ul className={`grid gap-3 sm:grid-cols-2 text-sm ${heroTextColor}`}>
-                  <li className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${heroCardClass}`}>
-                    <span
-                      className={`mt-1 grid h-10 w-10 place-items-center rounded-xl ${
-                        isDarkTheme ? 'bg-white/15 text-amber-200' : 'bg-sky-500/15 text-sky-600'
-                      }`}
+                <ul className="grid gap-3 sm:grid-cols-3 text-sm">
+                  {heroHighlights.map((feature) => (
+                    <li
+                      key={feature.title}
+                      className={`flex flex-col gap-3 rounded-2xl px-4 py-4 ${heroTokens.card}`}
                     >
-                      <ShieldCheck size={18} />
-                    </span>
-                    <div>
-                      <p className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-800'}`}>
-                        Comptes sécurisés
-                      </p>
-                      <p>Mot de passe ou code Gmail : choisis la méthode qui te convient.</p>
-                    </div>
-                  </li>
-                  <li className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${heroCardClass}`}>
-                    <span
-                      className={`mt-1 grid h-10 w-10 place-items-center rounded-xl ${
-                        isDarkTheme ? 'bg-white/15 text-amber-200' : 'bg-sky-500/15 text-sky-600'
-                      }`}
-                    >
-                      <Clock size={18} />
-                    </span>
-                    <div>
-                      <p className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-800'}`}>
-                        OTP instantané
-                      </p>
-                      <p>Reçois un code Gmail en quelques secondes pour valider ton accès.</p>
-                    </div>
-                  </li>
-                  <li className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${heroCardClass} sm:col-span-2`}>
-                    <span
-                      className={`mt-1 grid h-10 w-10 place-items-center rounded-xl ${
-                        isDarkTheme ? 'bg-white/15 text-amber-200' : 'bg-sky-500/15'
-                      }`}
-                    >
-                      <GmailLogo className={`h-6 w-6 ${isDarkTheme ? 'text-amber-300' : ''}`} />
-                    </span>
-                    <div>
-                      <p className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-800'}`}>
-                        Synchronisation Gmail
-                      </p>
-                      <p>Un design cohérent de la boîte mail à l’application pour éviter toute surprise.</p>
-                    </div>
-                  </li>
+                      <span
+                        className={`grid h-11 w-11 place-items-center rounded-xl ${heroTokens.iconWrap}`}
+                      >
+                        {feature.renderIcon(heroTokens.iconColor)}
+                      </span>
+                      <div className="space-y-1">
+                        <p className={`text-sm font-semibold ${heroTokens.sectionTitle}`}>
+                          {feature.title}
+                        </p>
+                        <p className={`text-sm leading-snug ${heroTokens.cardText}`}>
+                          {feature.text}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -276,6 +286,8 @@ export default function Home() {
                 loading={loading}
                 onChange={onChange}
                 onSubmit={onSubmit}
+                theme={theme}
+                searchTheme={themeStyle.search}
               />
               {quickActionItems.length > 0 && (
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
@@ -283,20 +295,24 @@ export default function Home() {
                     <Link
                       key={action.id}
                       to={action.to}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-100"
+                      className={`inline-flex items-center gap-2 rounded-full px-3 py-2 transition ${quickTokens.active}`}
                     >
-                      <Wand2 size={14} className="text-sky-500" />
+                      <Wand2 size={14} className={heroTokens.iconColor} />
                       {action.label}
                     </Link>
                   ))}
                 </div>
               )}
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
-                <span className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
-                  <ShieldCheck size={14} className="text-sky-500" />
+              <div className={`mt-4 flex flex-wrap items-center gap-3 text-xs ${baseTextClass}`}>
+                <span
+                  className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.accent}`}
+                >
+                  <ShieldCheck size={14} className={heroTokens.iconColor} />
                   Historique et préférences sauvegardés
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
+                <span
+                  className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.neutral}`}
+                >
                   <GmailLogo className="h-4 w-4" />
                   Connexion Gmail supportée
                 </span>
@@ -307,15 +323,15 @@ export default function Home() {
       </section>
       {favoriteRoutes.length > 0 && (
         <section className="container-wide mt-4">
-          <div className="rounded-2xl border border-slate-200 bg-white/80 backdrop-blur px-4 py-5 shadow-sm">
+          <div className={`rounded-2xl px-4 py-5 ${surfaceClass}`}>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
-                <Star size={18} className="text-amber-500" />
-                <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+                <Star size={18} className={heroTokens.iconColor} />
+                <h2 className={`text-sm font-semibold uppercase tracking-wide ${heroTokens.sectionTitle}`}>
                   Trajets favoris
                 </h2>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className={`text-xs ${heroTokens.cardText}`}>
                 Préremplis instantanément ta recherche avec les itinéraires que tu utilises souvent.
               </p>
             </div>
@@ -325,7 +341,7 @@ export default function Home() {
                   key={`${route.from}-${route.to}-${index}`}
                   type="button"
                   onClick={() => prefillFavoriteRoute(route)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                  className={`rounded-xl px-4 py-2 text-sm transition ${quickTokens.inactive}`}
                 >
                   {route.from} → {route.to}
                 </button>
@@ -338,17 +354,15 @@ export default function Home() {
       <section className="container-wide pb-14 space-y-6">
         {/* Erreur */}
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3">
-            {error}
-          </div>
+          <div className={errorAlertClass}>{error}</div>
         )}
 
         {/* Résumé de recherche */}
         {lastSearch && !loading && (
-          <div className="text-sm text-slate-600">
-            <span className="font-medium text-slate-900">{results.length}</span> résultat(s)
-            &nbsp;pour <span className="font-medium">{displayLastFrom}</span> →{' '}
-            <span className="font-medium">{displayLastTo}</span>
+          <div className={`text-sm ${baseTextClass}`}>
+            <span className={`font-semibold ${primaryTextClass}`}>{results.length}</span> résultat(s)
+            &nbsp;pour <span className={`font-semibold ${primaryTextClass}`}>{displayLastFrom}</span> →{' '}
+            <span className={`font-semibold ${primaryTextClass}`}>{displayLastTo}</span>
             {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
             {lastSearch.seats ? ` • ${lastSearch.seats} siège(s)` : ''}
           </div>
@@ -356,7 +370,7 @@ export default function Home() {
 
         {/* Chargement */}
         {loading && (
-          <div className="card p-4 animate-pulse">Recherche en cours…</div>
+          <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
         )}
 
         {/* Résultats */}
@@ -375,17 +389,17 @@ export default function Home() {
 
         {/* Aucun résultat */}
         {!loading && !error && results.length === 0 && lastSearch && (
-          <div className="card p-5">
+          <div className={`${panelBaseClass} transition`}>
             Aucun trajet trouvé. Essaie d’ajuster la date ou la ville.
           </div>
         )}
 
         {/* État initial (pas encore de recherche) */}
         {!lastSearch && !loading && results.length === 0 && !error && (
-          <div className="card p-5 text-slate-600">
-            Renseigne un <span className="font-medium text-slate-900">départ</span>, une{' '}
-            <span className="font-medium text-slate-900">arrivée</span> et une{' '}
-            <span className="font-medium text-slate-900">date</span> pour voir les trajets disponibles.
+          <div className={`${panelBaseClass} transition`}>
+            Renseigne un <span className={`font-medium ${primaryTextClass}`}>départ</span>, une{' '}
+            <span className={`font-medium ${primaryTextClass}`}>arrivée</span> et une{' '}
+            <span className={`font-medium ${primaryTextClass}`}>date</span> pour voir les trajets disponibles.
           </div>
         )}
       </section>

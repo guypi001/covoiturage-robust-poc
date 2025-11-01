@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Delete,
+  ForbiddenException,
   Get,
   HttpException,
   InternalServerErrorException,
@@ -42,6 +44,12 @@ type BookingAdminItem = {
   holdId: string | null;
   status: string;
   createdAt: string;
+};
+
+type AccountProfile = {
+  id: string;
+  type?: string | null;
+  role?: string | null;
 };
 @Controller()
 export class ProxyController {
@@ -126,6 +134,279 @@ export class ProxyController {
           headers,
         }),
       'identity',
+    );
+  }
+
+  @Get('companies/me/vehicles')
+  async myFleet(@Req() req: any, @Query() query: any) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.get(`${RIDE}/admin/companies/${account.id}/vehicles`, {
+          params: query,
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Post('companies/me/vehicles')
+  async createFleetVehicle(@Req() req: any, @Body() body: any) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.post(`${RIDE}/admin/companies/${account.id}/vehicles`, body, {
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Patch('companies/me/vehicles/:vehicleId')
+  async updateFleetVehicle(
+    @Req() req: any,
+    @Param('vehicleId') vehicleId: string,
+    @Body() body: any,
+  ) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.patch(`${RIDE}/admin/companies/${account.id}/vehicles/${vehicleId}`, body, {
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Delete('companies/me/vehicles/:vehicleId')
+  async archiveFleetVehicle(@Req() req: any, @Param('vehicleId') vehicleId: string) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.delete(`${RIDE}/admin/companies/${account.id}/vehicles/${vehicleId}`, {
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Get('companies/me/vehicles/:vehicleId/schedules')
+  async listFleetSchedules(
+    @Req() req: any,
+    @Param('vehicleId') vehicleId: string,
+    @Query() query: any,
+  ) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.get(`${RIDE}/admin/companies/${account.id}/vehicles/${vehicleId}/schedules`, {
+          params: query,
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Post('companies/me/vehicles/:vehicleId/schedules')
+  async createFleetSchedule(
+    @Req() req: any,
+    @Param('vehicleId') vehicleId: string,
+    @Body() body: any,
+  ) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.post(
+          `${RIDE}/admin/companies/${account.id}/vehicles/${vehicleId}/schedules`,
+          body,
+          {
+            headers: this.internalHeaders(),
+          },
+        ),
+      'ride',
+    );
+  }
+
+  @Patch('companies/me/vehicles/:vehicleId/schedules/:scheduleId')
+  async updateFleetSchedule(
+    @Req() req: any,
+    @Param('vehicleId') vehicleId: string,
+    @Param('scheduleId') scheduleId: string,
+    @Body() body: any,
+  ) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.patch(
+          `${RIDE}/admin/companies/${account.id}/vehicles/${vehicleId}/schedules/${scheduleId}`,
+          body,
+          {
+            headers: this.internalHeaders(),
+          },
+        ),
+      'ride',
+    );
+  }
+
+  @Delete('companies/me/vehicles/:vehicleId/schedules/:scheduleId')
+  async cancelFleetSchedule(
+    @Req() req: any,
+    @Param('vehicleId') vehicleId: string,
+    @Param('scheduleId') scheduleId: string,
+  ) {
+    const account = await this.ensureCompanyAccount(req);
+    return this.forward(
+      () =>
+        axios.delete(
+          `${RIDE}/admin/companies/${account.id}/vehicles/${vehicleId}/schedules/${scheduleId}`,
+          {
+            headers: this.internalHeaders(),
+          },
+        ),
+      'ride',
+    );
+  }
+
+  @Get('admin/companies/:companyId/vehicles')
+  async adminListFleet(@Req() req: any, @Param('companyId') companyId: string, @Query() query: any) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.get(`${RIDE}/admin/companies/${companyId}/vehicles`, {
+          params: query,
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Post('admin/companies/:companyId/vehicles')
+  async adminCreateFleetVehicle(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Body() body: any,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.post(`${RIDE}/admin/companies/${companyId}/vehicles`, body, {
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Patch('admin/companies/:companyId/vehicles/:vehicleId')
+  async adminUpdateFleetVehicle(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Param('vehicleId') vehicleId: string,
+    @Body() body: any,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.patch(`${RIDE}/admin/companies/${companyId}/vehicles/${vehicleId}`, body, {
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Delete('admin/companies/:companyId/vehicles/:vehicleId')
+  async adminArchiveFleetVehicle(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Param('vehicleId') vehicleId: string,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.delete(`${RIDE}/admin/companies/${companyId}/vehicles/${vehicleId}`, {
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Get('admin/companies/:companyId/vehicles/:vehicleId/schedules')
+  async adminListFleetSchedules(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Param('vehicleId') vehicleId: string,
+    @Query() query: any,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.get(`${RIDE}/admin/companies/${companyId}/vehicles/${vehicleId}/schedules`, {
+          params: query,
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
+  @Post('admin/companies/:companyId/vehicles/:vehicleId/schedules')
+  async adminCreateFleetSchedule(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Param('vehicleId') vehicleId: string,
+    @Body() body: any,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.post(
+          `${RIDE}/admin/companies/${companyId}/vehicles/${vehicleId}/schedules`,
+          body,
+          {
+            headers: this.internalHeaders(),
+          },
+        ),
+      'ride',
+    );
+  }
+
+  @Patch('admin/companies/:companyId/vehicles/:vehicleId/schedules/:scheduleId')
+  async adminUpdateFleetSchedule(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Param('vehicleId') vehicleId: string,
+    @Param('scheduleId') scheduleId: string,
+    @Body() body: any,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.patch(
+          `${RIDE}/admin/companies/${companyId}/vehicles/${vehicleId}/schedules/${scheduleId}`,
+          body,
+          {
+            headers: this.internalHeaders(),
+          },
+        ),
+      'ride',
+    );
+  }
+
+  @Delete('admin/companies/:companyId/vehicles/:vehicleId/schedules/:scheduleId')
+  async adminCancelFleetSchedule(
+    @Req() req: any,
+    @Param('companyId') companyId: string,
+    @Param('vehicleId') vehicleId: string,
+    @Param('scheduleId') scheduleId: string,
+  ) {
+    await this.ensureAdminAccount(req);
+    return this.forward(
+      () =>
+        axios.delete(
+          `${RIDE}/admin/companies/${companyId}/vehicles/${vehicleId}/schedules/${scheduleId}`,
+          {
+            headers: this.internalHeaders(),
+          },
+        ),
+      'ride',
     );
   }
 
@@ -342,6 +623,30 @@ export class ProxyController {
       }
       throw new InternalServerErrorException('proxy_failure');
     }
+  }
+
+  private async fetchMyAccount(req: any): Promise<AccountProfile | null> {
+    const headers = this.extractAuthHeaders(req);
+    return this.forward<AccountProfile | null>(
+      () => axios.get<AccountProfile | null>(`${IDENTITY}/profiles/me`, { headers }),
+      'identity',
+    );
+  }
+
+  private async ensureCompanyAccount(req: any): Promise<AccountProfile> {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id || account.type !== 'COMPANY') {
+      throw new ForbiddenException('company_account_required');
+    }
+    return account;
+  }
+
+  private async ensureAdminAccount(req: any): Promise<AccountProfile> {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id || account.role !== 'ADMIN') {
+      throw new ForbiddenException('admin_only');
+    }
+    return account;
   }
 
   private extractAuthHeaders(req: any) {

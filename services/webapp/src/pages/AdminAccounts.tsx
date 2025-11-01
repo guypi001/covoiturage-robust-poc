@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { Calendar, Clock, MapPin, RefreshCw } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import { useApp } from '../store';
 import {
@@ -12,11 +13,16 @@ import {
   HomePreferencesPayload,
   BookingAdminItem,
   RideAdminItem,
+  FleetListResponse,
+  FleetVehicle,
+  FleetSchedule,
   adminGetAccountActivity,
   adminListAccounts,
   adminUpdateAccountRole,
   adminUpdateAccountStatus,
   adminUpdateAccountProfile,
+  adminFetchCompanyFleet,
+  adminListCompanySchedules,
 } from '../api';
 import { HOME_THEME_OPTIONS, QUICK_ACTION_OPTIONS } from '../constants/homePreferences';
 
@@ -40,6 +46,10 @@ type AdminProfilePayload = {
 };
 
 type EditableRoute = { from: string; to: string };
+type FleetSchedulesState = Record<
+  string,
+  { loading: boolean; items: FleetSchedule[]; error?: string; window: 'upcoming' | 'past' | 'all' }
+>;
 
 const STATUS_LABEL: Record<AccountStatus, string> = {
   ACTIVE: 'Actif',
@@ -99,10 +109,14 @@ export default function AdminAccounts() {
   const [list, setList] = useState<AccountListResponse>();
   const [updatingId, setUpdatingId] = useState<string>();
 
-  const [selectedAccountId, setSelectedAccountId] = useState<string>();
-  const [activity, setActivity] = useState<AdminAccountActivity>();
-  const [activityLoading, setActivityLoading] = useState(false);
-  const [activityError, setActivityError] = useState<string>();
+const [selectedAccountId, setSelectedAccountId] = useState<string>();
+const [activity, setActivity] = useState<AdminAccountActivity>();
+const [activityLoading, setActivityLoading] = useState(false);
+const [activityError, setActivityError] = useState<string>();
+const [fleet, setFleet] = useState<FleetListResponse>();
+const [fleetLoading, setFleetLoading] = useState(false);
+const [fleetError, setFleetError] = useState<string>();
+const [fleetSchedulesState, setFleetSchedulesState] = useState<FleetSchedulesState>({});
 
   const canAccess = account?.role === 'ADMIN';
 
@@ -191,10 +205,28 @@ export default function AdminAccounts() {
       }
       setActivity(undefined);
       setActivityError(undefined);
+      setFleet(undefined);
+      setFleetError(undefined);
+      setFleetSchedulesState({});
       setActivityLoading(true);
       try {
         const res = await adminGetAccountActivity(token, accountId);
         setActivity(res);
+        if (res.account.type === 'COMPANY') {
+          setFleetLoading(true);
+          try {
+            const fleetRes = await adminFetchCompanyFleet(res.account.id, { status: 'ALL' });
+            setFleet(fleetRes);
+          } catch (err: any) {
+            setFleetError(
+              err?.response?.data?.message || err?.message || 'Impossible de charger la flotte.',
+            );
+          } finally {
+            setFleetLoading(false);
+          }
+        } else {
+          setFleet(undefined);
+        }
       } catch (err: any) {
         setActivityError(err?.response?.data?.message || err?.message || 'Impossible de charger l’activité.');
       } finally {
@@ -219,6 +251,59 @@ export default function AdminAccounts() {
       return updated;
     },
     [token],
+  );
+
+  const reloadFleet = useCallback(async () => {
+    const company = activity?.account;
+    if (!company || company.type !== 'COMPANY') return;
+    setFleetLoading(true);
+    setFleetError(undefined);
+    try {
+      const res = await adminFetchCompanyFleet(company.id, { status: 'ALL' });
+      setFleet(res);
+    } catch (err: any) {
+      setFleetError(err?.response?.data?.message || err?.message || 'Impossible de charger la flotte.');
+    } finally {
+      setFleetLoading(false);
+    }
+  }, [activity?.account]);
+
+  const loadCompanySchedules = useCallback(
+    async (vehicleId: string, window: 'upcoming' | 'past' | 'all' = 'upcoming') => {
+      const company = activity?.account;
+      if (!company || company.type !== 'COMPANY') return;
+      setFleetSchedulesState((prev) => ({
+        ...prev,
+        [vehicleId]: {
+          loading: true,
+          items: prev[vehicleId]?.items ?? [],
+          window,
+        },
+      }));
+      try {
+        const res = await adminListCompanySchedules(company.id, vehicleId, { window });
+        setFleetSchedulesState((prev) => ({
+          ...prev,
+          [vehicleId]: {
+            loading: false,
+            items: res.data,
+            window,
+          },
+        }));
+      } catch (err: any) {
+        setFleetSchedulesState((prev) => ({
+          ...prev,
+          [vehicleId]: {
+            loading: false,
+            items: prev[vehicleId]?.items ?? [],
+            window,
+            error:
+              err?.response?.data?.message || err?.message || 'Impossible de charger les plannings.',
+          },
+        }));
+      }
+    },
+    [activity?.account],
   );
 
   const handleToggleStatus = async (item: Account) => {
@@ -467,6 +552,12 @@ export default function AdminAccounts() {
           error={activityError}
           onRefresh={() => fetchActivity(selectedAccountId, { preserveSelection: true })}
           onSave={async (payload) => saveProfile(selectedAccountId, payload)}
+          fleet={fleet}
+          fleetLoading={fleetLoading}
+          fleetError={fleetError}
+          onReloadFleet={reloadFleet}
+          fleetSchedules={fleetSchedulesState}
+          onLoadSchedules={loadCompanySchedules}
         />
       )}
     </section>
@@ -506,6 +597,12 @@ function ActivityPanel({
   error,
   onRefresh,
   onSave,
+  fleet,
+  fleetLoading,
+  fleetError,
+  onReloadFleet,
+  fleetSchedules,
+  onLoadSchedules,
 }: {
   account?: Account;
   activity?: AdminAccountActivity;
@@ -513,6 +610,12 @@ function ActivityPanel({
   error?: string;
   onRefresh: () => void;
   onSave: (payload: AdminProfilePayload) => Promise<Account | undefined>;
+  fleet?: FleetListResponse;
+  fleetLoading?: boolean;
+  fleetError?: string;
+  onReloadFleet?: () => void;
+  fleetSchedules?: FleetSchedulesState;
+  onLoadSchedules?: (vehicleId: string, window?: 'upcoming' | 'past' | 'all') => void;
 }) {
   const [photoUrl, setPhotoUrl] = useState('');
   const [removePhoto, setRemovePhoto] = useState(false);
@@ -967,11 +1070,11 @@ function ActivityPanel({
 
       {!loading && !error && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <MiniKpi
-              label="Trajets publiés"
-              value={activity?.rides.total ?? 0}
-              hint={`${rideSummary?.published ?? 0} actifs`}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MiniKpi
+          label="Trajets publiés"
+          value={activity?.rides.total ?? 0}
+          hint={`${rideSummary?.published ?? 0} actifs`}
             />
             <MiniKpi
               label="Départs à venir"
@@ -985,10 +1088,21 @@ function ActivityPanel({
             />
             <MiniKpi
               label="Réservations"
-              value={activity?.bookings.total ?? 0}
-              hint={`${bookingSummary?.seatsTotal ?? 0} places`}
-            />
-          </div>
+          value={activity?.bookings.total ?? 0}
+          hint={`${bookingSummary?.seatsTotal ?? 0} places`}
+        />
+      </div>
+
+      {account?.type === 'COMPANY' && (
+        <CompanyFleetAdmin
+          fleet={fleet}
+          fleetLoading={fleetLoading}
+          fleetError={fleetError}
+          onReloadFleet={onReloadFleet}
+          scheduleState={fleetSchedules}
+          onLoadSchedules={onLoadSchedules}
+        />
+      )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ActivitySection
@@ -1079,6 +1193,191 @@ function ActivityPanel({
         </>
       )}
     </section>
+  );
+}
+
+function CompanyFleetAdmin({
+  fleet,
+  fleetLoading,
+  fleetError,
+  onReloadFleet,
+  scheduleState,
+  onLoadSchedules,
+}: {
+  fleet?: FleetListResponse;
+  fleetLoading?: boolean;
+  fleetError?: string;
+  onReloadFleet?: () => void;
+  scheduleState?: FleetSchedulesState;
+  onLoadSchedules?: (vehicleId: string, window?: 'upcoming' | 'past' | 'all') => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+          Flotte entreprise
+        </h3>
+        <button
+          type="button"
+          onClick={() => onReloadFleet?.()}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+          disabled={fleetLoading || !onReloadFleet}
+        >
+          <RefreshCw size={14} /> Rafraîchir
+        </button>
+      </div>
+
+      {fleetError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">
+          {fleetError}
+        </div>
+      )}
+
+      {fleetLoading ? (
+        <p className="text-sm text-slate-500">Chargement de la flotte…</p>
+      ) : !fleet ? (
+        <p className="text-sm text-slate-500">
+          Aucune donnée de flotte disponible pour ce compte.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-4 text-xs text-slate-600">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="uppercase font-semibold text-slate-500">Véhicules</p>
+              <p className="mt-1 text-lg font-semibold text-slate-800">{fleet.data.length}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="uppercase font-semibold text-slate-500">Actifs</p>
+              <p className="mt-1 text-lg font-semibold text-emerald-600">{fleet.summary.active}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="uppercase font-semibold text-slate-500">Capacité</p>
+              <p className="mt-1 text-lg font-semibold text-slate-800">
+                {fleet.summary.fleetSeats} sièges
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="uppercase font-semibold text-slate-500">Départs à venir</p>
+              <p className="mt-1 text-lg font-semibold text-slate-800">
+                {fleet.summary.upcomingTrips}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {fleet.data.map((vehicle) => {
+              const state = scheduleState?.[vehicle.id];
+              const schedules = state?.items ?? vehicle.upcomingSchedules ?? [];
+              const statusTone =
+                vehicle.status === 'ACTIVE'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-slate-200 text-slate-600';
+              return (
+                <div
+                  key={vehicle.id}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-3"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {vehicle.label}{' '}
+                        <span className="text-xs text-slate-500">({vehicle.plateNumber})</span>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {vehicle.category} • {vehicle.seats} sièges
+                        {vehicle.brand ? ` • ${vehicle.brand} ${vehicle.model ?? ''}` : ''}
+                      </p>
+                    </div>
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold ${statusTone}`}>
+                      {vehicle.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar size={12} />
+                      {vehicle.metrics?.upcomingTrips ?? 0} départ(s) planifiés
+                    </span>
+                    {vehicle.metrics?.nextDepartureAt && (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={12} />
+                        Prochain : {formatDate(vehicle.metrics.nextDepartureAt)}
+                      </span>
+                    )}
+                    {vehicle.amenities && vehicle.amenities.length > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        Équipements : {vehicle.amenities.join(', ')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {schedules.length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        Aucun départ enregistré. Utilise la page « Gestion de flotte » pour programmer les prochains voyages.
+                      </p>
+                    ) : (
+                      schedules.slice(0, 3).map((schedule) => (
+                        <div
+                          key={schedule.id}
+                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium text-slate-700">
+                              {schedule.originCity} → {schedule.destinationCity}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <MapPin size={11} />
+                              {formatDate(schedule.departureAt)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 mt-1">
+                            <span>{schedule.plannedSeats} sièges</span>
+                            <span>Statut : {schedule.status}</span>
+                            {schedule.pricePerSeat > 0 && (
+                              <span>{schedule.pricePerSeat.toLocaleString()} XOF / siège</span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {onLoadSchedules && (
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => onLoadSchedules?.(vehicle.id, 'upcoming')}
+                        disabled={!onLoadSchedules}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        {state?.loading ? 'Chargement…' : 'Voir à venir'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onLoadSchedules?.(vehicle.id, 'past')}
+                        disabled={!onLoadSchedules}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Historique
+                      </button>
+                    </div>
+                  )}
+                  {state?.error && (
+                    <p className="text-[11px] text-amber-600">{state.error}</p>
+                  )}
+                  {state && state.window === 'past' && state.items.length > 0 && (
+                    <p className="text-[11px] text-slate-500">
+                      Affichage des trajets passés (dernier chargement).
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

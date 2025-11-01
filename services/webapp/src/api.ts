@@ -205,6 +205,103 @@ export async function captureBookingPayment(payload: { bookingId: string; amount
   return data;
 }
 
+export async function fetchMyFleet(params?: {
+  search?: string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
+  limit?: number;
+  offset?: number;
+}) {
+  const { data } = await api.get<FleetListResponse>('/companies/me/vehicles', {
+    params,
+  });
+  return data;
+}
+
+export async function createFleetVehicle(payload: CreateFleetVehiclePayload) {
+  const { data } = await api.post<FleetVehicle>('/companies/me/vehicles', payload);
+  return data;
+}
+
+export async function updateFleetVehicle(vehicleId: string, payload: UpdateFleetVehiclePayload) {
+  const { data } = await api.patch<FleetVehicle>(`/companies/me/vehicles/${vehicleId}`, payload);
+  return data;
+}
+
+export async function archiveFleetVehicle(vehicleId: string) {
+  const { data } = await api.delete<FleetVehicle>(`/companies/me/vehicles/${vehicleId}`);
+  return data;
+}
+
+export async function listFleetSchedules(
+  vehicleId: string,
+  params?: { status?: FleetScheduleStatus | 'ALL'; window?: 'upcoming' | 'past' | 'all' },
+) {
+  const { data } = await api.get<{
+    data: FleetSchedule[];
+    total: number;
+    offset: number;
+    limit: number;
+    summary: { planned: number; completed: number; cancelled: number };
+  }>(`/companies/me/vehicles/${vehicleId}/schedules`, {
+    params,
+  });
+  return data;
+}
+
+export async function createFleetSchedule(vehicleId: string, payload: CreateFleetSchedulePayload) {
+  const { data } = await api.post<FleetSchedule>(
+    `/companies/me/vehicles/${vehicleId}/schedules`,
+    payload,
+  );
+  return data;
+}
+
+export async function updateFleetSchedule(
+  vehicleId: string,
+  scheduleId: string,
+  payload: UpdateFleetSchedulePayload,
+) {
+  const { data } = await api.patch<FleetSchedule>(
+    `/companies/me/vehicles/${vehicleId}/schedules/${scheduleId}`,
+    payload,
+  );
+  return data;
+}
+
+export async function cancelFleetSchedule(vehicleId: string, scheduleId: string) {
+  const { data } = await api.delete<FleetSchedule>(
+    `/companies/me/vehicles/${vehicleId}/schedules/${scheduleId}`,
+  );
+  return data;
+}
+
+export async function adminFetchCompanyFleet(
+  companyId: string,
+  params?: { search?: string; status?: 'ACTIVE' | 'INACTIVE' | 'ALL' },
+) {
+  const { data } = await api.get<FleetListResponse>(`/admin/companies/${companyId}/vehicles`, {
+    params,
+  });
+  return data;
+}
+
+export async function adminListCompanySchedules(
+  companyId: string,
+  vehicleId: string,
+  params?: { status?: FleetScheduleStatus | 'ALL'; window?: 'upcoming' | 'past' | 'all' },
+) {
+  const { data } = await api.get<{
+    data: FleetSchedule[];
+    total: number;
+    offset: number;
+    limit: number;
+    summary: { planned: number; completed: number; cancelled: number };
+  }>(`/admin/companies/${companyId}/vehicles/${vehicleId}/schedules`, {
+    params,
+  });
+  return data;
+}
+
 export type AccountType = 'INDIVIDUAL' | 'COMPANY';
 export type AccountRole = 'USER' | 'ADMIN';
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED';
@@ -305,6 +402,99 @@ export type BookingAdminSummary = {
   byStatus: Record<string, number>;
   amountTotal: number;
   seatsTotal: number;
+};
+
+export type FleetVehicleStatus = 'ACTIVE' | 'INACTIVE';
+export type FleetScheduleStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+export type FleetScheduleRecurrence = 'NONE' | 'DAILY' | 'WEEKLY';
+
+export type FleetSchedule = {
+  id: string;
+  companyId: string;
+  vehicleId: string;
+  originCity: string;
+  destinationCity: string;
+  departureAt: string;
+  arrivalEstimate?: string | null;
+  plannedSeats: number;
+  reservedSeats: number;
+  pricePerSeat: number;
+  recurrence: FleetScheduleRecurrence;
+  status: FleetScheduleStatus;
+  notes?: string | null;
+  metadata?: Record<string, any> | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FleetVehicle = {
+  id: string;
+  companyId: string;
+  label: string;
+  plateNumber: string;
+  category: string;
+  brand?: string | null;
+  model?: string | null;
+  seats: number;
+  year?: number | null;
+  status: FleetVehicleStatus;
+  amenities?: string[] | null;
+  specs?: Record<string, any> | null;
+  createdAt: string;
+  updatedAt: string;
+  metrics?: {
+    upcomingTrips: number;
+    nextDepartureAt?: string | null;
+  };
+  upcomingSchedules?: FleetSchedule[];
+};
+
+export type FleetSummary = {
+  active: number;
+  inactive: number;
+  fleetSeats: number;
+  upcomingTrips: number;
+};
+
+export type FleetListResponse = {
+  data: FleetVehicle[];
+  total: number;
+  offset: number;
+  limit: number;
+  summary: FleetSummary;
+};
+
+export type CreateFleetVehiclePayload = {
+  label: string;
+  plateNumber: string;
+  category: string;
+  seats: number;
+  brand?: string;
+  model?: string;
+  year?: number;
+  amenities?: string[];
+  specs?: Record<string, any>;
+};
+
+export type UpdateFleetVehiclePayload = Partial<CreateFleetVehiclePayload> & {
+  status?: FleetVehicleStatus;
+};
+
+export type CreateFleetSchedulePayload = {
+  originCity: string;
+  destinationCity: string;
+  departureAt: string;
+  arrivalEstimate?: string;
+  plannedSeats?: number;
+  pricePerSeat?: number;
+  recurrence?: FleetScheduleRecurrence;
+  notes?: string;
+  metadata?: Record<string, any>;
+};
+
+export type UpdateFleetSchedulePayload = Partial<CreateFleetSchedulePayload> & {
+  status?: FleetScheduleStatus;
+  reservedSeats?: number;
 };
 
 export type AdminActivityMetrics = {

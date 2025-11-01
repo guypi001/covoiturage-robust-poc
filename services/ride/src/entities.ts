@@ -1,11 +1,171 @@
-import { Entity, Column, PrimaryGeneratedColumn, Index, CreateDateColumn } from 'typeorm';
-@Entity('rides') export class Ride {
-  @PrimaryGeneratedColumn('uuid') id!: string;
-  @Column() driverId!: string; @Column() originCity!: string; @Column() destinationCity!: string;
-  @Column() departureAt!: string; @Column('int') seatsTotal!: number; @Column('int') seatsAvailable!: number;
-  @Column('int') pricePerSeat!: number; @Index() @Column({ default:'PUBLISHED' }) status!: string; @CreateDateColumn() createdAt!: Date;
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+
+export type RideStatus = 'PUBLISHED' | 'CLOSED';
+export type VehicleStatus = 'ACTIVE' | 'INACTIVE';
+export type ScheduleStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+export type ScheduleRecurrence = 'NONE' | 'DAILY' | 'WEEKLY';
+
+@Entity('rides')
+export class Ride {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column()
+  driverId!: string;
+
+  @Column()
+  originCity!: string;
+
+  @Column()
+  destinationCity!: string;
+
+  @Column()
+  departureAt!: string;
+
+  @Column('int')
+  seatsTotal!: number;
+
+  @Column('int')
+  seatsAvailable!: number;
+
+  @Column('int')
+  pricePerSeat!: number;
+
+  @Index()
+  @Column({ default: 'PUBLISHED' })
+  status!: RideStatus;
+
+  @CreateDateColumn()
+  createdAt!: Date;
 }
-@Entity('outbox') export class Outbox {
-  @PrimaryGeneratedColumn('uuid') id!: string; @Column() topic!: string; @Column('jsonb') payload!: any;
-  @Column({ default:false }) sent!: boolean; @CreateDateColumn() createdAt!: Date;
+
+@Entity('fleet_vehicles')
+export class FleetVehicle {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'company_id' })
+  companyId!: string;
+
+  @Column({ type: 'varchar', length: 160 })
+  label!: string;
+
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 32 })
+  plateNumber!: string;
+
+  @Column({ type: 'varchar', length: 32, default: 'MINIBUS' })
+  category!: string;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  brand?: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  model?: string | null;
+
+  @Column({ type: 'int' })
+  seats!: number;
+
+  @Column({ type: 'int', nullable: true })
+  year?: number | null;
+
+  @Column({ type: 'varchar', length: 32, default: 'ACTIVE' })
+  status!: VehicleStatus;
+
+  @Column({ type: 'text', array: true, nullable: true })
+  amenities?: string[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  specs?: Record<string, any> | null;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
+
+@Entity('vehicle_schedules')
+export class VehicleSchedule {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column()
+  companyId!: string;
+
+  @Index()
+  @Column({ name: 'vehicle_id' })
+  vehicleId!: string;
+
+  @ManyToOne(() => FleetVehicle, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'vehicle_id' })
+  vehicle!: FleetVehicle;
+
+  @Column({ type: 'varchar', length: 160 })
+  originCity!: string;
+
+  @Column({ type: 'varchar', length: 160 })
+  destinationCity!: string;
+
+  @Column({ type: 'timestamptz' })
+  departureAt!: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  arrivalEstimate?: Date | null;
+
+  @Column({ type: 'int' })
+  plannedSeats!: number;
+
+  @Column({ type: 'int', default: 0 })
+  reservedSeats!: number;
+
+  @Column({ type: 'int', default: 0 })
+  pricePerSeat!: number;
+
+  @Column({ type: 'varchar', length: 16, default: 'NONE' })
+  recurrence!: ScheduleRecurrence;
+
+  @Column({ type: 'varchar', length: 16, default: 'PLANNED' })
+  status!: ScheduleStatus;
+
+  @Column({ type: 'text', nullable: true })
+  notes?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata?: Record<string, any> | null;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
+
+@Entity('outbox')
+export class Outbox {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column()
+  topic!: string;
+
+  @Column('jsonb')
+  payload!: any;
+
+  @Column({ default: false })
+  sent!: boolean;
+
+  @CreateDateColumn()
+  createdAt!: Date;
 }

@@ -25,6 +25,7 @@ export const HOME_QUICK_ACTION_OPTIONS = [
   'view_bookings',
   'explore_offers',
   'profile_settings',
+  'manage_fleet',
 ] as const;
 
 export class HomeFavoriteRouteDto {

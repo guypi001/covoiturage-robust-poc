@@ -2,7 +2,7 @@ import { Injectable, NestMiddleware, Controller, Get, Res } from '@nestjs/common
 import { Response } from 'express';
 import * as client from 'prom-client';
 import { Repository } from 'typeorm';
-import { Ride } from './entities';
+import { FleetVehicle, Ride, VehicleSchedule } from './entities';
 
 const registry = client.register;
 client.collectDefaultMetrics({ register: registry });
@@ -54,6 +54,25 @@ export const rideLockLatencyHistogram = new client.Histogram({
   registers: [registry],
 });
 
+export const fleetVehicleGauge = new client.Gauge({
+  name: 'ride_fleet_vehicle_total',
+  help: 'Nombre de véhicules par statut',
+  labelNames: ['status'],
+  registers: [registry],
+});
+
+export const fleetSeatGauge = new client.Gauge({
+  name: 'ride_fleet_vehicle_seats_total',
+  help: 'Capacité totale de sièges sur les véhicules actifs',
+  registers: [registry],
+});
+
+export const fleetUpcomingGauge = new client.Gauge({
+  name: 'ride_fleet_upcoming_trips_total',
+  help: 'Voyages planifiés à venir pour l’ensemble des véhicules',
+  registers: [registry],
+});
+
 export async function refreshRideGauges(repository: Repository<Ride>) {
   const statusRows = await repository
     .createQueryBuilder('ride')
@@ -76,6 +95,39 @@ export async function refreshRideGauges(repository: Repository<Ride>) {
 
   rideSeatsTotalGauge.set(Number(totals?.totalSeats ?? 0));
   rideSeatsAvailableGauge.set(Number(totals?.availableSeats ?? 0));
+}
+
+export async function refreshFleetGauges(
+  vehicleRepository: Repository<FleetVehicle>,
+  scheduleRepository: Repository<VehicleSchedule>,
+) {
+  const statusRows = await vehicleRepository
+    .createQueryBuilder('vehicle')
+    .select('vehicle.status', 'status')
+    .addSelect('COUNT(*)', 'count')
+    .groupBy('vehicle.status')
+    .getRawMany<{ status: string; count: string }>();
+
+  fleetVehicleGauge.reset();
+  for (const status of ['ACTIVE', 'INACTIVE'] as const) {
+    const row = statusRows.find((item) => item.status === status);
+    fleetVehicleGauge.set({ status }, Number(row?.count ?? 0));
+  }
+
+  const seatsAggregate = await vehicleRepository
+    .createQueryBuilder('vehicle')
+    .select('COALESCE(SUM(vehicle.seats), 0)', 'totalSeats')
+    .where('vehicle.status = :status', { status: 'ACTIVE' })
+    .getRawOne<{ totalSeats: string }>();
+  fleetSeatGauge.set(Number(seatsAggregate?.totalSeats ?? 0));
+
+  const upcomingAggregate = await scheduleRepository
+    .createQueryBuilder('schedule')
+    .select('COUNT(*)', 'count')
+    .where('schedule.status = :status', { status: 'PLANNED' })
+    .andWhere('schedule.departureAt >= :now', { now: new Date() })
+    .getRawOne<{ count: string }>();
+  fleetUpcomingGauge.set(Number(upcomingAggregate?.count ?? 0));
 }
 
 @Injectable()

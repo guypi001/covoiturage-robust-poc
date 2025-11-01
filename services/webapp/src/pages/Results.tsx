@@ -3,10 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { searchRides } from '../api';
 import { useApp } from '../store';
 import RideCard from '../components/RideCard';
+import { HOME_THEME_STYLE } from '../constants/homePreferences';
 
 export function Results() {
   const nav = useNavigate();
   const { lastSearch, results, setResults, setLoading, loading, error, setError } = useApp();
+  const account = useApp((state) => state.account);
+  const theme = account?.homePreferences?.theme ?? 'default';
+  const themeStyle = HOME_THEME_STYLE[theme] ?? HOME_THEME_STYLE.default;
+  const chipsStyle = themeStyle.chips;
+  const baseTextClass = theme === 'night' ? 'text-slate-300' : 'text-slate-600';
 
   useEffect(() => {
     (async () => {
@@ -42,19 +48,19 @@ export function Results() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1">
+      <div className={`flex flex-wrap gap-2 text-xs ${baseTextClass}`}>
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
           {lastSearch.from} → {lastSearch.to}
         </span>
         {chips.map((chip) => (
           <span
             key={chip}
-            className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-700"
+            className={`inline-flex items-center rounded-full px-3 py-1 ${chipsStyle.accent}`}
           >
             {chip}
           </span>
         ))}
-        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1">
+        <span className={`inline-flex items-center rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
           {sortLabel}
         </span>
       </div>
