@@ -1,12 +1,94 @@
 import axios, { AxiosHeaders } from 'axios';
 import type { LocationMeta } from './types/location';
 
-const SEARCH_URL  = import.meta.env.VITE_SEARCH_URL  || 'http://localhost:3003';
-const BOOKING_URL = import.meta.env.VITE_BOOKING_URL || 'http://localhost:3004';
-const RIDE_URL    = import.meta.env.VITE_RIDE_URL    || 'http://localhost:3002';
-const PAYMENT_URL = import.meta.env.VITE_PAYMENT_URL || 'http://localhost:3000';
-const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL || 'http://localhost:3000';
-const MESSAGING_URL = import.meta.env.VITE_MESSAGING_URL || 'http://localhost:3012';
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
+const INTERNAL_HOSTNAMES = new Set([
+  'bff',
+  'identity',
+  'ride',
+  'booking',
+  'search',
+  'payment',
+  'wallet',
+  'payouts',
+  'notification',
+  'messaging',
+  'config',
+]);
+
+function isLocalHostname(value: string | undefined | null) {
+  if (!value) return false;
+  if (LOCAL_HOSTNAMES.has(value)) return true;
+  if (INTERNAL_HOSTNAMES.has(value)) return true;
+  if (value.startsWith('127.')) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(value)) return true; // 172.16.0.0/12
+  if (/^10\./.test(value)) return true; // 10.0.0.0/8
+  if (/^192\.168\./.test(value)) return true; // 192.168.0.0/16
+  return false;
+}
+
+function resolveServiceUrl(envValue: string | undefined, defaultPort: number, proxyPath?: string) {
+  const fallback = `http://localhost${defaultPort ? `:${defaultPort}` : ''}`;
+  const hasWindow = typeof window !== 'undefined' && typeof window.location !== 'undefined';
+  const windowHost = hasWindow ? window.location.hostname : undefined;
+  const windowOrigin = hasWindow ? `${window.location.protocol}//${window.location.host}` : undefined;
+  const preferProxy =
+    Boolean(proxyPath && windowOrigin && windowHost && !isLocalHostname(windowHost));
+
+  if (envValue) {
+    try {
+      const parsed = new URL(envValue);
+      const envHostIsLocal = isLocalHostname(parsed.hostname);
+      const effectivePort = parsed.port ? Number(parsed.port) : defaultPort;
+
+      if (preferProxy && envHostIsLocal) {
+        return `${windowOrigin}${proxyPath}`;
+      }
+
+      if (!envHostIsLocal) {
+        return envValue;
+      }
+
+      if (hasWindow && windowHost) {
+        const portSegment =
+          effectivePort && effectivePort !== 80 && effectivePort !== 443
+            ? `:${effectivePort}`
+            : '';
+        return `${window.location.protocol}//${windowHost}${portSegment}`;
+      }
+
+      return fallback;
+    } catch {
+      if (preferProxy) {
+        return `${windowOrigin}${proxyPath}`;
+      }
+      return envValue;
+    }
+  }
+
+  if (preferProxy) {
+    return `${windowOrigin}${proxyPath}`;
+  }
+
+  if (hasWindow && windowHost) {
+    const portSegment =
+      defaultPort && defaultPort !== 80 && defaultPort !== 443 ? `:${defaultPort}` : '';
+    return `${window.location.protocol}//${windowHost}${portSegment}`;
+  }
+
+  return fallback;
+}
+
+const SEARCH_URL = resolveServiceUrl(import.meta.env.VITE_SEARCH_URL, 3003, '/api/search');
+const BOOKING_URL = resolveServiceUrl(import.meta.env.VITE_BOOKING_URL, 3004, '/api/booking');
+const RIDE_URL = resolveServiceUrl(import.meta.env.VITE_RIDE_URL, 3002, '/api/ride');
+const PAYMENT_URL = resolveServiceUrl(import.meta.env.VITE_PAYMENT_URL, 3000, '/api/payment');
+const IDENTITY_URL = resolveServiceUrl(import.meta.env.VITE_IDENTITY_URL, 3000, '/api/identity');
+const MESSAGING_URL = resolveServiceUrl(
+  import.meta.env.VITE_MESSAGING_URL,
+  3012,
+  '/api/messaging',
+);
 
 const api = axios.create();
 
@@ -721,7 +803,7 @@ export type CreateRidePayload = {
 
 // --- Appel au service ride ---
 export async function createRide(payload: CreateRidePayload) {
-  const base = import.meta.env.VITE_RIDE_URL || 'http://localhost:3002';
+  const base = RIDE_URL;
   const res = await fetch(`${base}/rides`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

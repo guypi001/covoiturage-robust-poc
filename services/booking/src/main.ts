@@ -1,6 +1,7 @@
 // services/booking/src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './module';
+import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import * as client from 'prom-client';
 import { Request, Response } from 'express';
 
@@ -8,11 +9,13 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
 
   // CORS (IHM)
-  app.enableCors({
-    origin: ['http://localhost:3006', 'http://localhost:5173'],
-    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization'],
-  });
+  const corsOptions: CorsOptions = {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  };
+  app.enableCors(corsOptions);
 
   // ----- Prometheus: registre DÉDIÉ (évite le doublon) -----
   const register = new client.Registry();
