@@ -4,7 +4,9 @@ Microservices: **bff, identity, ride (outbox), search (idempotence + DLQ), booki
 
 ## Lancer
 ```bash
-docker compose up -d --build
+make up
+# Ou, sans make :
+docker compose up --build --detach
 # Console Redpanda: http://localhost:8082
 # Grafana: http://localhost:3007  (admin / admin)
 # Prometheus: http://localhost:9091

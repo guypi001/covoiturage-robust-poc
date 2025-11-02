@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useId } from 'react';
 import { BrandLogo } from './BrandLogo';
 
 type Props = {
@@ -10,26 +10,30 @@ type Props = {
 };
 
 export function AuthLayout({ title, subtitle, hero, footer, children }: Props) {
+  const headingId = useId();
+
   return (
-    <div className="auth-shell">
-      <div className="auth-panel">
-        <div className="auth-panel__content space-y-6">
-          <BrandLogo />
-
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-slate-900">{title}</h1>
-            {subtitle && <p className="text-sm text-slate-500">{subtitle}</p>}
-          </div>
-
-          <div className="space-y-6">{children}</div>
-
-          {footer && <div className="pt-2 text-xs text-slate-500">{footer}</div>}
-        </div>
-
+    <main className="auth-shell" role="main" aria-labelledby={headingId}>
+      <section className="auth-panel">
         <aside className="auth-panel__hero">
           {hero}
         </aside>
-      </div>
-    </div>
+
+        <div className="auth-panel__content">
+          <header className="auth-panel__header">
+            <BrandLogo />
+
+            <div className="auth-panel__heading" id={headingId}>
+              <h1>{title}</h1>
+              {subtitle && <p>{subtitle}</p>}
+            </div>
+          </header>
+
+          <section className="auth-panel__body">{children}</section>
+
+          {footer && <footer className="auth-panel__footer">{footer}</footer>}
+        </div>
+      </section>
+    </main>
   );
 }

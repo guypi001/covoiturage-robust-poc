@@ -220,7 +220,7 @@ export default function Home() {
 
   return (
     <div className="min-h-[calc(100vh-56px)]">
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden section-block pb-10">
         <div className={`absolute inset-0 -z-20 bg-gradient-to-br ${themeStyle.gradient}`} />
         {themeStyle.pattern && (
           <div className={`absolute inset-0 -z-10 opacity-80 ${themeStyle.pattern}`} />
@@ -228,9 +228,9 @@ export default function Home() {
         <div className="absolute inset-y-0 right-0 -z-10 hidden lg:block">
           <div className={`h-full w-72 translate-x-24 rounded-full blur-3xl ${themeStyle.glow}`} />
         </div>
-        <div className="container-wide py-12 md:py-16">
+        <div className="container-wide">
           <div className="grid gap-10 lg:grid-cols-[minmax(0,0.95fr),minmax(0,1fr)] items-start">
-            <div className="space-y-6">
+            <div className="space-y-6 md:space-y-8">
               <span
                 className={`inline-flex items-center gap-2 rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-wide ${heroTokens.badge}`}
               >
@@ -290,12 +290,12 @@ export default function Home() {
                 searchTheme={themeStyle.search}
               />
               {quickActionItems.length > 0 && (
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                <div className="mt-4 scroll-chips text-xs sm:flex sm:flex-wrap sm:items-center sm:gap-2">
                   {quickActionItems.map((action) => (
                     <Link
                       key={action.id}
                       to={action.to}
-                      className={`inline-flex items-center gap-2 rounded-full px-3 py-2 transition ${quickTokens.active}`}
+                      className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 transition ${quickTokens.active}`}
                     >
                       <Wand2 size={14} className={heroTokens.iconColor} />
                       {action.label}
@@ -303,15 +303,15 @@ export default function Home() {
                   ))}
                 </div>
               )}
-              <div className={`mt-4 flex flex-wrap items-center gap-3 text-xs ${baseTextClass}`}>
+              <div className={`mt-4 scroll-chips text-xs ${baseTextClass} sm:flex sm:flex-wrap sm:items-center sm:gap-3`}>
                 <span
-                  className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.accent}`}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.accent}`}
                 >
                   <ShieldCheck size={14} className={heroTokens.iconColor} />
                   Historique et préférences sauvegardés
                 </span>
                 <span
-                  className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.neutral}`}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.neutral}`}
                 >
                   <GmailLogo className="h-4 w-4" />
                   Connexion Gmail supportée
@@ -322,8 +322,9 @@ export default function Home() {
         </div>
       </section>
       {favoriteRoutes.length > 0 && (
-        <section className="container-wide mt-4">
-          <div className={`rounded-2xl px-4 py-5 ${surfaceClass}`}>
+        <section className="section-block--compact pt-0">
+          <div className="container-wide">
+            <div className={`rounded-2xl px-4 py-5 ${surfaceClass}`}>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
                 <Star size={18} className={heroTokens.iconColor} />
@@ -335,73 +336,76 @@ export default function Home() {
                 Préremplis instantanément ta recherche avec les itinéraires que tu utilises souvent.
               </p>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 scroll-chips text-sm sm:flex sm:flex-wrap sm:gap-2">
               {favoriteRoutes.map((route, index) => (
                 <button
                   key={`${route.from}-${route.to}-${index}`}
                   type="button"
                   onClick={() => prefillFavoriteRoute(route)}
-                  className={`rounded-xl px-4 py-2 text-sm transition ${quickTokens.inactive}`}
+                  className={`shrink-0 rounded-xl px-4 py-2 transition ${quickTokens.inactive}`}
                 >
                   {route.from} → {route.to}
                 </button>
               ))}
             </div>
           </div>
+          </div>
         </section>
       )}
 
-      <section className="container-wide pb-14 space-y-6">
-        {/* Erreur */}
-        {error && (
-          <div className={errorAlertClass}>{error}</div>
-        )}
+      <section className="section-block--compact pt-0 pb-14">
+        <div className="container-wide stack-md">
+          {/* Erreur */}
+          {error && (
+            <div className={errorAlertClass}>{error}</div>
+          )}
 
-        {/* Résumé de recherche */}
-        {lastSearch && !loading && (
-          <div className={`text-sm ${baseTextClass}`}>
-            <span className={`font-semibold ${primaryTextClass}`}>{results.length}</span> résultat(s)
-            &nbsp;pour <span className={`font-semibold ${primaryTextClass}`}>{displayLastFrom}</span> →{' '}
-            <span className={`font-semibold ${primaryTextClass}`}>{displayLastTo}</span>
-            {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
-            {lastSearch.seats ? ` • ${lastSearch.seats} siège(s)` : ''}
-          </div>
-        )}
+          {/* Résumé de recherche */}
+          {lastSearch && !loading && (
+            <div className={`text-sm ${baseTextClass}`}>
+              <span className={`font-semibold ${primaryTextClass}`}>{results.length}</span> résultat(s)
+              &nbsp;pour <span className={`font-semibold ${primaryTextClass}`}>{displayLastFrom}</span> →{' '}
+              <span className={`font-semibold ${primaryTextClass}`}>{displayLastTo}</span>
+              {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
+              {lastSearch.seats ? ` • ${lastSearch.seats} siège(s)` : ''}
+            </div>
+          )}
 
-        {/* Chargement */}
-        {loading && (
-          <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
-        )}
+          {/* Chargement */}
+          {loading && (
+            <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
+          )}
 
-        {/* Résultats */}
-        {!loading && results.length > 0 && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {results.map(r => (
-              <RideCard
-                key={r.rideId}
-                {...r}
-                onBook={() => nav(`/booking/${r.rideId}`)}
-                onDetails={() => nav(`/ride/${r.rideId}`)}
-              />
-            ))}
-          </div>
-        )}
+          {/* Résultats */}
+          {!loading && results.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {results.map(r => (
+                <RideCard
+                  key={r.rideId}
+                  {...r}
+                  onBook={() => nav(`/booking/${r.rideId}`)}
+                  onDetails={() => nav(`/ride/${r.rideId}`)}
+                />
+              ))}
+            </div>
+          )}
 
-        {/* Aucun résultat */}
-        {!loading && !error && results.length === 0 && lastSearch && (
-          <div className={`${panelBaseClass} transition`}>
-            Aucun trajet trouvé. Essaie d’ajuster la date ou la ville.
-          </div>
-        )}
+          {/* Aucun résultat */}
+          {!loading && !error && results.length === 0 && lastSearch && (
+            <div className={`${panelBaseClass} transition`}>
+              Aucun trajet trouvé. Essaie d’ajuster la date ou la ville.
+            </div>
+          )}
 
-        {/* État initial (pas encore de recherche) */}
-        {!lastSearch && !loading && results.length === 0 && !error && (
-          <div className={`${panelBaseClass} transition`}>
-            Renseigne un <span className={`font-medium ${primaryTextClass}`}>départ</span>, une{' '}
-            <span className={`font-medium ${primaryTextClass}`}>arrivée</span> et une{' '}
-            <span className={`font-medium ${primaryTextClass}`}>date</span> pour voir les trajets disponibles.
-          </div>
-        )}
+          {/* État initial (pas encore de recherche) */}
+          {!lastSearch && !loading && results.length === 0 && !error && (
+            <div className={`${panelBaseClass} transition`}>
+              Renseigne un <span className={`font-medium ${primaryTextClass}`}>départ</span>, une{' '}
+              <span className={`font-medium ${primaryTextClass}`}>arrivée</span> et une{' '}
+              <span className={`font-medium ${primaryTextClass}`}>date</span> pour voir les trajets disponibles.
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

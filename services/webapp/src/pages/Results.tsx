@@ -47,34 +47,36 @@ export function Results() {
         : 'Tri : plus tôt';
 
   return (
-    <div className="space-y-4">
-      <div className={`flex flex-wrap gap-2 text-xs ${baseTextClass}`}>
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
-          {lastSearch.from} → {lastSearch.to}
-        </span>
-        {chips.map((chip) => (
-          <span
-            key={chip}
-            className={`inline-flex items-center rounded-full px-3 py-1 ${chipsStyle.accent}`}
-          >
-            {chip}
+    <section className="section-block--compact pt-6">
+      <div className="container-wide stack-md">
+        <div className={`scroll-chips text-xs ${baseTextClass} sm:flex sm:flex-wrap sm:items-center sm:gap-2`}>
+          <span className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
+            {lastSearch.from} → {lastSearch.to}
           </span>
-        ))}
-        <span className={`inline-flex items-center rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
-          {sortLabel}
-        </span>
-      </div>
+          {chips.map((chip) => (
+            <span
+              key={chip}
+              className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 ${chipsStyle.accent}`}
+            >
+              {chip}
+            </span>
+          ))}
+          <span className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
+            {sortLabel}
+          </span>
+        </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        {results.map((r) => (
-          <RideCard
-            key={r.rideId}
-            {...r}
-            onBook={() => nav(`/booking/${r.rideId}`)}
-            onDetails={() => nav(`/ride/${r.rideId}`)}
-          />
-        ))}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {results.map((r) => (
+            <RideCard
+              key={r.rideId}
+              {...r}
+              onBook={() => nav(`/booking/${r.rideId}`)}
+              onDetails={() => nav(`/ride/${r.rideId}`)}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

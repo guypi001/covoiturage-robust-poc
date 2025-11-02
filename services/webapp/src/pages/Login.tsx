@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { ShieldCheck, Sparkles, MailCheck, KeyRound, CircleAlert } from 'lucide-react';
+import { ShieldCheck, MailCheck, KeyRound, CircleAlert } from 'lucide-react';
 import { loginAccount, requestGmailOtp, verifyGmailOtp } from '../api';
 import { useApp } from '../store';
 import { AuthLayout } from '../components/AuthLayout';
@@ -93,7 +93,7 @@ export default function Login() {
       setOtpSending(true);
       await requestGmailOtp({ email: trimmed });
       setOtpStep('code');
-      setOtpMessage('Code envoyé ! Vérifie ta boîte Gmail (ou spam).');
+      setOtpMessage('Code envoyé. Vérifie Gmail ou tes spams.');
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Impossible d’envoyer le code.');
     } finally {
@@ -130,57 +130,38 @@ export default function Login() {
 
   const hero = useMemo(
     () => (
-      <div className="space-y-6">
+      <div className="space-y-6" aria-hidden="true">
         <span className="auth-panel__badge">
           <ShieldCheck size={16} />
-          Sécurité renforcée
+          Connexion sécurisée
         </span>
 
         <div className="space-y-2">
           <h2 className="text-3xl font-semibold tracking-tight leading-tight">
-            Rejoins KariGo en toute confiance
+            Connecte-toi en quelques secondes
           </h2>
           <p className="text-sm leading-relaxed text-white/85">
-            Accède instantanément à tes trajets sauvegardés, réservations passées et préférences de
-            confort. Deux méthodes simples pour te connecter, selon ton envie.
+            Choisis un mot de passe ou reçois un code Gmail pour accéder à KariGo.
           </p>
         </div>
 
         <ul className="auth-panel__list text-white/90">
           <li>
-            <span className="icon text-white" style={{ background: 'rgba(15,23,42,.2)' }}>
+            <span className="icon text-white" style={{ background: 'rgba(15,23,42,.18)' }}>
               <GmailLogo className="h-6 w-6" />
             </span>
             <div>
-              <p className="font-semibold">OTP Gmail</p>
-              <p className="text-sm text-white/80">
-                Recevoir un code à usage unique directement sur ton adresse Gmail pour une connexion
-                rapide et sécurisée.
-              </p>
+              <p className="font-semibold">Code Gmail express</p>
+              <p className="text-sm text-white/80">Un code à usage unique, sans mot de passe.</p>
             </div>
           </li>
           <li>
-            <span className="icon text-white" style={{ background: 'rgba(15,23,42,.2)' }}>
+            <span className="icon text-white" style={{ background: 'rgba(15,23,42,.18)' }}>
               <MailCheck size={18} />
             </span>
             <div>
-              <p className="font-semibold">Notifications fiables</p>
-              <p className="text-sm text-white/80">
-                Rappels de départ, suivi de réservation et confirmation envoyés dans une interface
-                familière.
-              </p>
-            </div>
-          </li>
-          <li>
-            <span className="icon text-white" style={{ background: 'rgba(15,23,42,.2)' }}>
-              <Sparkles size={18} />
-            </span>
-            <div>
-              <p className="font-semibold">Expérience fluide</p>
-              <p className="text-sm text-white/80">
-                Interface harmonisée entre nos applications web et mobile pour préparer chaque
-                trajet sans friction.
-              </p>
+              <p className="font-semibold">Alertes instantanées</p>
+              <p className="text-sm text-white/80">Notifications de réservation dès qu’elles arrivent.</p>
             </div>
           </li>
         </ul>
@@ -192,7 +173,7 @@ export default function Login() {
   return (
     <AuthLayout
       title="Connexion"
-      subtitle="Choisis entre connexion classique ou validation par Gmail + code à usage unique."
+      subtitle="Accède à ton interface conducteur ou passager."
       hero={hero}
       footer={
         <>
@@ -203,11 +184,15 @@ export default function Login() {
         </>
       }
     >
-      <div className="card highlight p-6 space-y-6">
-        <div className="flex flex-wrap items-center gap-2 bg-slate-100/80 p-1.5 rounded-2xl text-sm">
+      <div className="card highlight p-5 sm:p-6 lg:p-8 space-y-6 sm:space-y-7">
+        <div
+          className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 bg-slate-100/80 p-1.5 sm:p-2 rounded-2xl text-sm"
+          role="tablist"
+          aria-label="Modes de connexion"
+        >
           <button
             className={clsx(
-              'flex-1 basis-32 rounded-xl px-4 py-2 flex items-center justify-center gap-2 transition',
+              'w-full sm:flex-1 rounded-xl px-4 py-2 flex items-center justify-center gap-2 transition text-center',
               mode === 'password'
                 ? 'bg-white shadow-sm shadow-sky-100/60 text-slate-900'
                 : 'text-slate-500 hover:text-slate-700',
@@ -217,6 +202,10 @@ export default function Login() {
               setError(undefined);
             }}
             type="button"
+            role="tab"
+            aria-selected={mode === 'password'}
+            aria-controls="login-password-panel"
+            id="login-password-tab"
           >
             <KeyRound
               size={16}
@@ -226,7 +215,7 @@ export default function Login() {
           </button>
           <button
             className={clsx(
-              'flex-1 basis-32 rounded-xl px-4 py-2 flex items-center justify-center gap-2 transition',
+              'w-full sm:flex-1 rounded-xl px-4 py-2 flex items-center justify-center gap-2 transition text-center',
               mode === 'gmail'
                 ? 'bg-white shadow-sm shadow-sky-100/60 text-slate-900'
                 : 'text-slate-500 hover:text-slate-700',
@@ -236,14 +225,24 @@ export default function Login() {
               resetOtp();
             }}
             type="button"
+            role="tab"
+            aria-selected={mode === 'gmail'}
+            aria-controls="login-gmail-panel"
+            id="login-gmail-tab"
           >
             <GmailLogo className="h-5 w-5" />
-            <span className="font-medium">Gmail + OTP</span>
+            <span className="font-medium">Code Gmail</span>
           </button>
         </div>
 
         {mode === 'password' && (
-          <form onSubmit={submitPassword} className="space-y-5">
+          <form
+            onSubmit={submitPassword}
+            className="space-y-5 sm:space-y-6"
+            id="login-password-panel"
+            role="tabpanel"
+            aria-labelledby="login-password-tab"
+          >
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-600">Email</label>
               <input
@@ -268,7 +267,11 @@ export default function Login() {
             </div>
 
             {(error || authError) && (
-              <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-600">
+              <div
+                className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-600"
+                role="alert"
+                aria-live="polite"
+              >
                 <CircleAlert size={18} className="mt-0.5 shrink-0" />
                 <span>{error || authError}</span>
               </div>
@@ -285,17 +288,21 @@ export default function Login() {
         )}
 
         {mode === 'gmail' && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <div
+            className="space-y-5 sm:space-y-6"
+            id="login-gmail-panel"
+            role="tabpanel"
+            aria-labelledby="login-gmail-tab"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               <GmailLogo className="h-6 w-6 shrink-0" />
               <p>
-                Utilise ton adresse Gmail pour recevoir un code unique d’une durée de validité
-                limitée. Aucun mot de passe n’est requis.
+                Entre ton adresse Gmail pour recevoir un code unique valable quelques minutes.
               </p>
             </div>
 
             {otpStep === 'email' && (
-              <form className="space-y-4" onSubmit={sendOtp}>
+              <form className="space-y-4 sm:space-y-5" onSubmit={sendOtp}>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-600">Adresse Gmail</label>
                   <input
@@ -309,7 +316,11 @@ export default function Login() {
                 </div>
 
                 {(error || authError) && (
-                  <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-600">
+                  <div
+                    className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-600"
+                    role="alert"
+                    aria-live="polite"
+                  >
                     <CircleAlert size={18} className="mt-0.5 shrink-0" />
                     <span>{error || authError}</span>
                   </div>
@@ -326,7 +337,7 @@ export default function Login() {
             )}
 
             {otpStep === 'code' && (
-              <form className="space-y-4" onSubmit={verifyOtp}>
+              <form className="space-y-4 sm:space-y-5" onSubmit={verifyOtp}>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-600">
                     Code reçu sur {otpEmail}

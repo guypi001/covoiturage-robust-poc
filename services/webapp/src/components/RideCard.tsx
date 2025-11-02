@@ -39,15 +39,15 @@ export default function RideCard({
           </div>
         </div>
 
-        <div className="flex flex-col items-end md:items-center gap-3 md:gap-4">
-          <div className="text-right">
+        <div className="flex flex-col items-start md:items-center gap-3 md:gap-4">
+          <div className="text-left md:text-center">
             <div className="text-3xl font-extrabold tracking-tight text-slate-900 leading-none">
               {pricePerSeat.toLocaleString()}
             </div>
             <div className="text-xs text-slate-500 mt-1">XOF • par siège</div>
           </div>
           {(onDetails || onBook) && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {onDetails && (
                 <button
                   type="button"
@@ -60,7 +60,7 @@ export default function RideCard({
               {onBook && (
                 <button
                   type="button"
-                  className="btn-primary whitespace-nowrap"
+                  className="btn-primary whitespace-nowrap px-5 py-2"
                   onClick={onBook}
                 >
                   Réserver
