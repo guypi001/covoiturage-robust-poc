@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/main.ts"
+    "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "seed:demo": "node -e \"const fs=require('fs');const {execSync}=require('child_process');if(fs.existsSync('tsconfig.json')){execSync('npm run build',{stdio:'inherit'});}\" && node dist/scripts/bulk-generate.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

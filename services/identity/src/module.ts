@@ -14,6 +14,8 @@ import { OtpService } from './otp.service';
 import { MailerService } from './mailer.service';
 import { InternalGuard } from './internal.guard';
 import { AdminGuard } from './admin.guard';
+import { AdminToolsController } from './admin-tools.controller';
+import { AdminRideService } from './admin-rides.service';
 
 @Module({
   imports: [
@@ -29,8 +31,16 @@ import { AdminGuard } from './admin.guard';
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '1h' },
     }),
   ],
-  controllers: [AuthController, ProfileController, HealthController, MetricsController, InternalController, AdminAccountsController],
-  providers: [AuthService, JwtAuthGuard, OtpService, MailerService, InternalGuard, AdminGuard],
+  controllers: [
+    AuthController,
+    ProfileController,
+    HealthController,
+    MetricsController,
+    InternalController,
+    AdminAccountsController,
+    AdminToolsController,
+  ],
+  providers: [AuthService, JwtAuthGuard, OtpService, MailerService, InternalGuard, AdminGuard, AdminRideService],
 })
 export class AppModule {
   configure(c: MiddlewareConsumer) {

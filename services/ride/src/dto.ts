@@ -8,8 +8,8 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  Max,
   MaxLength,
+  Max,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -18,6 +18,11 @@ import type { ScheduleRecurrence, ScheduleStatus, VehicleStatus } from './entiti
 export class CreateRideDto {
   @IsString()
   driverId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  driverLabel?: string;
 
   @IsString()
   originCity!: string;
@@ -35,6 +40,41 @@ export class CreateRideDto {
   @IsInt()
   @Min(0)
   pricePerSeat!: number;
+}
+
+export class AdminUpdateRideDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  originCity?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  destinationCity?: string;
+
+  @IsOptional()
+  @IsDateString()
+  departureAt?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  seatsTotal?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  seatsAvailable?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  pricePerSeat?: number;
+
+  @IsOptional()
+  @IsIn(['PUBLISHED', 'CLOSED'] as const)
+  status?: 'PUBLISHED' | 'CLOSED';
 }
 
 export class CreateVehicleDto {

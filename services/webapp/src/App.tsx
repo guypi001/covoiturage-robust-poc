@@ -11,6 +11,7 @@ import Messages from './pages/Messages';
 import AdminAccounts from './pages/AdminAccounts';
 import CompanyFleet from './pages/CompanyFleet';
 import ProfileSettings from './pages/ProfileSettings';
+import MyTrips from './pages/MyTrips';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
 import { Menu, X, MessageCircle, LogOut } from 'lucide-react';
@@ -27,6 +28,20 @@ function ProtectedLayout() {
   const isAdmin = account?.role === 'ADMIN';
   const isCompany = account?.type === 'COMPANY';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const primaryLinks = useMemo(
+    () => [
+      { to: '/', label: 'Rechercher', current: location.pathname === '/' },
+      { to: '/my-trips', label: 'Mes trajets', current: location.pathname.startsWith('/my-trips') },
+      ...(isAdmin
+        ? [{ to: '/admin/accounts', label: 'Administration', current: location.pathname.startsWith('/admin') }]
+        : []),
+      ...(isCompany
+        ? [{ to: '/company/fleet', label: 'Ma flotte', current: location.pathname.startsWith('/company') }]
+        : []),
+    ],
+    [isAdmin, isCompany, location.pathname],
+  );
 
   useEffect(() => {
     refreshMessageBadge();
@@ -55,19 +70,6 @@ function ProtectedLayout() {
     'Utilisateur';
   const avatarUrl = account?.profilePhotoUrl?.trim();
   const displayInitial = displayName?.charAt(0)?.toUpperCase() ?? 'U';
-
-  const primaryLinks = useMemo(
-    () => [
-      { to: '/', label: 'Rechercher', current: location.pathname === '/' },
-      ...(isAdmin
-        ? [{ to: '/admin/accounts', label: 'Administration', current: location.pathname.startsWith('/admin') }]
-        : []),
-      ...(isCompany
-        ? [{ to: '/company/fleet', label: 'Ma flotte', current: location.pathname.startsWith('/company') }]
-        : []),
-    ],
-    [isAdmin, isCompany, location.pathname],
-  );
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -254,6 +256,7 @@ export default function App() {
           <Route path="/profile" element={<ProfileSettings />} />
           <Route path="/company/fleet" element={<CompanyFleet />} />
           <Route path="/admin/accounts" element={<AdminAccounts />} />
+          <Route path="/my-trips" element={<MyTrips />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

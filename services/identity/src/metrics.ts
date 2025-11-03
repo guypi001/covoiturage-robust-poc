@@ -54,6 +54,13 @@ export const otpValidationCounter = new client.Counter({
   registers: [registry],
 });
 
+export const adminRideDigestCounter = new client.Counter({
+  name: 'identity_admin_ride_digest_total',
+  help: 'Diffusions de trajets par les administrateurs',
+  labelNames: ['result'],
+  registers: [registry],
+});
+
 @Injectable()
 export class MetricsMiddleware implements NestMiddleware {
   private histogram = new client.Histogram({

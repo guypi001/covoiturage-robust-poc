@@ -1,7 +1,7 @@
 // src/pages/Home.tsx
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, ShieldCheck, Clock, Star, Wand2 } from 'lucide-react';
+import { Sparkles, ShieldCheck, Clock, Star, Wand2, ArrowRight } from 'lucide-react';
 import SearchBar, { SearchPatch } from '../components/SearchBar';
 import RideCard from '../components/RideCard';
 import { useApp } from '../store';
@@ -52,19 +52,20 @@ export default function Home() {
   const heroTokens = themeStyle.hero;
   const chipsStyle = themeStyle.chips;
   const quickTokens = themeStyle.quickActions;
+  const nightMode = theme === 'night';
   const surfaceClass = themeStyle.surface;
-  const baseTextClass = theme === 'night' ? 'text-slate-300' : 'text-slate-600';
-  const primaryTextClass = theme === 'night' ? 'text-white' : 'text-slate-900';
+  const baseTextClass = nightMode ? 'text-slate-300' : 'text-slate-600';
+  const primaryTextClass = nightMode ? 'text-white' : 'text-slate-900';
   const panelBaseClass =
-    theme === 'night'
+    nightMode
       ? 'rounded-xl border border-slate-800 bg-slate-900/70 backdrop-blur px-4 py-4 text-slate-200'
       : 'rounded-xl border border-slate-200 bg-white px-4 py-4 text-slate-600 shadow-sm';
   const panelMutedClass =
-    theme === 'night'
+    nightMode
       ? 'rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur px-4 py-4 text-slate-300'
       : 'rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-600';
   const errorAlertClass =
-    theme === 'night'
+    nightMode
       ? 'rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-3 text-red-200 shadow-lg shadow-red-900/30'
       : 'rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700';
   const heroMessage = homePreferences?.heroMessage?.trim() ||
@@ -77,6 +78,13 @@ export default function Home() {
       quickActions.includes(option.id) &&
       (option.id !== 'manage_fleet' || account?.type === 'COMPANY'),
   );
+
+  const insightCardBase = nightMode
+    ? 'border-slate-800 bg-slate-900/60 text-slate-100 shadow-black/20'
+    : 'border-white/60 bg-white/80 text-slate-900 shadow-sky-100/50 backdrop-blur';
+  const insightLabelClass = nightMode ? 'text-slate-400' : 'text-slate-500';
+  const insightValueClass = nightMode ? 'text-white' : 'text-slate-900';
+  const insightHintClass = nightMode ? 'text-slate-400' : 'text-slate-500';
 
   const heroHighlights = [
     {
@@ -204,6 +212,37 @@ export default function Home() {
 
   const displayLastFrom = lastSearch?.fromMeta?.label ?? lastSearch?.from ?? '';
   const displayLastTo = lastSearch?.toMeta?.label ?? lastSearch?.to ?? '';
+  const totalResults = results.length;
+  const lastSearchDateLabel = lastSearch?.date
+    ? new Date(lastSearch.date).toLocaleDateString('fr-FR', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      })
+    : 'Flexible';
+
+  const usageInsights = [
+    {
+      label: 'Dernière recherche',
+      value: lastSearch ? `${displayLastFrom || '—'} → ${displayLastTo || '—'}` : 'Pas encore lancée',
+      hint: lastSearch ? `Le ${lastSearchDateLabel}` : 'Renseigne ton trajet pour suivre les disponibilités',
+    },
+    {
+      label: 'Trajets trouvés',
+      value: totalResults.toString().padStart(2, '0'),
+      hint: totalResults > 0 ? 'Résultats mis à jour en temps réel' : 'Publie un trajet ou ajuste les filtres',
+    },
+    {
+      label: 'Places souhaitées',
+      value: lastSearch?.seats ? `${lastSearch.seats} siège(s)` : 'Non précisé',
+      hint: lastSearch?.seats ? 'Tu peux augmenter pour un groupe' : 'Choisis le nombre de passagers',
+    },
+    {
+      label: 'Budget par siège',
+      value: lastSearch?.priceMax ? `${lastSearch.priceMax.toLocaleString('fr-FR')} XOF` : 'Illimité',
+      hint: lastSearch?.priceMax ? 'Filtré sur un plafond personnalisé' : 'Aucun plafond défini',
+    },
+  ];
 
   const prefillFavoriteRoute = (route: FavoriteRoute) => {
     setForm((prev) => ({
@@ -219,8 +258,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)]">
-      <section className="relative overflow-hidden section-block pb-10">
+    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-slate-950/5 via-white to-white">
+      <section className="relative isolate overflow-hidden section-block pb-6">
         <div className={`absolute inset-0 -z-20 bg-gradient-to-br ${themeStyle.gradient}`} />
         {themeStyle.pattern && (
           <div className={`absolute inset-0 -z-10 opacity-80 ${themeStyle.pattern}`} />
@@ -240,9 +279,9 @@ export default function Home() {
               <h1 className={`text-3xl md:text-4xl font-bold leading-tight ${heroTokens.title}`}>
                 {heroMessage}
               </h1>
-              <p className={`text-base max-w-xl ${heroTokens.text}`}>
-                Coordonne tes trajets, retrouve ton historique et partage tes préférences de confort
-                avec une interface cohérente entre web et mobile.
+              <p className={`text-base max-w-2xl ${heroTokens.text}`}>
+                Coordonne tes trajets, retrouve ton historique, visualise tes réservations et publie en
+                deux minutes sur une interface pensée pour les trajets longue distance en Côte d’Ivoire.
               </p>
               {showTips && (
                 <ul className="grid gap-3 sm:grid-cols-3 text-sm">
@@ -268,143 +307,199 @@ export default function Home() {
                   ))}
                 </ul>
               )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {usageInsights.map((insight) => (
+                  <div
+                    key={insight.label}
+                    className={`rounded-2xl px-4 py-3 ${insightCardBase}`}
+                  >
+                    <p className={`text-[11px] uppercase tracking-wide ${insightLabelClass}`}>
+                      {insight.label}
+                    </p>
+                    <p className={`text-lg font-semibold ${insightValueClass}`}>{insight.value}</p>
+                    <p className={`text-xs ${insightHintClass}`}>{insight.hint}</p>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="relative lg:pl-6">
-              <SearchBar
-                from={form.from}
-                fromLabel={form.fromLabel}
-                fromMeta={form.fromMeta}
-                to={form.to}
-                toLabel={form.toLabel}
-                toMeta={form.toMeta}
-                date={form.date}
-                seats={form.seats}
-                priceMax={form.priceMax}
-                departureAfter={form.departureAfter}
-                departureBefore={form.departureBefore}
-                sort={form.sort}
-                loading={loading}
-                onChange={onChange}
-                onSubmit={onSubmit}
-                theme={theme}
-                searchTheme={themeStyle.search}
-              />
-              {quickActionItems.length > 0 && (
-                <div className="mt-4 scroll-chips text-xs sm:flex sm:flex-wrap sm:items-center sm:gap-2">
-                  {quickActionItems.map((action) => (
-                    <Link
-                      key={action.id}
-                      to={action.to}
-                      className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 transition ${quickTokens.active}`}
-                    >
-                      <Wand2 size={14} className={heroTokens.iconColor} />
-                      {action.label}
-                    </Link>
-                  ))}
+              <div className="rounded-3xl border border-white/30 bg-white/90 shadow-2xl shadow-sky-200/40 backdrop-blur-lg p-4 sm:p-6">
+                <SearchBar
+                  from={form.from}
+                  fromLabel={form.fromLabel}
+                  fromMeta={form.fromMeta}
+                  to={form.to}
+                  toLabel={form.toLabel}
+                  toMeta={form.toMeta}
+                  date={form.date}
+                  seats={form.seats}
+                  priceMax={form.priceMax}
+                  departureAfter={form.departureAfter}
+                  departureBefore={form.departureBefore}
+                  sort={form.sort}
+                  loading={loading}
+                  onChange={onChange}
+                  onSubmit={onSubmit}
+                  theme={theme}
+                  searchTheme={themeStyle.search}
+                />
+
+                {quickActionItems.length > 0 && (
+                  <div className="mt-5 flex flex-wrap gap-2 text-xs">
+                    {quickActionItems.map((action) => (
+                      <Link
+                        key={action.id}
+                        to={action.to}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 transition ${quickTokens.active}`}
+                      >
+                        <Wand2 size={14} className={heroTokens.iconColor} />
+                        {action.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
+                <div className={`mt-4 flex flex-wrap gap-2 text-xs ${baseTextClass}`}>
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.accent}`}
+                  >
+                    <ShieldCheck size={14} className={heroTokens.iconColor} />
+                    Historique et préférences sauvegardés
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.neutral}`}
+                  >
+                    <GmailLogo className="h-4 w-4" />
+                    Connexion Gmail supportée
+                  </span>
+                  <Link
+                    to="/my-trips"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-slate-600 hover:text-sky-600"
+                  >
+                    Accéder à mes réservations
+                  </Link>
                 </div>
-              )}
-              <div className={`mt-4 scroll-chips text-xs ${baseTextClass} sm:flex sm:flex-wrap sm:items-center sm:gap-3`}>
-                <span
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.accent}`}
-                >
-                  <ShieldCheck size={14} className={heroTokens.iconColor} />
-                  Historique et préférences sauvegardés
-                </span>
-                <span
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.neutral}`}
-                >
-                  <GmailLogo className="h-4 w-4" />
-                  Connexion Gmail supportée
-                </span>
               </div>
             </div>
           </div>
         </div>
       </section>
-      {favoriteRoutes.length > 0 && (
-        <section className="section-block--compact pt-0">
-          <div className="container-wide">
-            <div className={`rounded-2xl px-4 py-5 ${surfaceClass}`}>
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-2">
-                <Star size={18} className={heroTokens.iconColor} />
-                <h2 className={`text-sm font-semibold uppercase tracking-wide ${heroTokens.sectionTitle}`}>
-                  Trajets favoris
-                </h2>
+
+      <section className="section-block--compact pt-0 pb-12">
+        <div className="container-wide grid gap-8 lg:grid-cols-[minmax(0,1fr),320px]">
+          <div className="space-y-5">
+            {error && <div className={errorAlertClass}>{error}</div>}
+
+            {lastSearch && !loading && (
+              <div className={`flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm ${baseTextClass}`}>
+                <span className={`font-semibold ${primaryTextClass}`}>
+                  {totalResults} trajet(s)
+                </span>
+                <span>
+                  {displayLastFrom} → {displayLastTo}
+                </span>
+                {lastSearch.date && <span>• {new Date(lastSearch.date).toLocaleDateString()}</span>}
+                {lastSearch.seats && <span>• {lastSearch.seats} siège(s)</span>}
               </div>
-              <p className={`text-xs ${heroTokens.cardText}`}>
-                Préremplis instantanément ta recherche avec les itinéraires que tu utilises souvent.
+            )}
+
+            {loading && (
+              <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
+            )}
+
+            {!loading && totalResults > 0 && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {results.map((ride) => (
+                  <RideCard
+                    key={ride.rideId}
+                    {...ride}
+                    onBook={() => nav(`/booking/${ride.rideId}`)}
+                    onDetails={() => nav(`/ride/${ride.rideId}`)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!loading && !error && totalResults === 0 && lastSearch && (
+              <div className={`${panelBaseClass} transition`}>
+                Aucun trajet ne correspond encore à cette recherche. Essaie d’ajuster l’horaire ou
+                publie ton propre trajet pour informer la communauté.
+              </div>
+            )}
+
+            {!lastSearch && !loading && totalResults === 0 && !error && (
+              <div className={`${panelBaseClass} transition`}>
+                Renseigne un <span className={`font-medium ${primaryTextClass}`}>départ</span>, une{' '}
+                <span className={`font-medium ${primaryTextClass}`}>arrivée</span> et une{' '}
+                <span className={`font-medium ${primaryTextClass}`}>date</span> pour voir les trajets disponibles.
+              </div>
+            )}
+          </div>
+
+          <aside className="space-y-4">
+            <div className={`rounded-2xl px-4 py-5 ${surfaceClass}`}>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <Star size={18} className={heroTokens.iconColor} />
+                  <h2 className={`text-sm font-semibold uppercase tracking-wide ${heroTokens.sectionTitle}`}>
+                    Trajets favoris
+                  </h2>
+                </div>
+                <p className={`text-xs ${heroTokens.cardText}`}>
+                  Préremplis la recherche avec tes itinéraires fréquents.
+                </p>
+              </div>
+              <div className="mt-3 scroll-chips text-sm sm:flex sm:flex-wrap sm:gap-2">
+                {favoriteRoutes.length > 0 ? (
+                  favoriteRoutes.map((route, index) => (
+                    <button
+                      key={`${route.from}-${route.to}-${index}`}
+                      type="button"
+                      onClick={() => prefillFavoriteRoute(route)}
+                      className={`shrink-0 rounded-xl px-4 py-2 transition ${quickTokens.inactive}`}
+                    >
+                      {route.from} → {route.to}
+                    </button>
+                  ))
+                ) : (
+                  <p className={`text-xs ${heroTokens.cardText}`}>
+                    Ajoute des favoris depuis tes préférences pour les retrouver ici.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Besoin de publier ?
               </p>
+              <p className="mt-1 text-sm text-slate-600">
+                Utilise la page dédiée pour créer un trajet en masse, ajuster tes places et
+                prévenir les passagers.
+              </p>
+              <Link to="/create" className="mt-4 inline-flex items-center gap-2 text-sm text-sky-600">
+                Publier un trajet
+                <ArrowRight size={14} />
+              </Link>
             </div>
-            <div className="mt-3 scroll-chips text-sm sm:flex sm:flex-wrap sm:gap-2">
-              {favoriteRoutes.map((route, index) => (
-                <button
-                  key={`${route.from}-${route.to}-${index}`}
-                  type="button"
-                  onClick={() => prefillFavoriteRoute(route)}
-                  className={`shrink-0 rounded-xl px-4 py-2 transition ${quickTokens.inactive}`}
-                >
-                  {route.from} → {route.to}
-                </button>
-              ))}
+
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 px-4 py-5 text-white shadow-lg">
+              <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
+                Nouveauté
+              </p>
+              <p className="mt-2 text-sm text-white/90">
+                Consulter tes réservations confirmées, passées et à venir depuis un espace dédié.
+              </p>
+              <Link
+                to="/my-trips"
+                className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                Ouvrir "Mes trajets"
+                <ArrowRight size={14} />
+              </Link>
             </div>
-          </div>
-          </div>
-        </section>
-      )}
-
-      <section className="section-block--compact pt-0 pb-14">
-        <div className="container-wide stack-md">
-          {/* Erreur */}
-          {error && (
-            <div className={errorAlertClass}>{error}</div>
-          )}
-
-          {/* Résumé de recherche */}
-          {lastSearch && !loading && (
-            <div className={`text-sm ${baseTextClass}`}>
-              <span className={`font-semibold ${primaryTextClass}`}>{results.length}</span> résultat(s)
-              &nbsp;pour <span className={`font-semibold ${primaryTextClass}`}>{displayLastFrom}</span> →{' '}
-              <span className={`font-semibold ${primaryTextClass}`}>{displayLastTo}</span>
-              {lastSearch.date ? ` • ${new Date(lastSearch.date).toLocaleDateString()}` : ''}
-              {lastSearch.seats ? ` • ${lastSearch.seats} siège(s)` : ''}
-            </div>
-          )}
-
-          {/* Chargement */}
-          {loading && (
-            <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
-          )}
-
-          {/* Résultats */}
-          {!loading && results.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {results.map(r => (
-                <RideCard
-                  key={r.rideId}
-                  {...r}
-                  onBook={() => nav(`/booking/${r.rideId}`)}
-                  onDetails={() => nav(`/ride/${r.rideId}`)}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Aucun résultat */}
-          {!loading && !error && results.length === 0 && lastSearch && (
-            <div className={`${panelBaseClass} transition`}>
-              Aucun trajet trouvé. Essaie d’ajuster la date ou la ville.
-            </div>
-          )}
-
-          {/* État initial (pas encore de recherche) */}
-          {!lastSearch && !loading && results.length === 0 && !error && (
-            <div className={`${panelBaseClass} transition`}>
-              Renseigne un <span className={`font-medium ${primaryTextClass}`}>départ</span>, une{' '}
-              <span className={`font-medium ${primaryTextClass}`}>arrivée</span> et une{' '}
-              <span className={`font-medium ${primaryTextClass}`}>date</span> pour voir les trajets disponibles.
-            </div>
-          )}
+          </aside>
         </div>
       </section>
     </div>

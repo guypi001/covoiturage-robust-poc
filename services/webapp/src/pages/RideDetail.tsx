@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 import { useApp } from '../store';
 import { getRide, getPublicProfile, sendChatMessage, type Ride, type Account } from '../api';
 
@@ -104,6 +105,16 @@ export function RideDetail() {
   const departure = useMemo(() => new Date(ride.departureAt).toLocaleString(), [ride.departureAt]);
   const canMessage = Boolean(driver && currentAccount?.id && driver.id !== currentAccount.id && token);
 
+  const ridePrefill = useMemo(() => {
+    if (!ride) return null;
+    return {
+      rideId: ride.rideId,
+      originCity: ride.originCity,
+      destinationCity: ride.destinationCity,
+      departureAt: ride.departureAt,
+    };
+  }, [ride]);
+
   const goToMessages = () => {
     if (!driver || !canMessage) return;
     nav('/messages', {
@@ -114,6 +125,7 @@ export function RideDetail() {
           label: driver.fullName ?? driver.companyName ?? driver.email ?? 'Chauffeur',
           email: driver.email,
         },
+        rideContext: ridePrefill ?? undefined,
       },
     });
   };
@@ -147,6 +159,7 @@ export function RideDetail() {
             label: driver.fullName ?? driver.companyName ?? driver.email ?? 'Chauffeur',
             email: driver.email,
           },
+          rideContext: ridePrefill ?? undefined,
         },
       });
     } catch (e: any) {
@@ -192,15 +205,39 @@ export function RideDetail() {
           </div>
         )}
 
-        {driver && driver.type === 'INDIVIDUAL' && (
-          <div className="rounded-2xl border border-white/15 bg-white/5 p-4 text-sm text-white/80 space-y-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-white/60">Chauffeur particulier</p>
-              <p className="text-lg font-semibold text-white">{driver.fullName}</p>
-              {driver.tagline && <p className="text-white/70 text-sm">{driver.tagline}</p>}
+        {driver && (
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-5 text-white/80 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-white/60">
+                  {driver.type === 'COMPANY' ? 'Conducteur professionnel' : 'Chauffeur particulier'}
+                </p>
+                <p className="text-lg font-semibold text-white">
+                  {driver.fullName ?? driver.companyName ?? driver.email}
+                </p>
+                {driver.tagline && <p className="text-white/70 text-sm">{driver.tagline}</p>}
+              </div>
+              {canMessage && (
+                <button
+                  onClick={goToMessages}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/40 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                >
+                  Ouvrir la messagerie
+                  <ArrowRight size={14} />
+                </button>
+              )}
             </div>
-            <div className="text-xs text-white/60">
-              Contact&nbsp;: <span className="text-white">{driver.email}</span>
+            <div className="text-xs text-white/70 flex flex-wrap gap-3">
+              {driver.email && (
+                <span>
+                  Email&nbsp;: <span className="text-white">{driver.email}</span>
+                </span>
+              )}
+              {driver.contactPhone && (
+                <span>
+                  Tél.&nbsp;: <span className="text-white">{driver.contactPhone}</span>
+                </span>
+              )}
             </div>
             {driver.comfortPreferences && driver.comfortPreferences.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -215,33 +252,23 @@ export function RideDetail() {
               </div>
             )}
             {canMessage && (
-              <button
-                onClick={goToMessages}
-                className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/30 px-4 py-2 text-sm text-white hover:bg-white/10"
-              >
-                Envoyer un message
-              </button>
-            )}
-            {canMessage && (
               <div className="mt-3 space-y-2">
-                <p className="text-xs uppercase tracking-wide text-white/60">Écrire depuis cette page</p>
+                <p className="text-xs uppercase tracking-wide text-white/60">
+                  Ou envoie un premier message tout de suite
+                </p>
                 <textarea
-                  className="input w-full text-sm min-h-[80px] bg-white/10 text-white placeholder:text-white/50"
-                  placeholder="Pose une question sur le trajet…"
+                  className="input w-full text-sm min-h-[88px] bg-white/10 text-white placeholder:text-white/50"
+                  placeholder={`Bonjour ${driver.fullName ?? driver.companyName ?? ''}, je suis intéressé par ce trajet...`}
                   value={messageDraft}
                   onChange={(e) => setMessageDraft(e.currentTarget.value)}
                 />
-                {messageError && (
-                  <div className="text-xs text-red-200">
-                    {messageError}
-                  </div>
-                )}
+                {messageError && <div className="text-xs text-red-200">{messageError}</div>}
                 <button
                   onClick={handleSendMessage}
                   disabled={messageSending}
                   className="btn-primary h-10 px-4 text-sm font-semibold disabled:opacity-60"
                 >
-                  {messageSending ? 'Envoi…' : 'Envoyer et ouvrir la conversation'}
+                  {messageSending ? 'Envoi…' : 'Envoyer et migrer vers la messagerie'}
                 </button>
               </div>
             )}

@@ -142,6 +142,7 @@ export type Ride = {
   originCity: string;
   destinationCity: string;
   departureAt: string;
+  driverLabel?: string | null;
   pricePerSeat: number;
   seatsTotal: number;
   seatsAvailable: number;
@@ -452,6 +453,7 @@ export type HomePreferencesPayload = {
 export type RideAdminItem = {
   id: string;
   driverId: string;
+  driverLabel?: string | null;
   originCity: string;
   destinationCity: string;
   departureAt: string;
@@ -467,6 +469,52 @@ export type RideAdminSummary = {
   published: number;
   seatsBooked: number;
   seatsTotal: number;
+  averagePrice?: number;
+  occupancyRate?: number;
+  byStatus?: Record<string, number>;
+  topRoutes?: Array<{ origin: string; destination: string; count: number }>;
+};
+
+export type AdminUpdateRidePayload = {
+  originCity?: string;
+  destinationCity?: string;
+  departureAt?: string;
+  seatsTotal?: number;
+  seatsAvailable?: number;
+  pricePerSeat?: number;
+  status?: 'PUBLISHED' | 'CLOSED';
+};
+
+export type AdminRideDigestPayload = {
+  recipient: string;
+  driverId?: string;
+  origin?: string;
+  destination?: string;
+  departureAfter?: string;
+  departureBefore?: string;
+  status?: 'PUBLISHED' | 'CLOSED' | 'ALL';
+  limit?: number;
+  includeInsights?: boolean;
+  attachCsv?: boolean;
+  message?: string;
+  targetScope?: 'ALL' | 'ACCOUNT_ONLY';
+  includeUpcomingOnly?: boolean;
+};
+
+export type AdminRideDigestInsights = {
+  nextDeparture?: RideAdminItem | null;
+  averageSeats?: number;
+  occupancyRate?: number;
+  averagePrice?: number;
+  topRoutes?: Array<{ origin: string; destination: string; count: number }>;
+};
+
+export type AdminRideDigestResponse = {
+  delivered: boolean;
+  summary: RideAdminSummary;
+  insights?: AdminRideDigestInsights;
+  count?: number;
+  reason?: string;
 };
 
 export type BookingAdminItem = {
@@ -478,6 +526,7 @@ export type BookingAdminItem = {
   holdId: string | null;
   status: string;
   createdAt: string;
+  ride?: RideAdminItem | null;
 };
 
 export type BookingAdminSummary = {
@@ -608,6 +657,14 @@ export type AdminAccountActivity = {
   metrics: AdminActivityMetrics;
 };
 
+export type AdminRideListResponse = {
+  data: RideAdminItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  summary: RideAdminSummary;
+};
+
 export async function registerIndividualAccount(payload: {
   email: string;
   password: string;
@@ -717,6 +774,76 @@ export async function adminGetAccountActivity(
   return data;
 }
 
+export async function adminUpdateRide(
+  token: string,
+  rideId: string,
+  payload: AdminUpdateRidePayload,
+): Promise<RideAdminItem> {
+  const { data } = await api.patch<RideAdminItem>(
+    `${IDENTITY_URL}/admin/rides/${rideId}`,
+    payload,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return data;
+}
+
+export async function adminCloseRide(token: string, rideId: string): Promise<RideAdminItem> {
+  const { data } = await api.post<RideAdminItem>(
+    `${IDENTITY_URL}/admin/rides/${rideId}/close`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return data;
+}
+
+export async function adminShareRides(
+  token: string,
+  payload: AdminRideDigestPayload,
+): Promise<AdminRideDigestResponse> {
+  const { data } = await api.post<AdminRideDigestResponse>(
+    `${IDENTITY_URL}/admin/rides/share`,
+    payload,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return data;
+}
+
+export async function adminListRides(
+  token: string,
+  params: Record<string, any>,
+): Promise<AdminRideListResponse> {
+  const { data } = await api.get<AdminRideListResponse>(`/admin/rides`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  });
+  return data;
+}
+
+export type MyBookingsResponse = {
+  data: BookingAdminItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  summary?: BookingAdminSummary;
+};
+
+export async function getMyBookings(
+  token: string,
+  params: { status?: string; limit?: number; offset?: number } = {},
+): Promise<MyBookingsResponse> {
+  const { data } = await api.get<MyBookingsResponse>('/me/bookings', {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  });
+  return data;
+}
+
 export async function requestGmailOtp(payload: { email: string }) {
   const { data } = await api.post(`${IDENTITY_URL}/auth/gmail/request`, payload);
   return data;
@@ -798,21 +925,17 @@ export type CreateRidePayload = {
   departureAt: string;   // ISO string (ex: 2025-11-02T08:00:00Z)
   pricePerSeat: number;
   seatsTotal: number;
-  driverId: string;      // pour le PoC tu peux mettre "drv-seed"
+  seatsAvailable?: number;
+  driverId?: string;
+  driverLabel?: string | null;
 };
 
 // --- Appel au service ride ---
 export async function createRide(payload: CreateRidePayload) {
-  const base = RIDE_URL;
-  const res = await fetch(`${base}/rides`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(txt || `createRide failed (${res.status})`);
-  }
-  return res.json();
+  const body = {
+    ...payload,
+    seatsAvailable: payload.seatsAvailable ?? payload.seatsTotal,
+  };
+  const { data } = await api.post(`${RIDE_URL}/rides`, body);
+  return data;
 }

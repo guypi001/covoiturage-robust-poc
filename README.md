@@ -18,6 +18,8 @@ docker compose up --build --detach
 
 - Le premier compte créé est automatiquement promu administrateur pour initialiser la supervision.
 - Les administrateurs peuvent lister, promouvoir/déclasser et suspendre les comptes depuis l’interface web (« Administration ») ou via l’API `identity` (`/admin/accounts`).
+- Depuis le même tableau de bord, ils peuvent désormais ajuster un trajet (prix, date, capacités), le clôturer, ou encore expédier par email un digest complet (HTML + CSV) des trajets filtrés à n’importe quel utilisateur.
+- Une nouvelle section « Catalogue des trajets » leur offre la vue complète des départs à venir et de l’historique, avec filtres dynamiques et actions directes (édition, clôture) sans devoir passer par un compte spécifique.
 - Un compte suspendu ne peut plus se reconnecter (mot de passe ou OTP). Les sessions existantes sont neutralisées côté client au prochain rafraîchissement.
 - L’espace d’administration affiche maintenant le détail des trajets publiés et des réservations effectuées par chaque utilisateur (statistiques agrégées, volumes financiers, prochaines dates de départ). Les données proviennent des endpoints `identity`/`ride`/`booking` sécurisés par la clé interne (`INTERNAL_API_KEY` dans les fichiers `.env` des services BFF/Ride/Booking/Identity).
 - Chaque utilisateur dispose d’un espace « Mon profil » pour définir sa photo, ses préférences de confort et personnaliser l’accueil (thème, message, trajets favoris, raccourcis). Les administrateurs peuvent éditer ces mêmes paramètres pour leurs passagers/conducteurs directement depuis l’onglet Administration.
@@ -34,3 +36,13 @@ docker compose up --build --detach
 - Montants réservés : `booking_amount_sum_cfa` et `rate(booking_amount_cfa_sum[5m])`.
 - Santé du proxy : ratio `rate(bff_upstream_requests_total{outcome="success"}[5m]) / rate(bff_upstream_requests_total[5m])` et ventilation des `outcome` (succès, 4xx, 5xx).
 - Suivi des flottes : `sum(ride_fleet_vehicle_total)` pour la volumétrie, `ride_fleet_vehicle_seats_total` pour la capacité offerte et `ride_fleet_upcoming_trips_total` pour les départs planifiés à horizon proche.
+
+## Données de démonstration
+- Pour enrichir rapidement la base avec des comptes et trajets fictifs (toutes les dates jusqu'en 2027) : `npm --prefix services/identity run seed:demo`
+- La connexion utilise `SEED_DATABASE_URL` si défini, sinon `DATABASE_URL` (défaut `postgres://app:app@postgres:5432/covoiturage`). Adapte la variable avant d'exécuter si besoin.
+- Tu peux surcharger le mot de passe commun via `SEED_ACCOUNT_PASSWORD` (défaut `Motdepasse123!`). Tous les comptes créés ou mis à jour partageront ce mot de passe.
+- Le script charge automatiquement `services/identity/.env` (sauf si `SEED_ENV_PATH` pointe ailleurs). Par défaut les valeurs du fichier remplacent celles déjà présentes en variables d'environnement ; désactive ce comportement via `SEED_ENV_OVERRIDE=false`.
+- Si tu exécutes la commande depuis ta machine (hors Docker), un fallback automatique bascule l'hôte `postgres` vers `127.0.0.1` (configurable via `SEED_LOCALHOST_HOST`/`SEED_LOCALHOST_PORT`) pour éviter les résolutions DNS externes. Désactive-le avec `SEED_LOCALHOST_FALLBACK=false` si nécessaire.
+- `npm run seed:demo` reconstruit le code TypeScript seulement si `tsconfig.json` est présent (ex. exécution depuis le dossier projet) ; dans l'image Docker production où seuls les artefacts compilés sont disponibles, la commande se contente d'exécuter `dist/scripts/bulk-generate.js`.
+- Le script est idempotent : il réutilise les comptes existants (basés sur l'email) et ne crée un trajet que s'il n'existe pas déjà pour un conducteur/date/origine/destination donnés.
+- Chaque journée (à partir du 1er janvier 2024) reçoit plusieurs départs prédéfinis, ce qui permet de tester les recherches, les métriques et les statistiques administrateur sur un volume conséquent de données.

@@ -9,13 +9,22 @@ type Props = {
   seatsAvailable: number;
   seatsTotal?: number;
   driverId?: string;
+  driverLabel?: string | null;
   onBook?: () => void;
   onDetails?: () => void;
 };
 
 export default function RideCard({
-  originCity, destinationCity, departureAt,
-  pricePerSeat, seatsAvailable, seatsTotal, driverId, onBook, onDetails,
+  originCity,
+  destinationCity,
+  departureAt,
+  pricePerSeat,
+  seatsAvailable,
+  seatsTotal,
+  driverId,
+  driverLabel,
+  onBook,
+  onDetails,
 }: Props) {
   const dt = new Date(departureAt);
   const date = dt.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
@@ -35,7 +44,11 @@ export default function RideCard({
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             <span className="badge"><Clock size={14}/> {date} • {time}</span>
             <span className="badge"><User2 size={14}/> {seatsAvailable}{typeof seatsTotal==='number' ? ` / ${seatsTotal}` : ''} siège(s)</span>
-            {driverId && <span className="badge"><Shield size={14}/> Chauffeur : {driverId}</span>}
+            {(driverLabel || driverId) && (
+              <span className="badge">
+                <Shield size={14}/> Chauffeur : {driverLabel ?? driverId}
+              </span>
+            )}
           </div>
         </div>
 

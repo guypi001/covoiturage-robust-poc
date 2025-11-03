@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsIn,
   IsInt,
@@ -197,6 +198,64 @@ export class UpdateCompanyProfileDto {
   @ValidateNested()
   @Type(() => HomePreferencesDto)
   homePreferences?: HomePreferencesDto;
+}
+
+export class AdminSendRideDigestDto {
+  @IsEmail()
+  recipient!: string;
+
+  @IsOptional()
+  @IsString()
+  driverId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  origin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  destination?: string;
+
+  @IsOptional()
+  @IsDateString()
+  departureAfter?: string;
+
+  @IsOptional()
+  @IsDateString()
+  departureBefore?: string;
+
+  @IsOptional()
+  @IsIn(['PUBLISHED', 'CLOSED', 'ALL'] as const)
+  status?: 'PUBLISHED' | 'CLOSED' | 'ALL';
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  includeInsights?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  attachCsv?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  message?: string;
+
+  @IsOptional()
+  @IsIn(['ALL', 'ACCOUNT_ONLY'] as const)
+  targetScope?: 'ALL' | 'ACCOUNT_ONLY';
+
+  @IsOptional()
+  @IsBoolean()
+  includeUpcomingOnly?: boolean;
 }
 
 export class RequestGmailOtpDto {

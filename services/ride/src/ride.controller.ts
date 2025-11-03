@@ -35,8 +35,12 @@ export class RideController {
   @Post()
   async create(@Body() dto: Partial<Ride>, @Res() res: Response) {
     try {
+      if (!dto.driverId) {
+        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'driver_required' });
+      }
       const ride = this.rides.create({
         driverId: dto.driverId!,
+        driverLabel: dto.driverLabel ?? null,
         originCity: dto.originCity!,
         destinationCity: dto.destinationCity!,
         departureAt: dto.departureAt!,
@@ -51,6 +55,7 @@ export class RideController {
         rideId: saved.id,
         status: saved.status,
         driverId: saved.driverId,
+        driverLabel: saved.driverLabel,
         originCity: saved.originCity,
         destinationCity: saved.destinationCity,
         departureAt: saved.departureAt,

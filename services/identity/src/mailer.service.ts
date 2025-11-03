@@ -82,4 +82,31 @@ export class MailerService {
       return false;
     }
   }
+
+  async sendRideDigestEmail(to: string, payload: {
+    subject: string;
+    text: string;
+    html: string;
+    attachments?: nodemailer.SendMailOptions['attachments'];
+  }) {
+    if (!this.transporter) {
+      this.logger.warn(`sendRideDigestEmail skipped (no transporter) for ${to}`);
+      return false;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+        attachments: payload.attachments,
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(`sendRideDigestEmail failed for ${to}: ${(err as Error)?.message || err}`);
+      return false;
+    }
+  }
 }
