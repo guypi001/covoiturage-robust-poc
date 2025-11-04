@@ -12,6 +12,8 @@ type Props = {
   driverLabel?: string | null;
   onBook?: () => void;
   onDetails?: () => void;
+  onContact?: () => void;
+  contactBusy?: boolean;
 };
 
 export default function RideCard({
@@ -25,6 +27,8 @@ export default function RideCard({
   driverLabel,
   onBook,
   onDetails,
+  onContact,
+  contactBusy,
 }: Props) {
   const dt = new Date(departureAt);
   const date = dt.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
@@ -68,6 +72,16 @@ export default function RideCard({
                   onClick={onDetails}
                 >
                   Détails
+                </button>
+              )}
+              {onContact && (
+                <button
+                  type="button"
+                  onClick={onContact}
+                  disabled={contactBusy}
+                  className="px-4 py-2 rounded-xl border border-sky-100 text-sky-600 bg-sky-50 hover:bg-sky-100 transition disabled:opacity-50"
+                >
+                  {contactBusy ? 'Ouverture…' : 'Contacter'}
                 </button>
               )}
               {onBook && (

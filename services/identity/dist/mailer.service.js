@@ -73,7 +73,19 @@ let MailerService = MailerService_1 = class MailerService {
         }
         const subject = 'Votre code de connexion KariGo';
         const text = `Votre code de connexion est ${code}. Il expire dans ${ttlMinutes} minutes.`;
-        const html = `<p>Votre code de connexion est <strong>${code}</strong>.</p><p>Il expire dans ${ttlMinutes} minute(s).</p>`;
+        const html = this.renderTemplate({
+            title: 'Connexion sécurisée',
+            intro: 'Voici ton code à usage unique pour te connecter à KariGo.',
+            bodyHtml: `
+        <div style="margin:24px 0;padding:16px 20px;border-radius:16px;border:1px dashed #bae6fd;background:#f0f9ff;text-align:center;font-size:20px;font-weight:600;color:#0c4a6e;letter-spacing:4px;">
+          ${code}
+        </div>
+        <p style="margin:0 0 8px 0;font-size:14px;color:#334155;">
+          Il reste valide pendant <strong>${ttlMinutes} minute(s)</strong>. Ne partage jamais ce code et assure-toi d'être sur l'application officielle KariGo.
+        </p>
+      `,
+            previewText: 'Ton code de connexion KariGo',
+        });
         try {
             await this.transporter.sendMail({
                 from: this.from,
@@ -100,7 +112,24 @@ let MailerService = MailerService_1 = class MailerService {
             ? 'Merci de faire confiance a KariGo pour vos trajets professionnels.'
             : 'Ravi de vous compter parmi les conducteurs et passagers KariGo.';
         const text = `Bonjour ${friendlyName},\n\n${intro}\n\nPubliez un trajet ou consultez les offres des autres membres pour demarrer rapidement.\n\nA tres vite sur la route !`;
-        const html = `<p>Bonjour ${friendlyName},</p><p>${intro}</p><p>Publiez un trajet ou explorez les offres des autres membres pour demarrer rapidement.</p><p>A tres vite sur la route !</p>`;
+        const html = this.renderTemplate({
+            title: `Bienvenue ${friendlyName}`,
+            intro,
+            bodyHtml: `
+        <p style="margin:0 0 12px 0;font-size:14px;color:#334155;">
+          KariGo rassemble la communauté covoiturage pro et particulier. Voici ce que tu peux faire dès maintenant :
+        </p>
+        <ul style="margin:0 0 16px 16px;padding:0;color:#334155;font-size:14px;line-height:1.6;">
+          <li>Publier ou rechercher un trajet en quelques clics.</li>
+          <li>Discuter en toute sécurité avec les passagers/conducteurs.</li>
+          <li>Suivre tes réservations et statistiques depuis ton espace.</li>
+        </ul>
+        <p style="margin:0;font-size:14px;color:#334155;">Nous sommes ravis de t’accompagner sur les routes de Côte d’Ivoire.</p>
+      `,
+            ctaLabel: 'Découvrir le tableau de bord',
+            ctaUrl: `${process.env.APP_BASE_URL ?? 'https://app.karigo.ci'}`,
+            previewText: 'Bienvenue sur la plateforme KariGo',
+        });
         try {
             await this.transporter.sendMail({
                 from: this.from,
@@ -136,6 +165,56 @@ let MailerService = MailerService_1 = class MailerService {
             this.logger.error(`sendRideDigestEmail failed for ${to}: ${err?.message || err}`);
             return false;
         }
+    }
+    renderTemplate(options) {
+        const preview = options.previewText ?? 'KariGo';
+        const footerNote = options.footerNote ??
+            'Cet e-mail a été envoyé automatiquement par KariGo. Merci de ne pas y répondre directement.';
+        const ctaBlock = options.ctaLabel && options.ctaUrl
+            ? `<a href="${options.ctaUrl}" style="display:inline-flex;padding:12px 24px;border-radius:999px;background:#0f172a;color:#ffffff;font-weight:600;text-decoration:none;margin-top:12px;">${options.ctaLabel}</a>`
+            : '';
+        return `
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${options.title}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f7fb;font-family:'Inter','Segoe UI',Tahoma,sans-serif;color:#0f172a;">
+    <span style="display:none;visibility:hidden;">${preview}</span>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:24px;padding:32px;box-shadow:0 15px 45px rgba(15,23,42,0.08);">
+            <tr>
+              <td style="text-align:center;padding-bottom:16px;">
+                <div style="font-size:12px;font-weight:600;color:#0ea5e9;text-transform:uppercase;letter-spacing:0.08em;">KariGo</div>
+                <h1 style="margin:12px 0 8px 0;font-size:24px;">${options.title}</h1>
+                ${options.intro
+            ? `<p style="margin:0;font-size:14px;color:#475569;line-height:1.6;">${options.intro}</p>`
+            : ''}
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:14px;line-height:1.7;color:#334155;">
+                ${options.bodyHtml}
+                ${ctaBlock}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding-top:28px;font-size:12px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;">
+                ${footerNote}<br />
+                © ${new Date().getFullYear()} KariGo
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+`;
     }
 };
 exports.MailerService = MailerService;

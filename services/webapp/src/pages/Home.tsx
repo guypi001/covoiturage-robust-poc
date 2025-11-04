@@ -5,7 +5,7 @@ import { Sparkles, ShieldCheck, Clock, Star, Wand2, ArrowRight } from 'lucide-re
 import SearchBar, { SearchPatch } from '../components/SearchBar';
 import RideCard from '../components/RideCard';
 import { useApp } from '../store';
-import { searchRides, type FavoriteRoute } from '../api';
+import { searchRides, type FavoriteRoute, type Ride } from '../api';
 import { GmailLogo } from '../components/icons/GmailLogo';
 import { findCityByName, isKnownCiCity } from '../data/cities-ci';
 import type { LocationMeta } from '../types/location';
@@ -14,6 +14,7 @@ import {
   QUICK_ACTION_OPTIONS,
   type HomeThemeStyle,
 } from '../constants/homePreferences';
+import { useRideContact } from '../hooks/useRideContact';
 
 type SearchFormState = {
   from: string;
@@ -44,6 +45,7 @@ export default function Home() {
     error,
   } = useApp();
   const account = useApp((state) => state.account);
+  const { contactDriver, contactingRideId, contactError, clearContactError } = useRideContact();
 
   const homePreferences = account?.homePreferences;
   const theme = homePreferences?.theme ?? 'default';
@@ -404,6 +406,15 @@ export default function Home() {
               </div>
             )}
 
+            {contactError && (
+              <div className="flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <span>{contactError}</span>
+                <button type="button" onClick={clearContactError} className="text-xs font-semibold">
+                  OK
+                </button>
+              </div>
+            )}
+
             {loading && (
               <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
             )}
@@ -416,6 +427,8 @@ export default function Home() {
                     {...ride}
                     onBook={() => nav(`/booking/${ride.rideId}`)}
                     onDetails={() => nav(`/ride/${ride.rideId}`)}
+                    onContact={account?.id && ride.driverId ? () => contactDriver(ride as Ride) : undefined}
+                    contactBusy={contactingRideId === ride.rideId}
                   />
                 ))}
               </div>

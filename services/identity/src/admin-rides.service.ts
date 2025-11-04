@@ -330,52 +330,67 @@ export class AdminRideService {
       const when = this.formatDate(ride.departureAt);
       const occupancy = `${ride.seatsTotal - ride.seatsAvailable}/${ride.seatsTotal}`;
       return `<tr>
-        <td style="padding:4px 8px;">${ride.originCity}</td>
-        <td style="padding:4px 8px;">${ride.destinationCity}</td>
-        <td style="padding:4px 8px;">${when}</td>
-        <td style="padding:4px 8px; text-align:center;">${occupancy}</td>
-        <td style="padding:4px 8px; text-align:right;">${ride.pricePerSeat} XOF</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;">${ride.originCity}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;">${ride.destinationCity}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;">${when}</td>
+        <td style="padding:10px 8px;text-align:center;border-bottom:1px solid #e2e8f0;">${occupancy}</td>
+        <td style="padding:10px 8px;text-align:right;border-bottom:1px solid #e2e8f0;">${ride.pricePerSeat} XOF</td>
       </tr>`;
     });
 
     const topRoutesHtml =
       insights?.topRoutes && insights.topRoutes.length
-        ? `<p><strong>Itineraires populaires :</strong><br>${insights.topRoutes
-            .map((route) => `${route.origin} → ${route.destination} (${route.count})`)
-            .join('<br>')}</p>`
+        ? `<p style="margin:16px 0 0 0;font-size:13px;color:#475569;">
+            <strong>Itinéraires populaires :</strong><br />
+            ${insights.topRoutes
+              .map((route) => `${route.origin} → ${route.destination} (${route.count})`)
+              .join('<br />')}
+          </p>`
         : '';
 
-    const html = `
-      <div style="font-family:system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color:#1f2937;">
-        <p>Bonjour ${friendlyName},</p>
-        <p>${actorName} vous partage un aperçu de ${rides.length} trajet(s) KariGo.</p>
-        ${dto.message?.trim() ? `<p style="padding:12px 16px;border-left:3px solid #38bdf8;background:#f0f9ff;">${this.escapeHtml(dto.message.trim())}</p>` : ''}
-        <p><strong>En un clin d'œil :</strong></p>
-        <ul>
-          <li>${summary.upcoming} départ(s) à venir</li>
-          <li>Taux de remplissage moyen : ${occupancyPercent} %</li>
-          <li>Prix moyen : ${summary.averagePrice ?? 0} XOF</li>
-        </ul>
-        ${insights?.nextDeparture ? `<p>Prochain départ : ${insights.nextDeparture.originCity} → ${insights.nextDeparture.destinationCity} (${this.formatDate(insights.nextDeparture.departureAt)}).</p>` : ''}
-        ${topRoutesHtml}
-        <table style="border-collapse:collapse;width:100%;margin-top:12px;">
-          <thead>
-            <tr style="background:#0ea5e9;color:white;">
-              <th style="padding:6px 8px;text-align:left;">Origine</th>
-              <th style="padding:6px 8px;text-align:left;">Destination</th>
-              <th style="padding:6px 8px;text-align:left;">Départ</th>
-              <th style="padding:6px 8px;text-align:center;">Remplissage</th>
-              <th style="padding:6px 8px;text-align:right;">Prix</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${htmlRideRows.join('')}
-          </tbody>
-        </table>
-        ${rides.length > 10 ? `<p style="margin-top:12px;">${rides.length - 10} trajet(s) supplémentaire(s) sont disponibles dans la pièce jointe CSV.</p>` : ''}
-        <p style="margin-top:20px;">À très vite,<br>L'équipe KariGo</p>
-      </div>
+    const htmlContent = `
+      ${dto.message?.trim() ? `<p style="padding:12px 16px;border-left:3px solid #38bdf8;background:#e0f2fe;border-radius:12px;color:#0f172a;">${this.escapeHtml(dto.message.trim())}</p>` : ''}
+      <p style="margin:16px 0 4px 0;font-size:14px;color:#0f172a;"><strong>En un clin d'œil :</strong></p>
+      <ul style="margin:0 0 16px 16px;padding:0;color:#334155;font-size:14px;line-height:1.6;">
+        <li>${summary.upcoming} départ(s) à venir</li>
+        <li>Taux de remplissage moyen : ${occupancyPercent} %</li>
+        <li>Prix moyen : ${summary.averagePrice ?? 0} XOF</li>
+      </ul>
+      ${
+        insights?.nextDeparture
+          ? `<p style="margin:0 0 16px 0;font-size:13px;color:#475569;">Prochain départ : <strong>${insights.nextDeparture.originCity} → ${insights.nextDeparture.destinationCity}</strong> (${this.formatDate(insights.nextDeparture.departureAt)}).</p>`
+          : ''
+      }
+      ${topRoutesHtml}
+      <table style="border-collapse:collapse;width:100%;margin-top:12px;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+        <thead>
+          <tr style="background:#0ea5e9;color:white;">
+            <th style="padding:10px 8px;text-align:left;">Origine</th>
+            <th style="padding:10px 8px;text-align:left;">Destination</th>
+            <th style="padding:10px 8px;text-align:left;">Départ</th>
+            <th style="padding:10px 8px;text-align:center;">Remplissage</th>
+            <th style="padding:10px 8px;text-align:right;">Prix</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${htmlRideRows.join('')}
+        </tbody>
+      </table>
+      ${
+        rides.length > 10
+          ? `<p style="margin-top:16px;font-size:13px;color:#475569;">${rides.length - 10} trajet(s) supplémentaire(s) sont disponibles dans la pièce jointe CSV.</p>`
+          : ''
+      }
     `;
+
+    const html = this.mailer.renderTemplate({
+      title: 'Digest de vos trajets',
+      intro: `${actorName} vous partage une sélection de ${rides.length} trajet(s) KariGo.`,
+      bodyHtml: htmlContent,
+      previewText: `${rides.length} trajets · ${summary.upcoming} départs à venir`,
+      ctaLabel: 'Ouvrir mon espace',
+      ctaUrl: `${process.env.APP_BASE_URL ?? 'https://app.karigo.ci'}/admin/accounts`,
+    });
 
     return { subject, text, html };
   }

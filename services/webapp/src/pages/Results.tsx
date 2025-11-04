@@ -5,6 +5,7 @@ import { searchRides } from '../api';
 import { useApp } from '../store';
 import RideCard from '../components/RideCard';
 import { HOME_THEME_STYLE } from '../constants/homePreferences';
+import { useRideContact } from '../hooks/useRideContact';
 
 export function Results() {
   const nav = useNavigate();
@@ -15,6 +16,7 @@ export function Results() {
   const chipsStyle = themeStyle.chips;
   const baseTextClass = theme === 'night' ? 'text-slate-300' : 'text-slate-600';
   const hasResults = results.length > 0;
+  const { contactDriver, contactingRideId, contactError, clearContactError } = useRideContact();
 
   const refresh = useCallback(async () => {
     if (!lastSearch) return;
@@ -121,6 +123,15 @@ export function Results() {
           </div>
         </div>
 
+        {contactError && (
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start justify-between gap-4">
+            <span>{contactError}</span>
+            <button type="button" onClick={clearContactError} className="text-xs font-semibold">
+              OK
+            </button>
+          </div>
+        )}
+
         {loading && (
           <div className="grid gap-4 md:grid-cols-2">
             {[...Array(4)].map((_, idx) => (
@@ -143,6 +154,8 @@ export function Results() {
                 {...ride}
                 onBook={() => nav(`/booking/${ride.rideId}`)}
                 onDetails={() => nav(`/ride/${ride.rideId}`)}
+                onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
+                contactBusy={contactingRideId === ride.rideId}
               />
             ))}
           </div>
