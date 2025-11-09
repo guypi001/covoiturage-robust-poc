@@ -88,24 +88,6 @@ export default function Home() {
   const insightValueClass = nightMode ? 'text-white' : 'text-slate-900';
   const insightHintClass = nightMode ? 'text-slate-400' : 'text-slate-500';
 
-  const heroHighlights = [
-    {
-      title: 'Sécurité renforcée',
-      text: 'Mots de passe, OTP Gmail et contrôle des sessions pour des comptes sereins.',
-      renderIcon: (className: string) => <ShieldCheck size={20} className={className} />,
-    },
-    {
-      title: 'Recherche intelligente',
-      text: 'Filtre tes trajets par prix, créneaux horaires ou nombre de places en un clic.',
-      renderIcon: (className: string) => <Clock size={20} className={className} />,
-    },
-    {
-      title: 'Profil connecté',
-      text: 'Avatar, préférences et page d’accueil synchronisés et éditables par les admins.',
-      renderIcon: (_className: string) => <GmailLogo className="h-6 w-6" />,
-    },
-  ];
-
   // État local du formulaire (prérempli depuis la dernière recherche)
   const [form, setForm] = useState<SearchFormState>({
     from: lastSearch?.from ?? '',
@@ -223,28 +205,6 @@ export default function Home() {
       })
     : 'Flexible';
 
-  const usageInsights = [
-    {
-      label: 'Dernière recherche',
-      value: lastSearch ? `${displayLastFrom || '—'} → ${displayLastTo || '—'}` : 'Pas encore lancée',
-      hint: lastSearch ? `Le ${lastSearchDateLabel}` : 'Renseigne ton trajet pour suivre les disponibilités',
-    },
-    {
-      label: 'Trajets trouvés',
-      value: totalResults.toString().padStart(2, '0'),
-      hint: totalResults > 0 ? 'Résultats mis à jour en temps réel' : 'Publie un trajet ou ajuste les filtres',
-    },
-    {
-      label: 'Places souhaitées',
-      value: lastSearch?.seats ? `${lastSearch.seats} siège(s)` : 'Non précisé',
-      hint: lastSearch?.seats ? 'Tu peux augmenter pour un groupe' : 'Choisis le nombre de passagers',
-    },
-    {
-      label: 'Budget par siège',
-      value: lastSearch?.priceMax ? `${lastSearch.priceMax.toLocaleString('fr-FR')} XOF` : 'Illimité',
-      hint: lastSearch?.priceMax ? 'Filtré sur un plafond personnalisé' : 'Aucun plafond défini',
-    },
-  ];
 
   const prefillFavoriteRoute = (route: FavoriteRoute) => {
     setForm((prev) => ({
@@ -270,63 +230,32 @@ export default function Home() {
           <div className={`h-full w-72 translate-x-24 rounded-full blur-3xl ${themeStyle.glow}`} />
         </div>
         <div className="container-wide">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.95fr),minmax(0,1fr)] items-start">
-            <div className="space-y-6 md:space-y-8">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.45fr),minmax(0,1.65fr)] items-start">
+            <div className="space-y-3 md:space-y-4 max-w-md">
               <span
                 className={`inline-flex items-center gap-2 rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-wide ${heroTokens.badge}`}
               >
                 <Sparkles size={14} className={heroTokens.badgeIcon} />
-                Covoiturage harmonisé
+                Trouve ton trajet en quelques secondes
               </span>
-              <h1 className={`text-3xl md:text-4xl font-bold leading-tight ${heroTokens.title}`}>
+              <h1 className={`text-2xl md:text-3xl font-bold leading-tight ${heroTokens.title}`}>
                 {heroMessage}
               </h1>
-              <p className={`text-base max-w-2xl ${heroTokens.text}`}>
-                Coordonne tes trajets, retrouve ton historique, visualise tes réservations et publie en
-                deux minutes sur une interface pensée pour les trajets longue distance en Côte d’Ivoire.
+              <p className={`text-sm md:text-base text-slate-500 ${heroTokens.text}`}>
+                Sélectionne un départ, une arrivée et compare instantanément les trajets disponibles sur KariGo.
               </p>
-              {showTips && (
-                <ul className="grid gap-3 sm:grid-cols-3 text-sm">
-                  {heroHighlights.map((feature) => (
-                    <li
-                      key={feature.title}
-                      className={`flex flex-col gap-3 rounded-2xl px-4 py-4 ${heroTokens.card}`}
-                    >
-                      <span
-                        className={`grid h-11 w-11 place-items-center rounded-xl ${heroTokens.iconWrap}`}
-                      >
-                        {feature.renderIcon(heroTokens.iconColor)}
-                      </span>
-                      <div className="space-y-1">
-                        <p className={`text-sm font-semibold ${heroTokens.sectionTitle}`}>
-                          {feature.title}
-                        </p>
-                        <p className={`text-sm leading-snug ${heroTokens.cardText}`}>
-                          {feature.text}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {showTips && <div className="h-2" />}
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                {usageInsights.map((insight) => (
-                  <div
-                    key={insight.label}
-                    className={`rounded-2xl px-4 py-3 ${insightCardBase}`}
-                  >
-                    <p className={`text-[11px] uppercase tracking-wide ${insightLabelClass}`}>
-                      {insight.label}
-                    </p>
-                    <p className={`text-lg font-semibold ${insightValueClass}`}>{insight.value}</p>
-                    <p className={`text-xs ${insightHintClass}`}>{insight.hint}</p>
-                  </div>
-                ))}
-              </div>
+              <div className="h-4" />
             </div>
-            <div className="relative lg:pl-6">
-              <div className="rounded-3xl border border-white/30 bg-white/90 shadow-2xl shadow-sky-200/40 backdrop-blur-lg p-4 sm:p-6">
+            <div className="relative lg:pl-10 xl:pl-12 w-full max-w-[820px]">
+              <div className="rounded-3xl border-2 border-sky-200 bg-white shadow-lg shadow-sky-200/40 backdrop-blur-lg p-5 sm:p-7">
+                <div className="mb-4 flex items-center justify-between text-slate-600 text-sm font-medium">
+                  <span>Planifie ton prochain trajet</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-600">
+                    <Wand2 size={12} /> Recherche rapide
+                  </span>
+                </div>
                 <SearchBar
                   from={form.from}
                   fromLabel={form.fromLabel}
@@ -348,7 +277,7 @@ export default function Home() {
                 />
 
                 {quickActionItems.length > 0 && (
-                  <div className="mt-5 flex flex-wrap gap-2 text-xs">
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs">
                     {quickActionItems.map((action) => (
                       <Link
                         key={action.id}
@@ -361,27 +290,6 @@ export default function Home() {
                     ))}
                   </div>
                 )}
-
-                <div className={`mt-4 flex flex-wrap gap-2 text-xs ${baseTextClass}`}>
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.accent}`}
-                  >
-                    <ShieldCheck size={14} className={heroTokens.iconColor} />
-                    Historique et préférences sauvegardés
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 shadow-sm ${chipsStyle.neutral}`}
-                  >
-                    <GmailLogo className="h-4 w-4" />
-                    Connexion Gmail supportée
-                  </span>
-                  <Link
-                    to="/my-trips"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-slate-600 hover:text-sky-600"
-                  >
-                    Accéder à mes réservations
-                  </Link>
-                </div>
               </div>
             </div>
           </div>
@@ -429,6 +337,7 @@ export default function Home() {
                     onDetails={() => nav(`/ride/${ride.rideId}`)}
                     onContact={account?.id && ride.driverId ? () => contactDriver(ride as Ride) : undefined}
                     contactBusy={contactingRideId === ride.rideId}
+                    variant="dark"
                   />
                 ))}
               </div>

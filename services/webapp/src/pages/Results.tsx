@@ -156,6 +156,7 @@ export function Results() {
                 onDetails={() => nav(`/ride/${ride.rideId}`)}
                 onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
                 contactBusy={contactingRideId === ride.rideId}
+                variant="dark"
               />
             ))}
           </div>

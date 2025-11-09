@@ -98,6 +98,12 @@ const DATE_ONLY = new Intl.DateTimeFormat('fr-FR', {
 
 const PAGE_SIZE = 20;
 const MAX_ROUTES = 5;
+const DIGEST_ERROR_MESSAGES: Record<string, string> = {
+  recipient_scope_requires_account:
+    'Sélectionne un compte KariGo existant ou passe la portée sur « Catalogue global ».',
+  recipient_required: 'Renseigne une adresse destinataire valide.',
+  ride_fetch_failed: 'Impossible de récupérer les trajets à partager pour le moment.',
+};
 
 function formatDate(value?: string | null, withTime = true) {
   if (!value) return '—';
@@ -143,6 +149,13 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
   const globalPastSummary = globalPast.summary;
 
   const canAccess = account?.role === 'ADMIN';
+  const totalAccounts = list?.total ?? 0;
+  const accounts = list?.data ?? [];
+  const hasFiltersApplied =
+    filters.status !== 'ALL' || filters.type !== 'ALL' || Boolean(filters.search);
+  const statusLabel = filters.status === 'ALL' ? 'Tous les statuts' : STATUS_LABEL[filters.status];
+  const typeLabel = filters.type === 'ALL' ? 'Tous les types' : TYPE_LABEL[filters.type];
+  const isEmptyState = !loading && accounts.length === 0;
 
   const loadAccounts = useCallback(async () => {
     if (!token) return;
@@ -192,6 +205,39 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
     return list?.data.find((item) => item.id === selectedAccountId);
   }, [list, selectedAccountId]);
 
+  const statusOptions = useMemo<FilterSegmentOption<FilterState['status']>[]>(() => {
+    const byStatus = list?.stats?.byStatus;
+    return [
+      { value: 'ALL', label: 'Tous', count: list?.total ?? 0 },
+      { value: 'ACTIVE', label: 'Actifs', count: byStatus?.ACTIVE ?? 0 },
+      { value: 'SUSPENDED', label: 'Suspendus', count: byStatus?.SUSPENDED ?? 0 },
+    ];
+  }, [list]);
+
+  const typeCounts = useMemo(() => {
+    if (!list?.data) {
+      return undefined;
+    }
+    return list.data.reduce(
+      (acc, item) => {
+        acc[item.type] = (acc[item.type] ?? 0) + 1;
+        return acc;
+      },
+      { INDIVIDUAL: 0, COMPANY: 0 } as Record<AccountType, number>,
+    );
+  }, [list?.data]);
+
+  const typeOptions = useMemo<FilterSegmentOption<FilterState['type']>[]>(() => {
+    return [
+      { value: 'ALL', label: 'Tous', count: list?.total ?? 0 },
+      { value: 'INDIVIDUAL', label: 'Particuliers', count: typeCounts?.INDIVIDUAL },
+      { value: 'COMPANY', label: 'Entreprises', count: typeCounts?.COMPANY },
+    ];
+  }, [list?.total, typeCounts]);
+
+  const pageStart = totalAccounts === 0 ? 0 : page * PAGE_SIZE + 1;
+  const pageEnd = Math.min(totalAccounts, (page + 1) * PAGE_SIZE);
+
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -207,14 +253,9 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
     setFilters((prev) => ({ ...prev, search: trimmed }));
   };
 
-  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value as FilterState['status'];
-    setFilters((prev) => ({ ...prev, status: value }));
-  };
-
-  const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value as FilterState['type'];
-    setFilters((prev) => ({ ...prev, type: value }));
+  const resetFilters = () => {
+    setFilters({ status: 'ALL', type: 'ALL', search: '' });
+    setSearchInput('');
   };
 
   const refreshList = async () => {
@@ -517,8 +558,8 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
           onSubmit={handleSearchSubmit}
           className="grid gap-4 lg:grid-cols-[minmax(0,1fr),auto] items-end bg-slate-900/3 rounded-2xl p-4 border border-slate-100"
         >
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="sm:col-span-2">
+          <div className="space-y-4">
+            <div>
               <label className="text-xs font-semibold uppercase text-slate-500">Recherche globale</label>
               <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-200">
                 <input
@@ -542,32 +583,22 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
                 )}
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase text-slate-500">Statut</label>
-              <select
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            <div className="grid gap-4 md:grid-cols-2">
+              <FilterSegment
+                label="Statut"
                 value={filters.status}
-                onChange={handleStatusChange}
-              >
-                <option value="ALL">Tous</option>
-                <option value="ACTIVE">Actif</option>
-                <option value="SUSPENDED">Suspendu</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase text-slate-500">Type</label>
-              <select
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                options={statusOptions}
+                onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
+              />
+              <FilterSegment
+                label="Type de compte"
                 value={filters.type}
-                onChange={handleTypeChange}
-              >
-                <option value="ALL">Tous</option>
-                <option value="INDIVIDUAL">Particulier</option>
-                <option value="COMPANY">Entreprise</option>
-              </select>
+                options={typeOptions}
+                onChange={(value) => setFilters((prev) => ({ ...prev, type: value }))}
+              />
             </div>
           </div>
-          <div className="flex items-center gap-2 justify-end">
+          <div className="flex flex-wrap items-center gap-2 justify-end">
             <button
               type="button"
               onClick={() => {
@@ -685,113 +716,145 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,520px),minmax(0,1fr)]">
         <div className="space-y-4">
-          <div className="overflow-x-auto border border-slate-200 rounded-3xl bg-white shadow-sm">
-            <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600 uppercase text-xs tracking-wide">
-            <tr>
-              <th className="text-left px-4 py-3 font-semibold">Email</th>
-              <th className="text-left px-4 py-3 font-semibold">Profil</th>
-              <th className="text-left px-4 py-3 font-semibold">Statut</th>
-              <th className="text-left px-4 py-3 font-semibold">Rôle</th>
-              <th className="text-left px-4 py-3 font-semibold">Dernière connexion</th>
-              <th className="text-left px-4 py-3 font-semibold">Connexions</th>
-              <th className="text-left px-4 py-3 font-semibold">Créé le</th>
-              <th className="text-left px-4 py-3 font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={8} className="text-center px-4 py-6 text-slate-500">
-                  Chargement…
-                </td>
-              </tr>
-            )}
-            {!loading && (list?.data.length ?? 0) === 0 && (
-              <tr>
-                <td colSpan={8} className="text-center px-4 py-6 text-slate-500">
-                  Aucun compte trouvé.
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              list?.data.map((item) => {
-                const isSelected = selectedAccountId === item.id;
-                return (
-                <tr
-                  key={item.id}
-                  onClick={() => fetchActivity(item.id)}
-                  className={`border-t border-slate-100 transition ${
-                    isSelected ? 'bg-sky-50/60' : 'bg-white'
-                  } cursor-pointer`}
+          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Résultats</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {loading ? 'Recherche en cours…' : `${totalAccounts.toLocaleString('fr-FR')} comptes`}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5">
+                    {statusLabel}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5">
+                    {typeLabel}
+                  </span>
+                  {filters.search && (
+                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-amber-700">
+                      « {filters.search} »
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
+                <button
+                  type="button"
+                  onClick={() => void refreshList()}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
                 >
-                    <td className="px-4 py-3 text-slate-700">
-                      <div className="font-medium text-slate-900">{item.email}</div>
-                      <div className="text-xs text-slate-500">{TYPE_LABEL[item.type]}</div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {item.type === 'INDIVIDUAL'
-                        ? item.fullName || '—'
-                        : item.companyName || item.contactName || '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={item.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                          item.role === 'ADMIN'
-                            ? 'bg-sky-100 text-sky-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {ROLE_LABEL[item.role]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(item.lastLoginAt)}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.loginCount ?? 0}</td>
-                    <td className="px-4 py-3 text-slate-500">{formatDate(item.createdAt, false)}</td>
-                    <td className="px-4 py-3 space-y-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewActivity(item);
-                      }}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                    >
-                      Voir activité
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleStatus(item);
-                      }}
-                      disabled={updatingId === item.id || disableStatusAction(item)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {item.status === 'ACTIVE' ? 'Suspendre' : 'Réactiver'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleRole(item);
-                      }}
-                      disabled={updatingId === item.id || disableRoleAction(item)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {item.role === 'ADMIN' ? 'Retirer admin' : 'Promouvoir admin'}
-                      </button>
-                    </td>
+                  <RefreshCw size={14} /> Rafraîchir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAccountId(undefined)}
+                  disabled={!selectedAccountId}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 transition hover:border-slate-300 disabled:opacity-40"
+                >
+                  Effacer la sélection
+                </button>
+              </div>
+            </div>
+            <div className="hidden lg:block overflow-x-auto px-5">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600 uppercase text-xs tracking-wide">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold">Email</th>
+                    <th className="text-left px-4 py-3 font-semibold">Profil</th>
+                    <th className="text-left px-4 py-3 font-semibold">Statut</th>
+                    <th className="text-left px-4 py-3 font-semibold">Rôle</th>
+                    <th className="text-left px-4 py-3 font-semibold">Dernière connexion</th>
+                    <th className="text-left px-4 py-3 font-semibold">Connexions</th>
+                    <th className="text-left px-4 py-3 font-semibold">Créé le</th>
+                    <th className="text-left px-4 py-3 font-semibold">Actions</th>
                   </tr>
-                );
-              })}
-          </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {loading && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                        Chargement…
+                      </td>
+                    </tr>
+                  )}
+                  {!loading && accounts.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                        Aucun compte à afficher.
+                      </td>
+                    </tr>
+                  )}
+                  {!loading &&
+                    accounts.map((item) => (
+                      <AccountRowDesktop
+                        key={item.id}
+                        item={item}
+                        selected={selectedAccountId === item.id}
+                        disabledStatus={disableStatusAction(item)}
+                        disabledRole={disableRoleAction(item)}
+                        loadingId={updatingId}
+                        onSelect={(account) => void fetchActivity(account.id)}
+                        onView={(account) => void handleViewActivity(account)}
+                        onToggleStatus={(account) => void handleToggleStatus(account)}
+                        onToggleRole={(account) => void handleToggleRole(account)}
+                      />
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="lg:hidden space-y-3 px-5 py-5">
+              {loading && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">
+                  Chargement…
+                </div>
+              )}
+              {!loading &&
+                accounts.map((item) => (
+                  <AccountCardMobile
+                    key={item.id}
+                    item={item}
+                    selected={selectedAccountId === item.id}
+                    disabledStatus={disableStatusAction(item)}
+                    disabledRole={disableRoleAction(item)}
+                    loadingId={updatingId}
+                    onSelect={(account) => void fetchActivity(account.id)}
+                    onView={(account) => void handleViewActivity(account)}
+                    onToggleStatus={(account) => void handleToggleStatus(account)}
+                    onToggleRole={(account) => void handleToggleRole(account)}
+                  />
+                ))}
+            </div>
+            {isEmptyState && (
+              <div className="border-t border-slate-100 px-5 py-6 text-center text-sm text-slate-500 space-y-3">
+                <p>Aucun compte ne correspond aux filtres sélectionnés.</p>
+                <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-semibold">
+                  {hasFiltersApplied && (
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-slate-600 transition hover:border-slate-300"
+                    >
+                      Réinitialiser les filtres
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void refreshList()}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-slate-600 transition hover:border-slate-300"
+                  >
+                    Recharger
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-between text-sm text-slate-600">
+          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
             <div>
-              Page {page + 1} / {totalPages} — {list?.total ?? 0} comptes
+              {totalAccounts === 0
+                ? 'Aucun résultat'
+                : `Affichage ${pageStart.toLocaleString('fr-FR')}–${pageEnd.toLocaleString('fr-FR')} sur ${totalAccounts.toLocaleString('fr-FR')}`}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -810,6 +873,18 @@ const [globalPast, setGlobalPast] = useState<RideListState>({ loading: false, da
               </button>
             </div>
           </div>
+
+          {selectedAccount && (
+            <SelectedAccountSummary
+              account={selectedAccount}
+              busyId={updatingId}
+              disableStatus={disableStatusAction(selectedAccount)}
+              disableRole={disableRoleAction(selectedAccount)}
+              onView={() => void handleViewActivity(selectedAccount)}
+              onToggleStatus={() => void handleToggleStatus(selectedAccount)}
+              onToggleRole={() => void handleToggleRole(selectedAccount)}
+            />
+          )}
         </div>
 
         <div>
@@ -872,6 +947,51 @@ function StatCard({ title, value, tone }: { title: string; value: number; tone: 
   );
 }
 
+type FilterSegmentOption<T extends string> = {
+  value: T;
+  label: string;
+  count?: number;
+};
+
+type FilterSegmentProps<T extends string> = {
+  label: string;
+  value: T;
+  options: FilterSegmentOption<T>[];
+  onChange: (value: T) => void;
+};
+
+function FilterSegment<T extends string>({ label, value, options, onChange }: FilterSegmentProps<T>) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const isActive = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                isActive
+                  ? 'border-sky-200 bg-sky-50 text-sky-700 shadow-sm'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              {option.label}
+              {typeof option.count === 'number' && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                  {option.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 type AccountRowProps = {
   item: Account;
   selected: boolean;
@@ -879,9 +999,9 @@ type AccountRowProps = {
   disabledRole: boolean;
   loadingId?: string;
   onSelect: (account: Account) => void;
-  onView: (account: Account, event: React.MouseEvent<HTMLButtonElement>) => void;
-  onToggleStatus: (account: Account, event: React.MouseEvent<HTMLButtonElement>) => void;
-  onToggleRole: (account: Account, event: React.MouseEvent<HTMLButtonElement>) => void;
+  onView: (account: Account) => void;
+  onToggleStatus: (account: Account) => void;
+  onToggleRole: (account: Account) => void;
 };
 
 function AccountRowDesktop({
@@ -932,20 +1052,29 @@ function AccountRowDesktop({
       <td className="px-4 py-4 align-top">
         <div className="flex flex-col gap-2">
           <button
-            onClick={(event) => onView(item, event)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onView(item);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-600"
           >
             Voir
           </button>
           <button
-            onClick={(event) => onToggleStatus(item, event)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleStatus(item);
+            }}
             disabled={disabledStatus || loadingId === item.id}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-amber-200 hover:text-amber-600 disabled:opacity-50"
           >
             {item.status === 'ACTIVE' ? 'Suspendre' : 'Réactiver'}
           </button>
           <button
-            onClick={(event) => onToggleRole(item, event)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleRole(item);
+            }}
             disabled={disabledRole || loadingId === item.id}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
           >
@@ -1001,14 +1130,20 @@ function AccountCardMobile({
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs font-semibold">
         <button
           type="button"
-          onClick={(event) => onView(item, event)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onView(item);
+          }}
           className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-slate-600 transition hover:border-sky-200 hover:text-sky-600"
         >
           Voir
         </button>
         <button
           type="button"
-          onClick={(event) => onToggleStatus(item, event)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleStatus(item);
+          }}
           disabled={disabledStatus || loadingId === item.id}
           className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-slate-600 transition hover:border-amber-200 hover:text-amber-600 disabled:opacity-50"
         >
@@ -1016,7 +1151,10 @@ function AccountCardMobile({
         </button>
         <button
           type="button"
-          onClick={(event) => onToggleRole(item, event)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleRole(item);
+          }}
           disabled={disabledRole || loadingId === item.id}
           className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-slate-600 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
         >
@@ -1024,6 +1162,84 @@ function AccountCardMobile({
         </button>
       </div>
     </button>
+  );
+}
+
+type SelectedAccountSummaryProps = {
+  account: Account;
+  busyId?: string;
+  disableStatus: boolean;
+  disableRole: boolean;
+  onView: () => void;
+  onToggleStatus: () => void;
+  onToggleRole: () => void;
+};
+
+function SelectedAccountSummary({
+  account,
+  busyId,
+  disableStatus,
+  disableRole,
+  onView,
+  onToggleStatus,
+  onToggleRole,
+}: SelectedAccountSummaryProps) {
+  const statusActionLabel = account.status === 'ACTIVE' ? 'Suspendre' : 'Réactiver';
+  const roleActionLabel = account.role === 'ADMIN' ? 'Retirer admin' : 'Promouvoir admin';
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase text-slate-500">Sélection actuelle</p>
+          <p className="text-base font-semibold text-slate-900">{account.email}</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5">
+              {TYPE_LABEL[account.type]}
+            </span>
+            <StatusBadge status={account.status} />
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                account.role === 'ADMIN' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {ROLE_LABEL[account.role]}
+            </span>
+          </div>
+        </div>
+        {account.profilePhotoUrl && (
+          <img
+            src={account.profilePhotoUrl}
+            alt={account.fullName || account.companyName || account.email}
+            className="h-14 w-14 rounded-2xl object-cover border border-slate-200"
+          />
+        )}
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-3 text-xs font-semibold">
+        <button
+          type="button"
+          onClick={onView}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-slate-600 transition hover:border-sky-200 hover:text-sky-600"
+        >
+          Voir la fiche
+        </button>
+        <button
+          type="button"
+          onClick={onToggleStatus}
+          disabled={disableStatus || busyId === account.id}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-slate-600 transition hover:border-amber-200 hover:text-amber-600 disabled:opacity-50"
+        >
+          {statusActionLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleRole}
+          disabled={disableRole || busyId === account.id}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-slate-600 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
+        >
+          {roleActionLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1646,6 +1862,13 @@ function CompanyFleetAdmin({
   scheduleState?: FleetSchedulesState;
   onLoadSchedules?: (vehicleId: string, window?: 'upcoming' | 'past' | 'all') => void;
 }) {
+  const fleetVehicles = Array.isArray(fleet?.data) ? fleet.data : [];
+  const fleetSummary = fleet?.summary;
+  const totalVehicles = fleetVehicles.length;
+  const activeVehicles = fleetSummary?.active ?? 0;
+  const totalSeats = fleetSummary?.fleetSeats ?? 0;
+  const upcomingTrips = fleetSummary?.upcomingTrips ?? 0;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-sm">
       <div className="flex items-center justify-between">
@@ -1679,28 +1902,28 @@ function CompanyFleetAdmin({
           <div className="grid gap-3 sm:grid-cols-4 text-xs text-slate-600">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="uppercase font-semibold text-slate-500">Véhicules</p>
-              <p className="mt-1 text-lg font-semibold text-slate-800">{fleet.data.length}</p>
+              <p className="mt-1 text-lg font-semibold text-slate-800">{totalVehicles}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="uppercase font-semibold text-slate-500">Actifs</p>
-              <p className="mt-1 text-lg font-semibold text-emerald-600">{fleet.summary.active}</p>
+              <p className="mt-1 text-lg font-semibold text-emerald-600">{activeVehicles}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="uppercase font-semibold text-slate-500">Capacité</p>
               <p className="mt-1 text-lg font-semibold text-slate-800">
-                {fleet.summary.fleetSeats} sièges
+                {totalSeats} sièges
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="uppercase font-semibold text-slate-500">Départs à venir</p>
               <p className="mt-1 text-lg font-semibold text-slate-800">
-                {fleet.summary.upcomingTrips}
+                {upcomingTrips}
               </p>
             </div>
           </div>
 
           <div className="space-y-4">
-            {fleet.data.map((vehicle) => {
+            {fleetVehicles.map((vehicle) => {
               const state = scheduleState?.[vehicle.id];
               const schedules = state?.items ?? vehicle.upcomingSchedules ?? [];
               const statusTone =
@@ -2032,6 +2255,8 @@ function RideManagementPanel({
         attachCsv: digestForm.attachCsv,
         includeInsights: digestForm.includeInsights,
         targetScope: digestForm.targetScope,
+        driverId:
+          digestForm.targetScope === 'ACCOUNT_ONLY' && account.id ? account.id : undefined,
         message: digestForm.message.trim() ? digestForm.message.trim() : undefined,
       });
       if (response.reason === 'empty' || response.count === 0) {
@@ -2051,8 +2276,9 @@ function RideManagementPanel({
         });
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Envoi impossible.';
-      setDigestFeedback({ error: msg });
+      const rawMessage = err?.response?.data?.message || err?.message || 'Envoi impossible.';
+      const friendly = DIGEST_ERROR_MESSAGES[rawMessage] ?? rawMessage;
+      setDigestFeedback({ error: friendly });
     } finally {
       setDigestSending(false);
     }
