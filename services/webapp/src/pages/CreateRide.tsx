@@ -93,6 +93,7 @@ export default function CreateRide() {
       seatsAvailable: seatsTotal,
       driverId: account.id,
       driverLabel: previewDriver,
+      driverPhotoUrl: account.profilePhotoUrl ?? undefined,
     };
 
     try {
@@ -135,8 +136,15 @@ export default function CreateRide() {
   const previewRouteLabel = `${form.originCity || 'Départ ?'} → ${form.destinationCity || 'Arrivée ?'}`;
   const previewSeatsLabel = `${form.seatsTotal} siège(s)`;
   const previewPriceLabel = `${Number(form.pricePerSeat || 0).toLocaleString('fr-FR')} XOF`; 
+  const extractFirstName = (value?: string | null) => {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    return trimmed.split(/\s+/)[0];
+  };
+
   const previewDriver =
-    account?.fullName || account?.companyName || account?.email || 'Profil KariGo';
+    extractFirstName(account?.fullName || account?.companyName || account?.email) || 'Profil KariGo';
 
   const steps = [
     { id: 1, label: 'Itinéraire' },

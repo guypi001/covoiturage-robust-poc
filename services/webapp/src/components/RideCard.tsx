@@ -1,4 +1,5 @@
-import { ArrowRight, Clock, MapPin, User2, Shield, Info } from "lucide-react";
+import { useState } from 'react';
+import { ArrowRight, Clock, MapPin, User2, Shield, Info, Link2 } from 'lucide-react';
 
 type Props = {
   rideId?: string;
@@ -10,14 +11,18 @@ type Props = {
   seatsTotal?: number;
   driverId?: string;
   driverLabel?: string | null;
+  driverPhotoUrl?: string | null;
+  showPublisher?: boolean;
   onBook?: () => void;
   onDetails?: () => void;
   onContact?: () => void;
   contactBusy?: boolean;
   variant?: 'light' | 'dark';
+  showPublisher?: boolean;
 };
 
 export default function RideCard({
+  rideId,
   originCity,
   destinationCity,
   departureAt,
@@ -26,16 +31,60 @@ export default function RideCard({
   seatsTotal,
   driverId,
   driverLabel,
+  driverPhotoUrl,
   onBook,
   onDetails,
   onContact,
   contactBusy,
   variant = 'light',
+  showPublisher = false,
 }: Props) {
+  const extractFirstName = (value?: string | null) => {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    return trimmed.split(/\s+/)[0];
+  };
   const dt = new Date(departureAt);
   const dateLabel = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeLabel = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const seatsLabel = typeof seatsTotal === 'number' ? `${seatsAvailable}/${seatsTotal}` : `${seatsAvailable}`;
+  const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [photoError, setPhotoError] = useState(false);
+  const shareUrl = rideId
+    ? typeof window !== 'undefined'
+      ? `${window.location.origin}/ride/${rideId}`
+      : `/ride/${rideId}`
+    : undefined;
+
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareFeedback('copied');
+      } else {
+        if (typeof document !== 'undefined') {
+          const textarea = document.createElement('textarea');
+          textarea.value = shareUrl;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-1000px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          setShareFeedback('copied');
+        } else {
+          setShareFeedback('error');
+        }
+      }
+    } catch {
+      setShareFeedback('error');
+    } finally {
+      setTimeout(() => setShareFeedback('idle'), 2000);
+    }
+  };
 
   const palette = variant === 'dark'
     ? {
@@ -60,6 +109,30 @@ export default function RideCard({
         contact: 'border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100',
         button: 'btn-primary inline-flex items-center gap-2 px-5 py-2',
       };
+
+  const extractDisplayName = () => {
+    if (!driverLabel) return undefined;
+    const trimmed = driverLabel.trim();
+    if (!trimmed) return undefined;
+    const words = trimmed.split(/\s+/);
+    return words.length >= 2 ? trimmed : words[0];
+  };
+
+  const authorName = extractDisplayName() ?? 'Chauffeur KariGo';
+  const authorInitial = authorName.charAt(0).toUpperCase();
+  const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
+  const authorStyles =
+    variant === 'dark'
+      ? {
+          text: 'text-slate-300',
+          name: 'text-white',
+          avatar: 'border-white/20 bg-white/10 text-white',
+        }
+      : {
+          text: 'text-slate-500',
+          name: 'text-slate-800',
+          avatar: 'border-slate-200 bg-slate-100 text-slate-600',
+        };
 
   return (
     <article className={palette.container}>
@@ -94,8 +167,44 @@ export default function RideCard({
             <div className={`text-xs ${palette.subtitle}`}>par siège</div>
           </div>
         </div>
+        {showPublisher && (
+          <div className={`flex items-center gap-3 text-xs ${authorStyles.text}`}>
+            <div className={`h-9 w-9 overflow-hidden rounded-full border ${authorStyles.avatar}`}>
+              {showAvatarPhoto ? (
+                <img
+                  src={driverPhotoUrl || ''}
+                  alt={`Photo de ${authorName}`}
+                  className="h-full w-full object-cover"
+                  onError={() => setPhotoError(true)}
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-sm font-semibold">
+                  {authorInitial}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold ${authorStyles.name}`}>{authorName}</p>
+              <p className="text-xs truncate">Proposé via KariGo</p>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
+          {shareUrl && (
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition ${palette.actionsBorder}`}
+            >
+              <Link2 size={14} />
+              {shareFeedback === 'copied'
+                ? 'Lien copié'
+                : shareFeedback === 'error'
+                  ? 'Impossible de copier'
+                  : 'Partager'}
+            </button>
+          )}
           {onDetails && (
             <button
               type="button"

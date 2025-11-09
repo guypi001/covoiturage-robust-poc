@@ -7,6 +7,7 @@ import {
   registerCompanyAccount,
   verifyGmailOtp,
   requestGmailOtp,
+  updateIndividualProfile,
 } from '../api';
 import { useApp } from '../store';
 import { AuthLayout } from '../components/AuthLayout';
@@ -31,7 +32,8 @@ export default function Register() {
   // Password signup state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [comfort, setComfort] = useState('');
   const [tagline, setTagline] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -50,6 +52,9 @@ export default function Register() {
 
   const [error, setError] = useState<string>();
 
+  const buildFullName = () =>
+    [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
+
   useEffect(() => {
     if (!authReady) initializeAuth();
   }, [authReady, initializeAuth]);
@@ -57,6 +62,12 @@ export default function Register() {
   useEffect(() => {
     if (token && authReady) navigate('/', { replace: true });
   }, [token, authReady, navigate]);
+
+  useEffect(() => {
+    if (kind === 'company' && method === 'gmail') {
+      setMethod('password');
+    }
+  }, [kind, method]);
 
   const resetOtp = () => {
     setOtpStep('email');
@@ -78,11 +89,12 @@ export default function Register() {
     try {
       setSubmitting(true);
       if (kind === 'individual') {
-        if (!fullName.trim()) {
-          setError('Renseigne ton nom complet.');
+        if (!firstName.trim() || !lastName.trim()) {
+          setError('Renseigne ton prénom et ton nom.');
           setSubmitting(false);
           return;
         }
+        const mergedFullName = buildFullName();
         const comfortList = comfort
           ? comfort
               .split(',')
@@ -92,7 +104,7 @@ export default function Register() {
         const res = await registerIndividualAccount({
           email,
           password,
-          fullName,
+          fullName: mergedFullName,
           comfortPreferences: comfortList,
           tagline: tagline || undefined,
         });
@@ -126,6 +138,10 @@ export default function Register() {
     e.preventDefault();
     setError(undefined);
     setOtpMessage(undefined);
+    if (kind === 'individual' && (!firstName.trim() || !lastName.trim())) {
+      setError('Ajoute ton prénom et ton nom avant de continuer.');
+      return;
+    }
     const trimmed = otpEmail.trim().toLowerCase();
     if (!trimmed.endsWith('@gmail.com')) {
       setError('Utilise une adresse Gmail valide.');
@@ -154,7 +170,18 @@ export default function Register() {
     try {
       setOtpVerifying(true);
       const res = await verifyGmailOtp({ email: otpEmail.trim().toLowerCase(), code: otpCode.trim() });
-      setSession(res.token, res.account);
+      let accountPayload = res.account;
+      if (kind === 'individual') {
+        const mergedFullName = buildFullName();
+        if (mergedFullName) {
+          try {
+            accountPayload = await updateIndividualProfile(res.token, { fullName: mergedFullName });
+          } catch (err) {
+            console.warn('Impossible de mettre à jour le profil après l’OTP :', err);
+          }
+        }
+      }
+      setSession(res.token, accountPayload);
       navigate('/', { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Code invalide.');
@@ -379,16 +406,29 @@ export default function Register() {
 
             {kind === 'individual' ? (
               <>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-600">Nom complet</label>
-                  <input
-                    type="text"
-                    className="input w-full"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.currentTarget.value)}
-                    placeholder="Prénom Nom"
-                    required
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-600">Prénom</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.currentTarget.value)}
+                      placeholder="Prénom"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-600">Nom</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.currentTarget.value)}
+                      placeholder="Nom"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -501,6 +541,33 @@ export default function Register() {
                 espace profil.
               </p>
             </div>
+
+            {kind === 'individual' && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-600">Prénom</label>
+                  <input
+                    type="text"
+                    className="input w-full"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.currentTarget.value)}
+                    placeholder="Prénom"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-600">Nom</label>
+                  <input
+                    type="text"
+                    className="input w-full"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.currentTarget.value)}
+                    placeholder="Nom"
+                    required
+                  />
+                </div>
+              </div>
+            )}
 
             {otpStep === 'email' ? (
               <form className="space-y-4" onSubmit={sendOtp}>

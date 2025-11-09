@@ -27,12 +27,18 @@ function isLocalHostname(value: string | undefined | null) {
   return false;
 }
 
-function resolveServiceUrl(envValue: string | undefined, defaultPort: number, proxyPath?: string) {
+function resolveServiceUrl(
+  envValue: string | undefined,
+  defaultPort: number,
+  proxyPath?: string,
+  forceProxy = false,
+) {
   const fallback = `http://localhost${defaultPort ? `:${defaultPort}` : ''}`;
   const hasWindow = typeof window !== 'undefined' && typeof window.location !== 'undefined';
   const windowHost = hasWindow ? window.location.hostname : undefined;
   const windowOrigin = hasWindow ? `${window.location.protocol}//${window.location.host}` : undefined;
   const preferProxy =
+    forceProxy ||
     Boolean(proxyPath && windowOrigin && windowHost && !isLocalHostname(windowHost));
 
   if (envValue) {
@@ -79,7 +85,12 @@ function resolveServiceUrl(envValue: string | undefined, defaultPort: number, pr
   return fallback;
 }
 
-const SEARCH_URL = resolveServiceUrl(import.meta.env.VITE_SEARCH_URL, 3003, '/api/search');
+const SEARCH_URL = resolveServiceUrl(
+  import.meta.env.VITE_SEARCH_URL,
+  3003,
+  '/api/search',
+  true,
+);
 const BOOKING_URL = resolveServiceUrl(import.meta.env.VITE_BOOKING_URL, 3004, '/api/booking');
 const RIDE_URL = resolveServiceUrl(import.meta.env.VITE_RIDE_URL, 3002, '/api/ride');
 const PAYMENT_URL = resolveServiceUrl(import.meta.env.VITE_PAYMENT_URL, 3000, '/api/payment');
@@ -148,6 +159,7 @@ export type Ride = {
   seatsAvailable: number;
   driverId: string;
   status: 'PUBLISHED'|'CLOSED';
+  driverPhotoUrl?: string | null;
 };
 
 export type ConversationSummary = {
@@ -890,6 +902,7 @@ export async function updateIndividualProfile(
     profilePhotoUrl?: string;
     removeProfilePhoto?: boolean;
     homePreferences?: HomePreferencesPayload;
+    fullName?: string;
   },
 ): Promise<Account> {
   const { data } = await api.patch<Account>(`${IDENTITY_URL}/profiles/me/individual`, payload, {
@@ -928,6 +941,7 @@ export type CreateRidePayload = {
   seatsAvailable?: number;
   driverId?: string;
   driverLabel?: string | null;
+  driverPhotoUrl?: string | null;
 };
 
 // --- Appel au service ride ---

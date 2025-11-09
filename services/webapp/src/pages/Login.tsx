@@ -393,6 +393,12 @@ export default function Login() {
           </div>
         )}
       </div>
+      <div className="mt-4 text-center text-xs text-slate-500">
+        Juste curieux ?{' '}
+        <Link to="/" className="font-semibold text-sky-600">
+          Continuer en visiteur
+        </Link>
+      </div>
     </AuthLayout>
   );
 }

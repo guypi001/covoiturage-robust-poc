@@ -24,6 +24,11 @@ export class CreateRideDto {
   @MaxLength(255)
   driverLabel?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  driverPhotoUrl?: string;
+
   @IsString()
   originCity!: string;
 

@@ -10,6 +10,8 @@ export type RideDoc = {
   seatsTotal: number;
   seatsAvailable: number;
   driverId: string;
+  driverLabel?: string | null;
+  driverPhotoUrl?: string | null;
   status: string;
 };
 
@@ -64,6 +66,8 @@ export class MeiliService {
       seatsTotal: Number(evt.seatsTotal ?? 0),
       seatsAvailable: Number(evt.seatsAvailable ?? 0),
       driverId: evt.driverId,
+      driverLabel: evt.driverLabel ?? null,
+      driverPhotoUrl: evt.driverPhotoUrl ?? null,
       status: evt.status,
     };
   }

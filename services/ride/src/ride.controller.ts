@@ -41,6 +41,7 @@ export class RideController {
       const ride = this.rides.create({
         driverId: dto.driverId!,
         driverLabel: dto.driverLabel ?? null,
+        driverPhotoUrl: dto.driverPhotoUrl ?? null,
         originCity: dto.originCity!,
         destinationCity: dto.destinationCity!,
         departureAt: dto.departureAt!,
@@ -56,6 +57,7 @@ export class RideController {
         status: saved.status,
         driverId: saved.driverId,
         driverLabel: saved.driverLabel,
+        driverPhotoUrl: saved.driverPhotoUrl,
         originCity: saved.originCity,
         destinationCity: saved.destinationCity,
         departureAt: saved.departureAt,

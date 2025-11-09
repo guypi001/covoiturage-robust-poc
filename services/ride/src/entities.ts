@@ -25,6 +25,9 @@ export class Ride {
   @Column({ type: 'varchar', length: 255, nullable: true })
   driverLabel?: string | null;
 
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  driverPhotoUrl?: string | null;
+
   @Column()
   originCity!: string;
 
