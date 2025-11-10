@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Filter, RefreshCw, MapPin, Clock, SlidersHorizontal, AlertCircle, RotateCcw } from 'lucide-react';
-import { searchRides } from '../api';
 import { useApp } from '../store';
 import RideCard from '../components/RideCard';
 import { HOME_THEME_STYLE } from '../constants/homePreferences';
 import { useRideContact } from '../hooks/useRideContact';
+import { useRideSearch } from '../hooks/useRideSearch';
 
 export function Results() {
   const nav = useNavigate();
@@ -15,8 +15,9 @@ export function Results() {
   const themeStyle = HOME_THEME_STYLE[theme] ?? HOME_THEME_STYLE.default;
   const chipsStyle = themeStyle.chips;
   const baseTextClass = theme === 'night' ? 'text-slate-300' : 'text-slate-600';
-  const hasResults = results.length > 0;
   const { contactDriver, contactingRideId, contactError, clearContactError } = useRideContact();
+  const { execute: runRideSearch, isPending: ridePending } = useRideSearch();
+  const deferredResults = useDeferredValue(results);
 
   const draftFromSearch = useCallback(
     () => ({
@@ -38,19 +39,18 @@ export function Results() {
   const performSearch = useCallback(
     async (nextSearch: typeof lastSearch) => {
       if (!nextSearch) return;
-      try {
-        setSearch(nextSearch);
-        setLoading(true);
-        setError(undefined);
-        const data = await searchRides(nextSearch);
-        setResults(data);
-      } catch (e: any) {
-        setError(e?.message || 'Erreur de recherche');
-      } finally {
+      setSearch(nextSearch);
+      setLoading(true);
+      setError(undefined);
+      const result = await runRideSearch(nextSearch, {
+        onSuccess: (rides) => setResults(rides),
+        onError: (message) => setError(message),
+      });
+      if (!result.aborted) {
         setLoading(false);
       }
     },
-    [setError, setLoading, setResults, setSearch],
+    [runRideSearch, setSearch, setLoading, setError, setResults],
   );
 
   const refresh = useCallback(async () => {
@@ -93,6 +93,9 @@ export function Results() {
         : 'Tri : plus tôt';
 
   const timeWindowChip = lastSearch.departureAfter || lastSearch.departureBefore;
+  const totalResults = deferredResults.length;
+  const hasResults = totalResults > 0;
+  const isSearching = loading || ridePending;
 
   const normalizedDraft = useMemo(() => {
     const price = Number(filterDraft.priceMax);
@@ -154,7 +157,7 @@ export function Results() {
             <button
               type="button"
               onClick={() => void refresh()}
-              disabled={loading}
+              disabled={isSearching}
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
             >
               <RefreshCw size={14} />
@@ -315,7 +318,7 @@ export function Results() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="submit"
-                  disabled={!filtersChanged || loading}
+                  disabled={!filtersChanged || isSearching}
                   className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-40"
                 >
                   <SlidersHorizontal size={14} /> Appliquer
@@ -332,7 +335,7 @@ export function Results() {
           <ErrorBanner message={contactError} tone="warning" onDismiss={clearContactError} />
         )}
 
-        {loading && (
+        {isSearching && (
           <div className="grid gap-4 md:grid-cols-2">
             {[...Array(4)].map((_, idx) => (
               <div key={idx} className="h-40 rounded-2xl border border-slate-100 bg-slate-50 animate-pulse" />
@@ -340,13 +343,13 @@ export function Results() {
           </div>
         )}
 
-        {error && !loading && (
+        {error && !isSearching && (
           <ErrorBanner message={error} tone="error" onDismiss={() => setError(undefined)} />
         )}
 
-        {!loading && !error && hasResults && (
+        {!isSearching && !error && hasResults && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {results.map((ride) => (
+            {deferredResults.map((ride) => (
               <RideCard
                 key={ride.rideId}
                 {...ride}
@@ -361,7 +364,7 @@ export function Results() {
           </div>
         )}
 
-        {!loading && !error && !hasResults && (
+        {!isSearching && !error && !hasResults && (
           <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center text-slate-600">
             <p className="font-semibold text-slate-900">Aucun trajet trouvé</p>
             <p className="mt-2 text-sm">

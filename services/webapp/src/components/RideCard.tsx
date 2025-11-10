@@ -157,7 +157,7 @@ export default function RideCard({
               </span>
               {(driverLabel || driverId) && (
                 <span className={palette.chipDriver}>
-                  <Shield size={12} /> {driverLabel ?? driverId}
+                  <Shield size={12} /> {driverLabel ?? 'Chauffeur KariGo'}
                 </span>
               )}
             </div>

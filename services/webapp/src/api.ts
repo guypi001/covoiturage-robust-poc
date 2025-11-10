@@ -220,7 +220,10 @@ export type SearchRequest = {
   toMeta?: LocationMeta;
 };
 
-export async function searchRides(params: SearchRequest) {
+export async function searchRides(
+  params: SearchRequest,
+  options: { signal?: AbortSignal } = {},
+) {
   const { from, to, date, seats, priceMax, departureAfter, departureBefore, sort } = params;
   const search = new URLSearchParams({
     from,
@@ -233,8 +236,28 @@ export async function searchRides(params: SearchRequest) {
   if (departureBefore) search.set('departureBefore', departureBefore);
   if (sort) search.set('sort', sort);
   const url = `${SEARCH_URL}/search?${search.toString()}`;
-  const { data } = await api.get<Ride[]>(url, { withCredentials: false });
-  return data;
+  let cancelSource: ReturnType<typeof axios.CancelToken.source> | undefined;
+  let abortListener: (() => void) | undefined;
+  if (options.signal) {
+    cancelSource = axios.CancelToken.source();
+    if (options.signal.aborted) {
+      cancelSource.cancel('aborted');
+    } else {
+      abortListener = () => cancelSource?.cancel('aborted');
+      options.signal.addEventListener('abort', abortListener);
+    }
+  }
+  try {
+    const { data } = await api.get<Ride[]>(url, {
+      withCredentials: false,
+      cancelToken: cancelSource?.token,
+    });
+    return data;
+  } finally {
+    if (options.signal && abortListener) {
+      options.signal.removeEventListener('abort', abortListener);
+    }
+  }
 }
 
 export async function getRide(rideId: string) {

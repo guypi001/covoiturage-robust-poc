@@ -1,11 +1,11 @@
 // src/pages/Home.tsx
-import { useRef, useState } from 'react';
+import { useDeferredValue, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Sparkles, ShieldCheck, Clock, Star, Wand2, ArrowRight, AlertCircle } from 'lucide-react';
 import SearchBar, { SearchPatch } from '../components/SearchBar';
 import RideCard from '../components/RideCard';
 import { useApp } from '../store';
-import { searchRides, type FavoriteRoute, type Ride } from '../api';
+import { type FavoriteRoute, type Ride } from '../api';
 import { GmailLogo } from '../components/icons/GmailLogo';
 import { findCityByName, isKnownCiCity } from '../data/cities-ci';
 import type { LocationMeta } from '../types/location';
@@ -15,6 +15,7 @@ import {
   type HomeThemeStyle,
 } from '../constants/homePreferences';
 import { useRideContact } from '../hooks/useRideContact';
+import { useRideSearch } from '../hooks/useRideSearch';
 
 type SearchFormState = {
   from: string;
@@ -53,6 +54,8 @@ export default function Home() {
   } = useApp();
   const account = useApp((state) => state.account);
   const { contactDriver, contactingRideId, contactError, clearContactError } = useRideContact();
+  const { execute: runRideSearch, isPending: ridePending } = useRideSearch();
+  const deferredResults = useDeferredValue(results);
 
   const homePreferences = account?.homePreferences;
   const theme = homePreferences?.theme ?? 'default';
@@ -182,8 +185,8 @@ export default function Home() {
     setSearch(nextSearch);
     setLoading(true);
     setError(undefined);
-    try {
-      const data = await searchRides({
+    const result = await runRideSearch(
+      {
         from: nextSearch.from,
         to: nextSearch.to,
         date: nextSearch.date,
@@ -192,18 +195,21 @@ export default function Home() {
         departureAfter: nextSearch.departureAfter,
         departureBefore: nextSearch.departureBefore,
         sort: nextSearch.sort,
-      });
-      setResults(data);
-    } catch (e: any) {
-      setError(e?.message ?? 'Erreur réseau');
-    } finally {
+      },
+      {
+        onSuccess: (rides) => setResults(rides),
+        onError: (message) => setError(message),
+      },
+    );
+    if (!result.aborted) {
       setLoading(false);
     }
   }
 
   const displayLastFrom = lastSearch?.fromMeta?.label ?? lastSearch?.from ?? '';
   const displayLastTo = lastSearch?.toMeta?.label ?? lastSearch?.to ?? '';
-  const totalResults = results.length;
+  const totalResults = deferredResults.length;
+  const isSearching = loading || ridePending;
   const lastSearchDateLabel = lastSearch?.date
     ? new Date(lastSearch.date).toLocaleDateString('fr-FR', {
         weekday: 'short',
@@ -381,7 +387,7 @@ export default function Home() {
               <ErrorBanner message={error} onDismiss={() => setError(undefined)} toneClass={errorAlertClass} />
             )}
 
-            {lastSearch && !loading && (
+            {lastSearch && !isSearching && (
               <div className={`flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm ${baseTextClass}`}>
                 <span className={`font-semibold ${primaryTextClass}`}>
                   {totalResults} trajet(s)
@@ -402,13 +408,13 @@ export default function Home() {
               />
             )}
 
-            {loading && (
+            {isSearching && (
               <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
             )}
 
-            {!loading && totalResults > 0 && (
+            {!isSearching && totalResults > 0 && (
               <div className="grid gap-4 md:grid-cols-2">
-                {results.map((ride) => (
+                {deferredResults.map((ride) => (
                   <RideCard
                     key={ride.rideId}
                     {...ride}
@@ -423,14 +429,14 @@ export default function Home() {
               </div>
             )}
 
-            {!loading && !error && totalResults === 0 && lastSearch && (
+            {!isSearching && !error && totalResults === 0 && lastSearch && (
               <div className={`${panelBaseClass} transition`}>
                 Aucun trajet ne correspond encore à cette recherche. Essaie d’ajuster l’horaire ou
                 publie ton propre trajet pour informer la communauté.
               </div>
             )}
 
-            {!lastSearch && !loading && totalResults === 0 && !error && (
+            {!lastSearch && !isSearching && totalResults === 0 && !error && (
               <div className={`${panelBaseClass} transition`}>
                 Renseigne un <span className={`font-medium ${primaryTextClass}`}>départ</span>, une{' '}
                 <span className={`font-medium ${primaryTextClass}`}>arrivée</span> et une{' '}

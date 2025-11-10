@@ -66,9 +66,8 @@ function AppShell({ requireAuth = false }: AppShellProps) {
     );
   }
 
-  if (requireAuth && !token) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
+  const fromState = { from: location.pathname + location.search + location.hash };
+  const needsAuthModal = requireAuth && !token;
 
   const displayName =
     account?.fullName ||
@@ -269,8 +268,51 @@ function AppShell({ requireAuth = false }: AppShellProps) {
         )}
       </header>
 
-      <main className="app-main">
-        <Outlet />
+      <main className="app-main relative">
+        <div className={needsAuthModal ? 'relative blur-sm opacity-70 pointer-events-none select-none transition duration-300' : 'relative'}>
+          <Outlet />
+        </div>
+        {needsAuthModal && (
+          <div className="pointer-events-auto absolute inset-0 flex items-center justify-center px-4 py-10">
+            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md" />
+            <div className="relative z-10 flex min-h-[60vh] items-center justify-center px-4 py-10">
+              <div className="w-full max-w-lg rounded-[28px] border border-white/20 bg-white/95 p-8 text-center shadow-[0_40px_120px_-45px_rgba(15,23,42,0.8)] backdrop-blur">
+                <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Authentification requise
+                </div>
+                <h2 className="mt-4 text-2xl font-semibold text-slate-900">
+                  Connecte-toi pour accéder à cette zone
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Cet espace contient des informations privées ou des actions sensibles. Connecte-toi
+                  pour poursuivre, ou crée un compte KariGo en quelques secondes.
+                </p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <Link
+                    to="/login"
+                    state={fromState}
+                    className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  >
+                    Se connecter
+                  </Link>
+                  <Link
+                    to="/register"
+                    state={fromState}
+                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:text-sky-700"
+                  >
+                    Créer un compte
+                  </Link>
+                </div>
+                <div className="mt-4 text-xs text-slate-500">
+                  ou{' '}
+                  <Link to="/" className="font-semibold text-slate-600 hover:text-sky-600">
+                    revenir à l’accueil
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
