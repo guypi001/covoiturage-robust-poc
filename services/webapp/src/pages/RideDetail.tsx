@@ -119,6 +119,7 @@ export function RideDetail() {
   }, [ride]);
 
   const canMessage = Boolean(driver && currentAccount?.id && driver?.id !== currentAccount?.id && token);
+  const canViewProfile = Boolean(driver?.id && token);
 
   if (loading && !ride) {
     return <div className="glass p-6 rounded-2xl">Chargement du trajet…</div>;
@@ -190,6 +191,11 @@ export function RideDetail() {
   const driverName =
     extractFirstName(driver?.fullName ?? driver?.companyName ?? driver?.email) || 'Chauffeur KariGo';
 
+  const goToProfile = () => {
+    if (!canViewProfile || !driver?.id) return;
+    nav(`/profile/${driver.id}`);
+  };
+
   return (
     <div className="glass p-6 rounded-2xl space-y-6">
       <header className="space-y-2">
@@ -220,9 +226,9 @@ export function RideDetail() {
           <div className="flex flex-wrap items-start gap-4">
             <button
               type="button"
-              onClick={profilePicture ? () => nav(`/profile/${driver?.id}`) : undefined}
+              onClick={canViewProfile ? goToProfile : undefined}
               className={`relative h-20 w-20 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 ${
-                profilePicture ? 'cursor-pointer hover:opacity-90 transition' : 'cursor-default'
+                canViewProfile ? 'cursor-pointer hover:opacity-90 transition' : 'cursor-default'
               }`}
             >
               {profilePicture ? (
@@ -258,15 +264,27 @@ export function RideDetail() {
                 </div>
               )}
             </div>
-            {canMessage && (
-              <button
-                onClick={goToMessages}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-900/90 hover:bg-slate-100"
-              >
-                Ouvrir la messagerie
-                <ArrowRight size={14} />
-              </button>
-            )}
+            <div className="flex flex-col items-end gap-2">
+              {canMessage && (
+                <button
+                  onClick={goToMessages}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-900/90 hover:bg-slate-100"
+                >
+                  Ouvrir la messagerie
+                  <ArrowRight size={14} />
+                </button>
+              )}
+              {canViewProfile && (
+                <button
+                  type="button"
+                  onClick={goToProfile}
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-slate-900"
+                >
+                  Voir le profil du chauffeur
+                  <ArrowRight size={14} />
+                </button>
+              )}
+            </div>
           </div>
 
           {driver?.comfortPreferences && driver.comfortPreferences.length > 0 && (
@@ -337,6 +355,14 @@ export function RideDetail() {
           >
             Réserver ce trajet
           </button>
+          {canMessage && (
+            <button
+              onClick={goToMessages}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+            >
+              Écrire au conducteur
+            </button>
+          )}
         </div>
       </section>
 

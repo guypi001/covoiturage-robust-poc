@@ -11,9 +11,11 @@ import Messages from './pages/Messages';
 import AdminAccounts from './pages/AdminAccounts';
 import CompanyFleet from './pages/CompanyFleet';
 import ProfileSettings from './pages/ProfileSettings';
+import PublicProfile from './pages/PublicProfile';
 import MyTrips from './pages/MyTrips';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
+import { AppFooter } from './components/AppFooter';
 import { Menu, X, MessageCircle, LogOut } from 'lucide-react';
 
 type AppShellProps = {
@@ -314,6 +316,7 @@ function AppShell({ requireAuth = false }: AppShellProps) {
           </div>
         )}
       </main>
+      <AppFooter />
     </div>
   );
 }
@@ -340,6 +343,7 @@ export default function App() {
           <Route path="/create" element={<CreateRide />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/profile" element={<ProfileSettings />} />
+          <Route path="/profile/:accountId" element={<PublicProfile />} />
           <Route path="/company/fleet" element={<CompanyFleet />} />
           <Route path="/admin/accounts" element={<AdminAccounts />} />
           <Route path="/my-trips" element={<MyTrips />} />
