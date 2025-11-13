@@ -419,13 +419,12 @@ export default function Home() {
                     key={ride.rideId}
                     {...ride}
                     onBook={() => nav(`/booking/${ride.rideId}`)}
-                    onDetails={() => nav(`/ride/${ride.rideId}`)}
-                    onContact={account?.id && ride.driverId ? () => contactDriver(ride as Ride) : undefined}
-                    contactBusy={contactingRideId === ride.rideId}
-                    variant="dark"
-                    showPublisher={Boolean(account?.id)}
-                  />
-                ))}
+                  onDetails={() => nav(`/ride/${ride.rideId}`)}
+                  onContact={account?.id && ride.driverId ? () => contactDriver(ride as Ride) : undefined}
+                  contactBusy={contactingRideId === ride.rideId}
+                  variant="dark"
+                />
+              ))}
               </div>
             )}
 

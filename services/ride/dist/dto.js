@@ -15,6 +15,7 @@ class CreateRideDto {
 }
 exports.CreateRideDto = CreateRideDto;
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateRideDto.prototype, "driverId", void 0);
@@ -24,6 +25,12 @@ __decorate([
     (0, class_validator_1.MaxLength)(255),
     __metadata("design:type", String)
 ], CreateRideDto.prototype, "driverLabel", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(1024),
+    __metadata("design:type", String)
+], CreateRideDto.prototype, "driverPhotoUrl", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)

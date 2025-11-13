@@ -27,6 +27,10 @@ __decorate([
     __metadata("design:type", Object)
 ], Ride.prototype, "driverLabel", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 1024, nullable: true }),
+    __metadata("design:type", Object)
+], Ride.prototype, "driverPhotoUrl", void 0);
+__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
 ], Ride.prototype, "originCity", void 0);

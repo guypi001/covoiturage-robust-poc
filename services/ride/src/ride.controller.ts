@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, Post, Res, HttpStatus, Logger } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res, HttpStatus, Logger, Req } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Ride, Outbox } from './entities';
 import { EventBus } from './event-bus';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import {
   refreshRideGauges,
   rideLockAttemptCounter,
@@ -11,6 +11,9 @@ import {
   ridePriceHistogram,
   ridePublishedCounter,
 } from './metrics';
+import axios from 'axios';
+
+const IDENTITY_URL = process.env.IDENTITY_URL || 'http://identity:3000';
 
 @Controller('rides')
 export class RideController {
@@ -33,15 +36,31 @@ export class RideController {
   }
 
   @Post()
-  async create(@Body() dto: Partial<Ride>, @Res() res: Response) {
+  async create(@Body() dto: Partial<Ride>, @Req() req: Request, @Res() res: Response) {
     try {
-      if (!dto.driverId) {
+      let driverId = dto.driverId;
+      let driverLabel = dto.driverLabel ?? null;
+      let driverPhotoUrl = dto.driverPhotoUrl ?? null;
+
+      if (!driverId) {
+        const authHeader = req.headers['authorization'];
+        if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+          const profile = await this.fetchProfile(authHeader);
+          if (profile?.id) {
+            driverId = profile.id;
+            driverLabel = driverLabel ?? profile.fullName ?? profile.companyName ?? profile.email ?? null;
+            driverPhotoUrl = driverPhotoUrl ?? profile.profilePhotoUrl ?? null;
+          }
+        }
+      }
+
+      if (!driverId) {
         return res.status(HttpStatus.BAD_REQUEST).json({ error: 'driver_required' });
       }
       const ride = this.rides.create({
-        driverId: dto.driverId!,
-        driverLabel: dto.driverLabel ?? null,
-        driverPhotoUrl: dto.driverPhotoUrl ?? null,
+        driverId,
+        driverLabel,
+        driverPhotoUrl,
         originCity: dto.originCity!,
         destinationCity: dto.destinationCity!,
         departureAt: dto.departureAt!,
@@ -79,6 +98,19 @@ export class RideController {
     } catch (e: any) {
       this.logger.error(`Ride creation failed: ${e?.message ?? e}`);
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'create_failed', detail: e?.message });
+    }
+  }
+
+  private async fetchProfile(authorization: string) {
+    try {
+      const { data } = await axios.get(`${IDENTITY_URL}/profiles/me`, {
+        headers: { authorization },
+        timeout: 3000,
+      });
+      return data;
+    } catch (err) {
+      this.logger.warn(`Unable to resolve driver profile: ${(err as Error)?.message ?? err}`);
+      return null;
     }
   }
 

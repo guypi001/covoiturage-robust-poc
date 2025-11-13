@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateAccountProfileDto = exports.UpdateAccountRoleDto = exports.UpdateAccountStatusDto = exports.ListAccountsQueryDto = exports.VerifyGmailOtpDto = exports.RequestGmailOtpDto = exports.AdminSendRideDigestDto = exports.UpdateCompanyProfileDto = exports.UpdateIndividualProfileDto = exports.LoginDto = exports.RegisterCompanyDto = exports.RegisterIndividualDto = exports.HomePreferencesDto = exports.HomeFavoriteRouteDto = exports.HOME_QUICK_ACTION_OPTIONS = exports.HOME_THEME_OPTIONS = void 0;
+exports.UpdateAccountProfileDto = exports.UpdateAccountRoleDto = exports.UpdateAccountStatusDto = exports.ListAccountsQueryDto = exports.VerifyGmailOtpDto = exports.RequestGmailOtpDto = exports.AdminSendRideDigestDto = exports.UpdateCompanyProfileDto = exports.UpdateIndividualProfileDto = exports.ConfirmPasswordResetDto = exports.RequestPasswordResetDto = exports.LoginDto = exports.RegisterCompanyDto = exports.RegisterIndividualDto = exports.HomePreferencesDto = exports.HomeFavoriteRouteDto = exports.HOME_QUICK_ACTION_OPTIONS = exports.HOME_THEME_OPTIONS = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 exports.HOME_THEME_OPTIONS = ['default', 'sunset', 'night'];
@@ -142,6 +142,25 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], LoginDto.prototype, "password", void 0);
+class RequestPasswordResetDto {
+}
+exports.RequestPasswordResetDto = RequestPasswordResetDto;
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], RequestPasswordResetDto.prototype, "email", void 0);
+class ConfirmPasswordResetDto {
+}
+exports.ConfirmPasswordResetDto = ConfirmPasswordResetDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ConfirmPasswordResetDto.prototype, "token", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(8),
+    __metadata("design:type", String)
+], ConfirmPasswordResetDto.prototype, "password", void 0);
 class UpdateIndividualProfileDto {
 }
 exports.UpdateIndividualProfileDto = UpdateIndividualProfileDto;
@@ -319,6 +338,7 @@ __decorate([
     __metadata("design:type", String)
 ], VerifyGmailOtpDto.prototype, "email", void 0);
 __decorate([
+    (0, class_transformer_1.Transform)(({ value }) => typeof value === 'string' ? value.replace(/\D+/g, '') : value),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.Matches)(/^\d{4,8}$/),
     __metadata("design:type", String)

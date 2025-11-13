@@ -1,7 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { captureBookingPayment, createBooking, getRide, type Ride } from '../api';
+import {
+  startPaymentSimulation,
+  type PaymentSimulationHandle,
+  type PaymentSimulationStep,
+} from '../utils/paymentSimulation';
 
 export function Booking() {
   const { rideId } = useParams<{ rideId: string }>();
@@ -64,6 +69,15 @@ export function Booking() {
   const [paying, setPaying] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<string>();
   const [paymentError, setPaymentError] = useState<string>();
+  const [paymentSteps, setPaymentSteps] = useState<PaymentSimulationStep[]>([]);
+  const paymentSimulationRef = useRef<PaymentSimulationHandle | null>(null);
+
+  useEffect(() => {
+    return () => {
+      paymentSimulationRef.current?.cancel();
+      paymentSimulationRef.current = null;
+    };
+  }, []);
 
   if (fetching && !ride) {
     return <div className="glass p-6 rounded-2xl">Chargement du trajet…</div>;
@@ -81,6 +95,9 @@ export function Booking() {
     setPaymentMessage(undefined);
     setPaymentError(undefined);
     setBookingResult(undefined);
+    setPaymentSteps([]);
+    paymentSimulationRef.current?.cancel();
+    paymentSimulationRef.current = null;
     if (ride.seatsAvailable <= 0) {
       setBookingError('Plus aucune place disponible pour ce trajet');
       return;
@@ -109,6 +126,11 @@ export function Booking() {
     if (!bookingResult) return;
     setPaymentError(undefined);
     setPaymentMessage(undefined);
+    paymentSimulationRef.current?.cancel();
+    const simulation = startPaymentSimulation({
+      onUpdate: ({ steps }) => setPaymentSteps(steps),
+    });
+    paymentSimulationRef.current = simulation;
     try {
       setPaying(true);
       await captureBookingPayment({
@@ -116,10 +138,26 @@ export function Booking() {
         amount: bookingResult.amount,
         holdId: bookingResult.holdId ?? undefined,
       });
+      await simulation.promise;
       setPaymentMessage('Paiement confirmé 🥳');
     } catch (e: any) {
+      simulation.cancel();
+      await simulation.promise.catch(() => undefined);
+      const failedIndex = simulation.getCurrentIndex();
+      setPaymentSteps((prev) =>
+        prev.map((step, idx) => {
+          if (failedIndex < 0) {
+            if (idx === 0 && prev.length) return { ...step, status: 'error' };
+            return step;
+          }
+          if (idx === failedIndex) return { ...step, status: 'error' };
+          if (idx > failedIndex) return { ...step, status: 'pending' };
+          return step;
+        }),
+      );
       setPaymentError(e?.message || 'Échec du paiement');
     } finally {
+      paymentSimulationRef.current = null;
       setPaying(false);
     }
   }
@@ -215,6 +253,41 @@ export function Booking() {
             {paymentMessage && <span className="text-emerald-300 text-sm">{paymentMessage}</span>}
             {paymentError && <span className="text-red-300 text-sm">{paymentError}</span>}
           </div>
+          {paymentSteps.length > 0 && (
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+              <div className="text-xs uppercase tracking-wide text-white/50">Simulation du paiement</div>
+              <div className="space-y-2">
+                {paymentSteps.map((step) => (
+                  <div key={step.id} className="flex items-center gap-3 text-sm">
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        step.status === 'done'
+                          ? 'bg-emerald-400'
+                          : step.status === 'active'
+                          ? 'bg-amber-300 animate-pulse'
+                          : step.status === 'error'
+                          ? 'bg-red-400'
+                          : 'bg-white/30'
+                      }`}
+                    ></span>
+                    <span
+                      className={
+                        step.status === 'error'
+                          ? 'text-red-300'
+                          : step.status === 'done'
+                          ? 'text-emerald-200'
+                          : step.status === 'active'
+                          ? 'text-white'
+                          : 'text-white/70'
+                      }
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

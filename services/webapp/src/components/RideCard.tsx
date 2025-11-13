@@ -18,7 +18,6 @@ type Props = {
   onContact?: () => void;
   contactBusy?: boolean;
   variant?: 'light' | 'dark';
-  showPublisher?: boolean;
 };
 
 export default function RideCard({
@@ -37,7 +36,7 @@ export default function RideCard({
   onContact,
   contactBusy,
   variant = 'light',
-  showPublisher = false,
+  showPublisher = true,
 }: Props) {
   const extractFirstName = (value?: string | null) => {
     if (!value) return undefined;
@@ -110,15 +109,8 @@ export default function RideCard({
         button: 'btn-primary inline-flex items-center gap-2 px-5 py-2',
       };
 
-  const extractDisplayName = () => {
-    if (!driverLabel) return undefined;
-    const trimmed = driverLabel.trim();
-    if (!trimmed) return undefined;
-    const words = trimmed.split(/\s+/);
-    return words.length >= 2 ? trimmed : words[0];
-  };
-
-  const authorName = extractDisplayName() ?? 'Chauffeur KariGo';
+  const normalizedDriverLabel = driverLabel?.trim();
+  const authorName = normalizedDriverLabel && normalizedDriverLabel.length > 0 ? normalizedDriverLabel : 'Trajet généré par KariGo';
   const authorInitial = authorName.charAt(0).toUpperCase();
   const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
   const authorStyles =
@@ -155,9 +147,9 @@ export default function RideCard({
               <span className={`${palette.badgeBase}`}>
                 <User2 size={12} /> {seatsLabel} siège(s)
               </span>
-              {(driverLabel || driverId) && (
+              {(normalizedDriverLabel || driverId) && (
                 <span className={palette.chipDriver}>
-                  <Shield size={12} /> {driverLabel ?? 'Chauffeur KariGo'}
+                  <Shield size={12} /> {normalizedDriverLabel ?? 'Trajet KariGo'}
                 </span>
               )}
             </div>
@@ -185,7 +177,7 @@ export default function RideCard({
             </div>
             <div className="min-w-0">
               <p className={`text-sm font-semibold ${authorStyles.name}`}>{authorName}</p>
-              <p className="text-xs truncate">Proposé via KariGo</p>
+              <p className="text-xs truncate">{normalizedDriverLabel ? 'Trajet proposé par ce conducteur' : 'Référence KariGo'}</p>
             </div>
           </div>
         )}

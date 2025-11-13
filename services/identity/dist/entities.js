@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OtpToken = exports.Account = void 0;
+exports.PasswordResetToken = exports.OtpToken = exports.Account = void 0;
 const typeorm_1 = require("typeorm");
 let Account = class Account {
 };
@@ -125,4 +125,47 @@ __decorate([
 exports.OtpToken = OtpToken = __decorate([
     (0, typeorm_1.Entity)('otp_tokens')
 ], OtpToken);
+let PasswordResetToken = class PasswordResetToken {
+};
+exports.PasswordResetToken = PasswordResetToken;
+__decorate([
+    (0, typeorm_1.PrimaryGeneratedColumn)('uuid'),
+    __metadata("design:type", String)
+], PasswordResetToken.prototype, "id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'account_id', type: 'uuid' }),
+    __metadata("design:type", String)
+], PasswordResetToken.prototype, "accountId", void 0);
+__decorate([
+    (0, typeorm_1.Index)(),
+    (0, typeorm_1.Column)({ type: 'varchar', length: 255 }),
+    __metadata("design:type", String)
+], PasswordResetToken.prototype, "email", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'secret_hash', type: 'text' }),
+    __metadata("design:type", String)
+], PasswordResetToken.prototype, "secretHash", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'expires_at', type: 'timestamptz' }),
+    __metadata("design:type", Date)
+], PasswordResetToken.prototype, "expiresAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'used_at', type: 'timestamptz', nullable: true }),
+    __metadata("design:type", Object)
+], PasswordResetToken.prototype, "usedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: 0 }),
+    __metadata("design:type", Number)
+], PasswordResetToken.prototype, "attempts", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)({ name: 'created_at', type: 'timestamptz' }),
+    __metadata("design:type", Date)
+], PasswordResetToken.prototype, "createdAt", void 0);
+__decorate([
+    (0, typeorm_1.UpdateDateColumn)({ name: 'updated_at', type: 'timestamptz' }),
+    __metadata("design:type", Date)
+], PasswordResetToken.prototype, "updatedAt", void 0);
+exports.PasswordResetToken = PasswordResetToken = __decorate([
+    (0, typeorm_1.Entity)('password_reset_tokens')
+], PasswordResetToken);
 //# sourceMappingURL=entities.js.map

@@ -16,8 +16,9 @@ import {
 import type { ScheduleRecurrence, ScheduleStatus, VehicleStatus } from './entities';
 
 export class CreateRideDto {
+  @IsOptional()
   @IsString()
-  driverId!: string;
+  driverId?: string;
 
   @IsOptional()
   @IsString()

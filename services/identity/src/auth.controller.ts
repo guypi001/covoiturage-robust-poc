@@ -6,6 +6,8 @@ import {
   LoginDto,
   RequestGmailOtpDto,
   VerifyGmailOtpDto,
+  RequestPasswordResetDto,
+  ConfirmPasswordResetDto,
 } from './dto';
 
 @Controller('auth')
@@ -35,5 +37,15 @@ export class AuthController {
   @Post('gmail/verify')
   verifyGmail(@Body() dto: VerifyGmailOtpDto) {
     return this.auth.verifyGmailOtp(dto);
+  }
+
+  @Post('password/forgot')
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.auth.requestPasswordReset(dto);
+  }
+
+  @Post('password/reset')
+  resetPassword(@Body() dto: ConfirmPasswordResetDto) {
+    return this.auth.confirmPasswordReset(dto);
   }
 }

@@ -358,7 +358,6 @@ export function Results() {
                 onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
                 contactBusy={contactingRideId === ride.rideId}
                 variant="dark"
-                showPublisher={Boolean(account)}
               />
             ))}
           </div>

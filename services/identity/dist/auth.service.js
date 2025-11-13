@@ -57,12 +57,62 @@ const metrics_1 = require("./metrics");
 const bcrypt = __importStar(require("bcryptjs"));
 const otp_service_1 = require("./otp.service");
 const mailer_service_1 = require("./mailer.service");
+const crypto_1 = require("crypto");
 const PASSWORD_SALT_ROUNDS = 10;
+const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
+const PASSWORD_RESET_SECRET_BYTES = Number(process.env.PASSWORD_RESET_SECRET_BYTES || 32);
+const PASSWORD_RESET_MAX_ATTEMPTS = Number(process.env.PASSWORD_RESET_MAX_ATTEMPTS || 5);
+function looksLocalUrl(value) {
+    if (!value)
+        return false;
+    try {
+        const parsed = new URL(value);
+        const host = parsed.hostname?.toLowerCase();
+        return (host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host === '0.0.0.0' ||
+            host === '[::1]' ||
+            host.startsWith('127.') ||
+            host.startsWith('0.'));
+    }
+    catch {
+        return false;
+    }
+}
+function extractPort(value) {
+    if (!value)
+        return undefined;
+    try {
+        const parsed = new URL(value);
+        return parsed.port || undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+const fallbackPort = process.env.APP_PUBLIC_PORT?.trim() ||
+    extractPort(process.env.APP_BASE_URL?.trim()) ||
+    extractPort(process.env.FRONTEND_URL?.trim()) ||
+    '3006';
+const DEFAULT_PUBLIC_URL = `${process.env.APP_PUBLIC_PROTOCOL || 'http'}://${process.env.APP_PUBLIC_HOST || '192.168.0.50'}${fallbackPort ? `:${fallbackPort}` : ''}`;
+const APP_PUBLIC_URL = (() => {
+    const explicit = process.env.APP_PUBLIC_URL?.trim();
+    if (explicit)
+        return explicit;
+    const appBase = process.env.APP_BASE_URL?.trim();
+    if (appBase && !looksLocalUrl(appBase))
+        return appBase;
+    const frontend = process.env.FRONTEND_URL?.trim();
+    if (frontend && !looksLocalUrl(frontend))
+        return frontend;
+    return DEFAULT_PUBLIC_URL;
+})();
 const ACCOUNT_STATUS_VALUES = ['ACTIVE', 'SUSPENDED'];
 const ACCOUNT_ROLE_VALUES = ['USER', 'ADMIN'];
 let AuthService = AuthService_1 = class AuthService {
-    constructor(accounts, jwt, otp, mailer) {
+    constructor(accounts, resetTokens, jwt, otp, mailer) {
         this.accounts = accounts;
+        this.resetTokens = resetTokens;
         this.jwt = jwt;
         this.otp = otp;
         this.mailer = mailer;
@@ -120,6 +170,28 @@ let AuthService = AuthService_1 = class AuthService {
     ensureValidRole(role) {
         if (!ACCOUNT_ROLE_VALUES.includes(role)) {
             throw new common_1.BadRequestException('invalid_role');
+        }
+    }
+    formatAccountDisplayName(account) {
+        return account.fullName || account.companyName || account.email;
+    }
+    buildPasswordResetLink(token) {
+        const base = APP_PUBLIC_URL || 'http://192.168.0.50';
+        try {
+            const url = new URL('/reset-password', base);
+            url.searchParams.set('token', token);
+            return url.toString();
+        }
+        catch {
+            return `${base.replace(/\/+$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+        }
+    }
+    async cleanupExpiredResetTokens() {
+        try {
+            await this.resetTokens.delete({ expiresAt: (0, typeorm_2.LessThan)(new Date()) });
+        }
+        catch (err) {
+            this.logger.warn(`cleanupExpiredResetTokens failed: ${err?.message ?? err}`);
         }
     }
     normalizeProfilePhoto(url, remove) {
@@ -343,6 +415,89 @@ let AuthService = AuthService_1 = class AuthService {
         const logged = await this.recordSuccessfulLogin(account);
         metrics_1.accountLoginCounter.inc({ type: logged.type });
         return { ...this.buildResponse(logged), created };
+    }
+    async requestPasswordReset(dto) {
+        const email = this.normalizeEmail(dto.email);
+        const account = await this.accounts.findOne({ where: { email } });
+        if (!account) {
+            await this.cleanupExpiredResetTokens();
+            return { success: true };
+        }
+        const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+        const secretBytes = Math.max(16, PASSWORD_RESET_SECRET_BYTES);
+        const secret = (0, crypto_1.randomBytes)(secretBytes).toString('hex');
+        const secretHash = await bcrypt.hash(secret, 8);
+        await this.resetTokens.delete({ accountId: account.id });
+        const saved = await this.resetTokens.save(this.resetTokens.create({
+            accountId: account.id,
+            email,
+            secretHash,
+            expiresAt,
+        }));
+        const token = `${saved.id}:${secret}`;
+        const resetUrl = this.buildPasswordResetLink(token);
+        const sent = await this.mailer.sendPasswordResetEmail(account.email, {
+            name: this.formatAccountDisplayName(account),
+            resetUrl,
+            expiresAt,
+        });
+        if (!sent) {
+            throw new common_1.ServiceUnavailableException('reset_email_failed');
+        }
+        await this.cleanupExpiredResetTokens();
+        return { success: true };
+    }
+    async confirmPasswordReset(dto) {
+        const rawToken = dto.token?.trim();
+        if (!rawToken || !rawToken.includes(':')) {
+            throw new common_1.BadRequestException('invalid_token');
+        }
+        const [id, secret] = rawToken.split(':');
+        if (!id || !secret) {
+            throw new common_1.BadRequestException('invalid_token');
+        }
+        const entry = await this.resetTokens.findOne({ where: { id } });
+        if (!entry) {
+            throw new common_1.UnauthorizedException('reset_invalid');
+        }
+        if (entry.usedAt) {
+            throw new common_1.UnauthorizedException('reset_used');
+        }
+        if (entry.expiresAt.getTime() < Date.now()) {
+            await this.resetTokens.delete(entry.id);
+            throw new common_1.UnauthorizedException('reset_expired');
+        }
+        if (entry.attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+            await this.resetTokens.delete(entry.id);
+            throw new common_1.UnauthorizedException('reset_blocked');
+        }
+        const ok = await bcrypt.compare(secret, entry.secretHash);
+        if (!ok) {
+            entry.attempts += 1;
+            if (entry.attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+                await this.resetTokens.delete(entry.id);
+            }
+            else {
+                await this.resetTokens.save(entry);
+            }
+            throw new common_1.UnauthorizedException('reset_invalid');
+        }
+        const account = await this.accounts.findOne({ where: { id: entry.accountId } });
+        if (!account) {
+            await this.resetTokens.delete(entry.id);
+            throw new common_1.NotFoundException('account_not_found');
+        }
+        this.ensureAccountActive(account);
+        account.passwordHash = await this.hashPassword(dto.password);
+        const savedAccount = await this.accounts.save(account);
+        entry.usedAt = new Date();
+        entry.attempts += 1;
+        await this.resetTokens.save(entry);
+        await this.resetTokens.delete({ accountId: entry.accountId, id: (0, typeorm_2.Not)(entry.id) });
+        await this.cleanupExpiredResetTokens();
+        const logged = await this.recordSuccessfulLogin(savedAccount);
+        metrics_1.accountLoginCounter.inc({ type: logged.type });
+        return this.buildResponse(logged);
     }
     generateRandomPassword() {
         return Math.random().toString(36).slice(-12);
@@ -586,7 +741,9 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(entities_1.Account)),
+    __param(1, (0, typeorm_1.InjectRepository)(entities_1.PasswordResetToken)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         jwt_1.JwtService,
         otp_service_1.OtpService,
         mailer_service_1.MailerService])

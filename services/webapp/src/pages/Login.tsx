@@ -266,6 +266,14 @@ export default function Login() {
                 placeholder="••••••••"
                 required
               />
+              <div className="text-right">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-semibold text-sky-600 hover:text-sky-700"
+                >
+                  Mot de passe oublié ?
+                </Link>
+              </div>
             </div>
 
             {(error || authError) && (

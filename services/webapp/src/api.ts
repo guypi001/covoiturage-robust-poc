@@ -728,6 +728,16 @@ export async function loginAccount(payload: { email: string; password: string })
   return data;
 }
 
+export async function requestPasswordReset(payload: { email: string }) {
+  const { data } = await api.post<{ success: boolean }>(`${IDENTITY_URL}/auth/password/forgot`, payload);
+  return data;
+}
+
+export async function resetPassword(payload: { token: string; password: string }): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>(`${IDENTITY_URL}/auth/password/reset`, payload);
+  return data;
+}
+
 export async function adminListAccounts(
   token: string,
   params: {
@@ -873,6 +883,17 @@ export async function getMyBookings(
   params: { status?: string; limit?: number; offset?: number } = {},
 ): Promise<MyBookingsResponse> {
   const { data } = await api.get<MyBookingsResponse>('/me/bookings', {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  });
+  return data;
+}
+
+export async function getMyPublishedRides(
+  token: string,
+  params: { status?: string; limit?: number; offset?: number; sort?: string } = {},
+): Promise<AdminRideListResponse> {
+  const { data } = await api.get<AdminRideListResponse>('/me/rides', {
     headers: { Authorization: `Bearer ${token}` },
     params,
   });

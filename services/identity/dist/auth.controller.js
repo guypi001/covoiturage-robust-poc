@@ -35,6 +35,12 @@ let AuthController = class AuthController {
     verifyGmail(dto) {
         return this.auth.verifyGmailOtp(dto);
     }
+    requestPasswordReset(dto) {
+        return this.auth.requestPasswordReset(dto);
+    }
+    resetPassword(dto) {
+        return this.auth.confirmPasswordReset(dto);
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
@@ -72,6 +78,20 @@ __decorate([
     __metadata("design:paramtypes", [dto_1.VerifyGmailOtpDto]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "verifyGmail", null);
+__decorate([
+    (0, common_1.Post)('password/forgot'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [dto_1.RequestPasswordResetDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "requestPasswordReset", null);
+__decorate([
+    (0, common_1.Post)('password/reset'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [dto_1.ConfirmPasswordResetDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "resetPassword", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService])

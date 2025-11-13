@@ -166,6 +166,45 @@ let MailerService = MailerService_1 = class MailerService {
             return false;
         }
     }
+    async sendPasswordResetEmail(to, context) {
+        if (!this.transporter) {
+            this.logger.warn(`sendPasswordResetEmail skipped (no transporter). Link for ${to}: ${context.resetUrl}`);
+            return false;
+        }
+        const subject = 'Réinitialisation du mot de passe KariGo';
+        const friendlyName = context.name?.trim() || 'membre KariGo';
+        const expirationMinutes = Math.max(1, Math.round((context.expiresAt.getTime() - Date.now()) / 60000));
+        const text = `Bonjour ${friendlyName},\n\nClique sur le lien suivant pour choisir un nouveau mot de passe KariGo : ${context.resetUrl}\n\nCe lien reste actif pendant ${expirationMinutes} minute(s). Si tu n'es pas à l'origine de cette demande, ignore ce message.\n\nL'équipe KariGo`;
+        const html = this.renderTemplate({
+            title: 'Réinitialise ton mot de passe',
+            intro: `Bonjour ${friendlyName},`,
+            bodyHtml: `
+        <p style="margin:0 0 16px 0;font-size:14px;color:#334155;">
+          Tu viens de demander un nouveau mot de passe. Clique sur le bouton ci-dessous pour en définir un nouveau. Le lien reste actif pendant ${expirationMinutes} minute(s).
+        </p>
+        <p style="margin:0 0 16px 0;font-size:14px;color:#334155;">
+          Si tu n'es pas à l'origine de cette demande, tu peux ignorer cet e-mail. Ton mot de passe actuel reste inchangé.
+        </p>
+      `,
+            ctaLabel: 'Choisir un nouveau mot de passe',
+            ctaUrl: context.resetUrl,
+            previewText: 'Réinitialise ton mot de passe KariGo',
+        });
+        try {
+            await this.transporter.sendMail({
+                from: this.from,
+                to,
+                subject,
+                text,
+                html,
+            });
+            return true;
+        }
+        catch (err) {
+            this.logger.error(`sendPasswordResetEmail failed for ${to}: ${err?.message || err}`);
+            return false;
+        }
+    }
     renderTemplate(options) {
         const preview = options.previewText ?? 'KariGo';
         const footerNote = options.footerNote ??

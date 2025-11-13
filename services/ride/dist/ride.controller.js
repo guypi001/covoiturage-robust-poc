@@ -11,6 +11,9 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 var RideController_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RideController = void 0;
@@ -20,6 +23,8 @@ const typeorm_2 = require("typeorm");
 const entities_1 = require("./entities");
 const event_bus_1 = require("./event-bus");
 const metrics_1 = require("./metrics");
+const axios_1 = __importDefault(require("axios"));
+const IDENTITY_URL = process.env.IDENTITY_URL || 'http://identity:3000';
 let RideController = RideController_1 = class RideController {
     constructor(rides, outboxes, bus) {
         this.rides = rides;
@@ -36,14 +41,29 @@ let RideController = RideController_1 = class RideController {
             this.logger.warn(`refreshAggregates failed: ${err?.message ?? err}`);
         }
     }
-    async create(dto, res) {
+    async create(dto, req, res) {
         try {
-            if (!dto.driverId) {
+            let driverId = dto.driverId;
+            let driverLabel = dto.driverLabel ?? null;
+            let driverPhotoUrl = dto.driverPhotoUrl ?? null;
+            if (!driverId) {
+                const authHeader = req.headers['authorization'];
+                if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+                    const profile = await this.fetchProfile(authHeader);
+                    if (profile?.id) {
+                        driverId = profile.id;
+                        driverLabel = driverLabel ?? profile.fullName ?? profile.companyName ?? profile.email ?? null;
+                        driverPhotoUrl = driverPhotoUrl ?? profile.profilePhotoUrl ?? null;
+                    }
+                }
+            }
+            if (!driverId) {
                 return res.status(common_1.HttpStatus.BAD_REQUEST).json({ error: 'driver_required' });
             }
             const ride = this.rides.create({
-                driverId: dto.driverId,
-                driverLabel: dto.driverLabel ?? null,
+                driverId,
+                driverLabel,
+                driverPhotoUrl,
                 originCity: dto.originCity,
                 destinationCity: dto.destinationCity,
                 departureAt: dto.departureAt,
@@ -58,6 +78,7 @@ let RideController = RideController_1 = class RideController {
                 status: saved.status,
                 driverId: saved.driverId,
                 driverLabel: saved.driverLabel,
+                driverPhotoUrl: saved.driverPhotoUrl,
                 originCity: saved.originCity,
                 destinationCity: saved.destinationCity,
                 departureAt: saved.departureAt,
@@ -75,6 +96,19 @@ let RideController = RideController_1 = class RideController {
         catch (e) {
             this.logger.error(`Ride creation failed: ${e?.message ?? e}`);
             return res.status(common_1.HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'create_failed', detail: e?.message });
+        }
+    }
+    async fetchProfile(authorization) {
+        try {
+            const { data } = await axios_1.default.get(`${IDENTITY_URL}/profiles/me`, {
+                headers: { authorization },
+                timeout: 3000,
+            });
+            return data;
+        }
+        catch (err) {
+            this.logger.warn(`Unable to resolve driver profile: ${err?.message ?? err}`);
+            return null;
         }
     }
     async getOne(id) {
@@ -118,9 +152,10 @@ exports.RideController = RideController;
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Res)()),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], RideController.prototype, "create", null);
 __decorate([

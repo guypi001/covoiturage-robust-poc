@@ -100,3 +100,34 @@ export class OtpToken {
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 }
+
+@Entity('password_reset_tokens')
+export class PasswordResetToken {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'account_id', type: 'uuid' })
+  accountId!: string;
+
+  @Index()
+  @Column({ type: 'varchar', length: 255 })
+  email!: string;
+
+  @Column({ name: 'secret_hash', type: 'text' })
+  secretHash!: string;
+
+  @Column({ name: 'expires_at', type: 'timestamptz' })
+  expiresAt!: Date;
+
+  @Column({ name: 'used_at', type: 'timestamptz', nullable: true })
+  usedAt?: Date | null;
+
+  @Column({ default: 0 })
+  attempts!: number;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+}

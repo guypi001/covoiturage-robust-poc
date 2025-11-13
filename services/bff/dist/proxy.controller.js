@@ -96,6 +96,35 @@ let ProxyController = class ProxyController {
             })),
         };
     }
+    async myRides(req, query) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        const limit = Math.min(Math.max(Number(query?.limit ?? 50) || 50, 1), 200);
+        const params = {
+            driverId: account.id,
+            limit,
+            offset: Math.max(Number(query?.offset ?? 0) || 0, 0),
+            sort: query?.sort ?? 'departure_desc',
+        };
+        if (query?.status)
+            params.status = query.status;
+        if (query?.search)
+            params.search = query.search;
+        if (query?.departureAfter)
+            params.departureAfter = query.departureAfter;
+        if (query?.departureBefore)
+            params.departureBefore = query.departureBefore;
+        if (query?.origin)
+            params.origin = query.origin;
+        if (query?.destination)
+            params.destination = query.destination;
+        return this.forward(() => axios_1.default.get(`${RIDE}/admin/rides`, {
+            params,
+            headers: this.internalHeaders(),
+        }), 'ride');
+    }
     async registerIndividual(body) {
         return this.forward(() => axios_1.default.post(`${IDENTITY}/auth/register/individual`, body), 'identity');
     }
@@ -110,6 +139,12 @@ let ProxyController = class ProxyController {
     }
     async gmailVerify(body) {
         return this.forward(() => axios_1.default.post(`${IDENTITY}/auth/gmail/verify`, body), 'identity');
+    }
+    async requestPasswordReset(body) {
+        return this.forward(() => axios_1.default.post(`${IDENTITY}/auth/password/forgot`, body), 'identity');
+    }
+    async resetPassword(body) {
+        return this.forward(() => axios_1.default.post(`${IDENTITY}/auth/password/reset`, body), 'identity');
     }
     async getProfile(req) {
         const headers = {};
@@ -538,6 +573,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "myBookings", null);
 __decorate([
+    (0, common_1.Get)('me/rides'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "myRides", null);
+__decorate([
     (0, common_1.Post)('auth/register/individual'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -572,6 +615,20 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "gmailVerify", null);
+__decorate([
+    (0, common_1.Post)('auth/password/forgot'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "requestPasswordReset", null);
+__decorate([
+    (0, common_1.Post)('auth/password/reset'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "resetPassword", null);
 __decorate([
     (0, common_1.Get)('profiles/me'),
     __param(0, (0, common_1.Req)()),

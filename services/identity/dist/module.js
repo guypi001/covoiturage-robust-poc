@@ -37,10 +37,10 @@ exports.AppModule = AppModule = __decorate([
             typeorm_1.TypeOrmModule.forRoot({
                 type: 'postgres',
                 url: process.env.DATABASE_URL || 'postgres://app:app@postgres:5432/covoiturage',
-                entities: [entities_1.Account, entities_1.OtpToken],
+                entities: [entities_1.Account, entities_1.OtpToken, entities_1.PasswordResetToken],
                 synchronize: true,
             }),
-            typeorm_1.TypeOrmModule.forFeature([entities_1.Account, entities_1.OtpToken]),
+            typeorm_1.TypeOrmModule.forFeature([entities_1.Account, entities_1.OtpToken, entities_1.PasswordResetToken]),
             jwt_1.JwtModule.register({
                 secret: process.env.JWT_SECRET || 'dev-secret',
                 signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '1h' },

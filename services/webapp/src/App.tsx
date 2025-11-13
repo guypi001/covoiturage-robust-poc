@@ -7,6 +7,8 @@ import CreateRide from './pages/CreateRide';
 import { RideDetail } from './pages/RideDetail';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Messages from './pages/Messages';
 import AdminAccounts from './pages/AdminAccounts';
 import CompanyFleet from './pages/CompanyFleet';
@@ -364,6 +366,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<AppShell requireAuth={false} />}>
           <Route path="/" element={<Home />} />
           <Route path="/results" element={<Results />} />

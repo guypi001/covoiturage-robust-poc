@@ -156,6 +156,38 @@ export class ProxyController {
     };
   }
 
+  @Get('me/rides')
+  async myRides(@Req() req: any, @Query() query: any) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+
+    const limit = Math.min(Math.max(Number(query?.limit ?? 50) || 50, 1), 200);
+    const params: Record<string, any> = {
+      driverId: account.id,
+      limit,
+      offset: Math.max(Number(query?.offset ?? 0) || 0, 0),
+      sort: query?.sort ?? 'departure_desc',
+    };
+
+    if (query?.status) params.status = query.status;
+    if (query?.search) params.search = query.search;
+    if (query?.departureAfter) params.departureAfter = query.departureAfter;
+    if (query?.departureBefore) params.departureBefore = query.departureBefore;
+    if (query?.origin) params.origin = query.origin;
+    if (query?.destination) params.destination = query.destination;
+
+    return this.forward(
+      () =>
+        axios.get(`${RIDE}/admin/rides`, {
+          params,
+          headers: this.internalHeaders(),
+        }),
+      'ride',
+    );
+  }
+
   @Post('auth/register/individual')
   async registerIndividual(@Body() body: any) {
     return this.forward(() => axios.post(`${IDENTITY}/auth/register/individual`, body), 'identity');
@@ -179,6 +211,16 @@ export class ProxyController {
   @Post('auth/gmail/verify')
   async gmailVerify(@Body() body: any) {
     return this.forward(() => axios.post(`${IDENTITY}/auth/gmail/verify`, body), 'identity');
+  }
+
+  @Post('auth/password/forgot')
+  async requestPasswordReset(@Body() body: any) {
+    return this.forward(() => axios.post(`${IDENTITY}/auth/password/forgot`, body), 'identity');
+  }
+
+  @Post('auth/password/reset')
+  async resetPassword(@Body() body: any) {
+    return this.forward(() => axios.post(`${IDENTITY}/auth/password/reset`, body), 'identity');
   }
 
   @Get('profiles/me')
