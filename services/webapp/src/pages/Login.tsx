@@ -32,6 +32,7 @@ export default function Login() {
   const [otpSending, setOtpSending] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpMessage, setOtpMessage] = useState<string>();
+  const sanitizeOtpInput = (value: string) => value.replace(/\D+/g, '').slice(0, 8);
 
   useEffect(() => {
     if (!authReady) {
@@ -105,13 +106,14 @@ export default function Login() {
     e.preventDefault();
     setError(undefined);
     setOtpMessage(undefined);
-    if (!otpCode.trim()) {
+    const code = sanitizeOtpInput(otpCode);
+    if (!code) {
       setError('Entre le code reçu par email.');
       return;
     }
     try {
       setOtpVerifying(true);
-      const res = await verifyGmailOtp({ email: otpEmail.trim().toLowerCase(), code: otpCode.trim() });
+      const res = await verifyGmailOtp({ email: otpEmail.trim().toLowerCase(), code });
       setSession(res.token, res.account);
       navigate('/', { replace: true });
     } catch (err: any) {
@@ -346,7 +348,7 @@ export default function Login() {
                     type="text"
                     className="input w-full text-center tracking-widest text-lg"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.currentTarget.value.replace(/\s+/g, ''))}
+                    onChange={(e) => setOtpCode(sanitizeOtpInput(e.currentTarget.value))}
                     maxLength={8}
                     autoComplete="one-time-code"
                     required

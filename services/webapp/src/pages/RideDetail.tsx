@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowRight, Calendar, Clock, MapPin, Shield, Phone, Mail, Star } from 'lucide-react';
 import { useApp } from '../store';
 import { getRide, getPublicProfile, sendChatMessage, type Ride, type Account } from '../api';
+import { upsertPendingAcquisition } from '../utils/pendingAcquisitions';
 
 const extractFirstName = (value?: string | null) => {
   if (!value) return undefined;
@@ -166,6 +167,17 @@ export function RideDetail() {
         recipientType: driver.type,
         recipientLabel: driver.fullName ?? driver.companyName ?? driver.email,
         body,
+      });
+      upsertPendingAcquisition(currentAccount.id ?? 'guest', {
+        rideId: ride.rideId,
+        driverId: driver.id,
+        driverType: driver.type,
+        driverLabel: driver.fullName ?? driver.companyName ?? driver.email ?? 'Chauffeur KariGo',
+        originCity: ride.originCity,
+        destinationCity: ride.destinationCity,
+        departureAt: ride.departureAt,
+        pricePerSeat: ride.pricePerSeat,
+        lastMessagePreview: body.slice(0, 140),
       });
       setMessageDraft('');
       await refreshBadge();

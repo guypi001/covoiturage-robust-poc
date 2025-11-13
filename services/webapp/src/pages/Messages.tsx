@@ -27,6 +27,7 @@ import {
   Send,
   UserCircle,
 } from 'lucide-react';
+import { upsertPendingAcquisition } from '../utils/pendingAcquisitions';
 
 type ContactPrefill = {
   id: string;
@@ -88,6 +89,7 @@ export default function Messages() {
   const userId = account?.id ?? '';
   const userType = account?.type ?? 'INDIVIDUAL';
   const userLabel = account?.fullName ?? account?.companyName ?? account?.email ?? 'Moi';
+  const cartOwnerId = account?.id ?? 'guest';
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -288,6 +290,18 @@ export default function Messages() {
       setContactPrefill(null);
       setRideContext(null);
       setMessages([response.message]);
+      if (rideContext) {
+        upsertPendingAcquisition(cartOwnerId, {
+          rideId: rideContext.rideId,
+          driverId: profile.id,
+          driverType: profile.type,
+          driverLabel: profile.fullName ?? profile.companyName ?? profile.email ?? 'Conducteur KariGo',
+          originCity: rideContext.originCity,
+          destinationCity: rideContext.destinationCity,
+          departureAt: rideContext.departureAt,
+          lastMessagePreview: newBody.trim().slice(0, 140),
+        });
+      }
       setConversations((prev) => {
         const others = prev.filter((conv) => conv.id !== response.conversation.id);
         return [response.conversation, ...others];

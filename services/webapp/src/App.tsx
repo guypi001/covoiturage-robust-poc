@@ -13,10 +13,11 @@ import CompanyFleet from './pages/CompanyFleet';
 import ProfileSettings from './pages/ProfileSettings';
 import PublicProfile from './pages/PublicProfile';
 import MyTrips from './pages/MyTrips';
+import Cart from './pages/Cart';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
 import { AppFooter } from './components/AppFooter';
-import { Menu, X, MessageCircle, LogOut } from 'lucide-react';
+import { Menu, X, MessageCircle, LogOut, ShoppingBag } from 'lucide-react';
 import { CookieConsent } from './components/CookieConsent';
 
 type AppShellProps = {
@@ -41,6 +42,7 @@ function AppShell({ requireAuth = false }: AppShellProps) {
       { to: '/', label: 'Rechercher', current: location.pathname === '/' },
       { to: '/results', label: 'Résultats', current: location.pathname.startsWith('/results') },
       { to: '/my-trips', label: 'Mes trajets', current: location.pathname.startsWith('/my-trips') },
+      { to: '/cart', label: 'Panier', current: location.pathname.startsWith('/cart') },
       ...(isAdmin
         ? [{ to: '/admin/accounts', label: 'Administration', current: location.pathname.startsWith('/admin') }]
         : []),
@@ -103,16 +105,29 @@ function AppShell({ requireAuth = false }: AppShellProps) {
           <nav className="hidden lg:flex items-center gap-5 text-sm text-slate-700">
             {primaryLinks
               .filter((link) =>
-                token ? true : link.to === '/' || link.to === '/results')
-              .map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  className={`transition hover:text-sky-600 ${link.current ? 'text-sky-600 font-semibold' : ''}`}
-                >
-                  {link.label}
-                </Link>
-              ))}
+                token ? true : link.to === '/' || link.to === '/results' || link.to === '/cart')
+              .map((link) => {
+                const isCart = link.to === '/cart';
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className={`inline-flex items-center gap-1 transition hover:text-sky-600 ${
+                      link.current ? 'text-sky-600 font-semibold' : ''
+                    }`}
+                    aria-label={isCart ? 'Panier' : undefined}
+                  >
+                    {isCart ? (
+                      <>
+                        <ShoppingBag size={18} />
+                        <span className="sr-only">Panier</span>
+                      </>
+                    ) : (
+                      link.label
+                    )}
+                  </Link>
+                );
+              })}
             {token ? (
               <>
                 <Link
@@ -217,16 +232,30 @@ function AppShell({ requireAuth = false }: AppShellProps) {
 
               <div className="grid gap-2">
                 {primaryLinks
-                  .filter((link) => (token ? true : link.to === '/' || link.to === '/results'))
-                  .map((link) => (
-                    <Link
-                      key={link.to}
-                      to={link.to}
-                    className={`rounded-xl border border-slate-200 px-3 py-2 ${link.current ? 'bg-sky-50 border-sky-200 text-sky-700 font-semibold' : 'bg-white hover:border-sky-200 hover:text-sky-600'}`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+                  .filter((link) => (token ? true : link.to === '/' || link.to === '/results' || link.to === '/cart'))
+                  .map((link) => {
+                    const isCart = link.to === '/cart';
+                    return (
+                      <Link
+                        key={link.to}
+                        to={link.to}
+                        className={`flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 ${
+                          link.current
+                            ? 'bg-sky-50 border-sky-200 text-sky-700 font-semibold'
+                            : 'bg-white hover:border-sky-200 hover:text-sky-600'
+                        }`}
+                      >
+                        {isCart ? (
+                          <>
+                            <ShoppingBag size={16} />
+                            <span>Panier</span>
+                          </>
+                        ) : (
+                          link.label
+                        )}
+                      </Link>
+                    );
+                  })}
                 {token ? (
                   <>
                     <Link
@@ -339,6 +368,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/results" element={<Results />} />
           <Route path="/ride/:rideId" element={<RideDetail />} />
+          <Route path="/cart" element={<Cart />} />
         </Route>
         <Route element={<AppShell requireAuth />}>
           <Route path="/booking/:rideId" element={<Booking />} />

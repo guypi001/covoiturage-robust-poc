@@ -16,7 +16,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import type { AccountRole, AccountStatus, AccountType, HomePreferences } from './entities';
 
 export const HOME_THEME_OPTIONS = ['default', 'sunset', 'night'] as const;
@@ -267,6 +267,9 @@ export class VerifyGmailOtpDto {
   @IsEmail()
   email!: string;
 
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.replace(/\D+/g, '') : value,
+  )
   @IsString()
   @Matches(/^\d{4,8}$/)
   code!: string;

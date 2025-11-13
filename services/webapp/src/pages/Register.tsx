@@ -52,6 +52,8 @@ export default function Register() {
 
   const [error, setError] = useState<string>();
 
+  const sanitizeOtpInput = (value: string) => value.replace(/\D+/g, '').slice(0, 8);
+
   const buildFullName = () =>
     [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
 
@@ -163,13 +165,14 @@ export default function Register() {
     e.preventDefault();
     setError(undefined);
     setOtpMessage(undefined);
-    if (!otpCode.trim()) {
+    const code = sanitizeOtpInput(otpCode);
+    if (!code) {
       setError('Entre le code reçu par email.');
       return;
     }
     try {
       setOtpVerifying(true);
-      const res = await verifyGmailOtp({ email: otpEmail.trim().toLowerCase(), code: otpCode.trim() });
+      const res = await verifyGmailOtp({ email: otpEmail.trim().toLowerCase(), code });
       let accountPayload = res.account;
       if (kind === 'individual') {
         const mergedFullName = buildFullName();
@@ -603,7 +606,7 @@ export default function Register() {
                     type="text"
                     className="input w-full text-center tracking-widest text-lg"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.currentTarget.value.replace(/\s+/g, ''))}
+                    onChange={(e) => setOtpCode(sanitizeOtpInput(e.currentTarget.value))}
                     maxLength={8}
                     autoComplete="one-time-code"
                     required
