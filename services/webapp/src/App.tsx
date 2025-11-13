@@ -17,6 +17,7 @@ import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
 import { AppFooter } from './components/AppFooter';
 import { Menu, X, MessageCircle, LogOut } from 'lucide-react';
+import { CookieConsent } from './components/CookieConsent';
 
 type AppShellProps = {
   requireAuth?: boolean;
@@ -330,6 +331,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <CookieConsent />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
