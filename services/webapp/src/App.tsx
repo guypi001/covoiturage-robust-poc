@@ -308,9 +308,9 @@ function AppShell({ requireAuth = false }: AppShellProps) {
         </div>
         {needsAuthModal && (
           <div className="pointer-events-auto absolute inset-0 flex items-center justify-center px-4 py-10">
-            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md" />
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
             <div className="relative z-10 flex min-h-[60vh] items-center justify-center px-4 py-10">
-              <div className="w-full max-w-lg rounded-[28px] border border-white/20 bg-white/95 p-8 text-center shadow-[0_40px_120px_-45px_rgba(15,23,42,0.8)] backdrop-blur">
+              <div className="w-full max-w-lg rounded-[28px] border border-white/20 bg-white/98 p-8 text-center shadow-[0_40px_120px_-45px_rgba(15,23,42,0.8)]">
                 <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   Authentification requise
                 </div>

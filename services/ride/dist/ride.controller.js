@@ -111,6 +111,80 @@ let RideController = RideController_1 = class RideController {
             return null;
         }
     }
+    async resolveDriverId(req, fallback) {
+        if (fallback)
+            return fallback;
+        const authHeader = req.headers['authorization'];
+        if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+            const profile = await this.fetchProfile(authHeader);
+            if (profile?.id) {
+                return profile.id;
+            }
+        }
+        return undefined;
+    }
+    summarizeRides(rides) {
+        const now = Date.now();
+        const upcoming = rides.filter((ride) => {
+            const ts = Date.parse(ride.departureAt);
+            return Number.isFinite(ts) && ts > now;
+        }).length;
+        const published = rides.filter((ride) => ride.status === 'PUBLISHED').length;
+        const seatsBooked = rides.reduce((acc, ride) => acc + (ride.seatsTotal - ride.seatsAvailable), 0);
+        const seatsTotal = rides.reduce((acc, ride) => acc + ride.seatsTotal, 0);
+        return { upcoming, published, seatsBooked, seatsTotal };
+    }
+    async listMine(req, query, res) {
+        try {
+            const driverId = await this.resolveDriverId(req, query?.driverId);
+            if (!driverId) {
+                throw new common_1.ForbiddenException('driver_required');
+            }
+            const limit = Math.min(Math.max(Number(query?.limit ?? 50) || 50, 1), 200);
+            const offset = Math.max(Number(query?.offset ?? 0) || 0, 0);
+            const qb = this.rides.createQueryBuilder('ride').where('ride.driverId = :driverId', { driverId });
+            if (query?.status) {
+                qb.andWhere('ride.status = :status', { status: query.status });
+            }
+            if (query?.origin) {
+                qb.andWhere('ride.originCity ILIKE :origin', { origin: `%${query.origin}%` });
+            }
+            if (query?.destination) {
+                qb.andWhere('ride.destinationCity ILIKE :destination', { destination: `%${query.destination}%` });
+            }
+            if (query?.departureAfter) {
+                qb.andWhere('ride.departureAt >= :departureAfter', { departureAfter: query.departureAfter });
+            }
+            if (query?.departureBefore) {
+                qb.andWhere('ride.departureAt <= :departureBefore', { departureBefore: query.departureBefore });
+            }
+            const sort = query?.sort?.toLowerCase();
+            if (sort === 'price_asc')
+                qb.orderBy('ride.pricePerSeat', 'ASC');
+            else if (sort === 'price_desc')
+                qb.orderBy('ride.pricePerSeat', 'DESC');
+            else if (sort === 'departure_asc')
+                qb.orderBy('ride.departureAt', 'ASC');
+            else
+                qb.orderBy('ride.departureAt', 'DESC');
+            qb.skip(offset);
+            qb.take(limit);
+            const [items, total] = await qb.getManyAndCount();
+            return res.status(common_1.HttpStatus.OK).json({
+                data: items,
+                total,
+                offset,
+                limit,
+                summary: this.summarizeRides(items),
+            });
+        }
+        catch (err) {
+            const status = err instanceof common_1.ForbiddenException
+                ? common_1.HttpStatus.FORBIDDEN
+                : err?.status ?? common_1.HttpStatus.INTERNAL_SERVER_ERROR;
+            return res.status(status).json({ error: err?.message ?? 'mine_failed' });
+        }
+    }
     async getOne(id) {
         const ride = await this.rides.findOne({ where: { id } });
         return ride ?? { error: 'not_found' };
@@ -158,6 +232,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], RideController.prototype, "create", null);
+__decorate([
+    (0, common_1.Get)('mine'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], RideController.prototype, "listMine", null);
 __decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Param)('id')),

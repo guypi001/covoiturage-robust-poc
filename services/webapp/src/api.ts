@@ -100,6 +100,7 @@ const MESSAGING_URL = resolveServiceUrl(
   3012,
   '/api/messaging',
 );
+const BFF_URL = resolveServiceUrl(import.meta.env.VITE_BFF_URL, 3000, '/api/bff', true);
 
 const api = axios.create();
 
@@ -497,6 +498,7 @@ export type RideAdminItem = {
   pricePerSeat: number;
   status: string;
   createdAt: string;
+  reservations?: RideReservation[];
 };
 
 export type RideAdminSummary = {
@@ -508,6 +510,17 @@ export type RideAdminSummary = {
   occupancyRate?: number;
   byStatus?: Record<string, number>;
   topRoutes?: Array<{ origin: string; destination: string; count: number }>;
+};
+
+export type RideReservation = {
+  id: string;
+  rideId: string;
+  passengerId: string;
+  seats: number;
+  amount: number;
+  status: string;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
 };
 
 export type AdminUpdateRidePayload = {
@@ -882,7 +895,7 @@ export async function getMyBookings(
   token: string,
   params: { status?: string; limit?: number; offset?: number } = {},
 ): Promise<MyBookingsResponse> {
-  const { data } = await api.get<MyBookingsResponse>('/me/bookings', {
+  const { data } = await api.get<MyBookingsResponse>(`${BFF_URL}/me/bookings`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   });
@@ -893,7 +906,7 @@ export async function getMyPublishedRides(
   token: string,
   params: { status?: string; limit?: number; offset?: number; sort?: string } = {},
 ): Promise<AdminRideListResponse> {
-  const { data } = await api.get<AdminRideListResponse>('/me/rides', {
+  const { data } = await api.get<AdminRideListResponse>(`${BFF_URL}/me/rides`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   });

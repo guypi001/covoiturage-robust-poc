@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Res, HttpStatus, Logger, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res, HttpStatus, Logger, Req, Query, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Ride, Outbox } from './entities';
@@ -111,6 +111,86 @@ export class RideController {
     } catch (err) {
       this.logger.warn(`Unable to resolve driver profile: ${(err as Error)?.message ?? err}`);
       return null;
+    }
+  }
+
+  private async resolveDriverId(req: Request, fallback?: string) {
+    if (fallback) return fallback;
+    const authHeader = req.headers['authorization'];
+    if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+      const profile = await this.fetchProfile(authHeader);
+      if (profile?.id) {
+        return profile.id as string;
+      }
+    }
+    return undefined;
+  }
+
+  private summarizeRides(rides: Ride[]) {
+    const now = Date.now();
+    const upcoming = rides.filter((ride) => {
+      const ts = Date.parse(ride.departureAt);
+      return Number.isFinite(ts) && ts > now;
+    }).length;
+    const published = rides.filter((ride) => ride.status === 'PUBLISHED').length;
+    const seatsBooked = rides.reduce((acc, ride) => acc + (ride.seatsTotal - ride.seatsAvailable), 0);
+    const seatsTotal = rides.reduce((acc, ride) => acc + ride.seatsTotal, 0);
+    return { upcoming, published, seatsBooked, seatsTotal };
+  }
+
+  @Get('mine')
+  async listMine(@Req() req: Request, @Query() query: any, @Res() res: Response) {
+    try {
+      const driverId = await this.resolveDriverId(req, query?.driverId);
+      if (!driverId) {
+        throw new ForbiddenException('driver_required');
+      }
+
+      const limit = Math.min(Math.max(Number(query?.limit ?? 50) || 50, 1), 200);
+      const offset = Math.max(Number(query?.offset ?? 0) || 0, 0);
+
+      const qb = this.rides.createQueryBuilder('ride').where('ride.driverId = :driverId', { driverId });
+
+      if (query?.status) {
+        qb.andWhere('ride.status = :status', { status: query.status });
+      }
+      if (query?.origin) {
+        qb.andWhere('ride.originCity ILIKE :origin', { origin: `%${query.origin}%` });
+      }
+      if (query?.destination) {
+        qb.andWhere('ride.destinationCity ILIKE :destination', { destination: `%${query.destination}%` });
+      }
+      if (query?.departureAfter) {
+        qb.andWhere('ride.departureAt >= :departureAfter', { departureAfter: query.departureAfter });
+      }
+      if (query?.departureBefore) {
+        qb.andWhere('ride.departureAt <= :departureBefore', { departureBefore: query.departureBefore });
+      }
+
+      const sort = (query?.sort as string)?.toLowerCase();
+      if (sort === 'price_asc') qb.orderBy('ride.pricePerSeat', 'ASC');
+      else if (sort === 'price_desc') qb.orderBy('ride.pricePerSeat', 'DESC');
+      else if (sort === 'departure_asc') qb.orderBy('ride.departureAt', 'ASC');
+      else qb.orderBy('ride.departureAt', 'DESC');
+
+      qb.skip(offset);
+      qb.take(limit);
+
+      const [items, total] = await qb.getManyAndCount();
+
+      return res.status(HttpStatus.OK).json({
+        data: items,
+        total,
+        offset,
+        limit,
+        summary: this.summarizeRides(items),
+      });
+    } catch (err: any) {
+      const status =
+        err instanceof ForbiddenException
+          ? HttpStatus.FORBIDDEN
+          : err?.status ?? HttpStatus.INTERNAL_SERVER_ERROR;
+      return res.status(status).json({ error: err?.message ?? 'mine_failed' });
     }
   }
 

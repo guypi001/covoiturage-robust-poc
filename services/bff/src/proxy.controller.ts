@@ -15,14 +15,28 @@ import {
 } from '@nestjs/common';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import { upstreamDurationHistogram, upstreamRequestCounter } from './metrics';
+function normalizeRideUrl(value?: string | null) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    if ((parsed.hostname === 'ride' || parsed.hostname.endsWith('.ride')) && parsed.port === '3002') {
+      parsed.port = '3000';
+      return parsed.toString();
+    }
+    return value;
+  } catch {
+    return value;
+  }
+}
+
 const rideHosts = [
-  process.env.RIDE_URL,
-  process.env.RIDE_INTERNAL_URL,
-  'http://ride:3002',
+  normalizeRideUrl(process.env.RIDE_INTERNAL_URL),
+  normalizeRideUrl(process.env.RIDE_URL),
+  'http://ride:3000',
   'http://localhost:3002',
   'http://127.0.0.1:3002',
 ].filter((value): value is string => Boolean(value));
-const RIDE = rideHosts[0] ?? 'http://ride:3002';
+const RIDE = rideHosts[0] ?? 'http://ride:3000';
 
 const SEARCH = process.env.SEARCH_URL || 'http://search:3003';
 const BOOKING = process.env.BOOKING_URL || 'http://booking:3004';
@@ -42,6 +56,17 @@ type RideAdminItem = {
   pricePerSeat: number;
   status: string;
   createdAt: string;
+};
+
+type RideReservation = {
+  id: string;
+  rideId: string;
+  passengerId: string;
+  seats: number;
+  amount: number;
+  status: string;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
 };
 
 type BookingAdminItem = {
@@ -178,7 +203,7 @@ export class ProxyController {
     if (query?.origin) params.origin = query.origin;
     if (query?.destination) params.destination = query.destination;
 
-    return this.forward(
+    const payload = await this.forward<{ data: RideAdminItem[]; total: number; summary: any }>(
       () =>
         axios.get(`${RIDE}/admin/rides`, {
           params,
@@ -186,6 +211,18 @@ export class ProxyController {
         }),
       'ride',
     );
+
+    const items = Array.isArray(payload?.data) ? payload.data : [];
+    const filtered = items.filter((ride) => ride?.driverId === account.id);
+    const ridesWithReservations = await this.attachRideReservations(filtered);
+
+    return {
+      data: ridesWithReservations,
+      total: ridesWithReservations.length,
+      offset: params.offset,
+      limit: params.limit,
+      summary: this.computeRideSummary(ridesWithReservations),
+    };
   }
 
   @Post('auth/register/individual')
@@ -902,5 +939,82 @@ export class ProxyController {
         byStatus: bookingStatusCount,
       },
     };
+  }
+
+  private computeRideSummary(rides: RideAdminItem[]) {
+    const now = Date.now();
+    const upcoming = rides.filter((ride) => {
+      const ts = Date.parse(ride?.departureAt ?? '');
+      return Number.isFinite(ts) && ts > now;
+    }).length;
+    const published = rides.filter((ride) => ride?.status === 'PUBLISHED').length;
+    const seatsBooked = rides.reduce(
+      (acc, ride) => acc + Math.max(0, (ride?.seatsTotal ?? 0) - (ride?.seatsAvailable ?? 0)),
+      0,
+    );
+    const seatsTotal = rides.reduce((acc, ride) => acc + (ride?.seatsTotal ?? 0), 0);
+    return { upcoming, published, seatsBooked, seatsTotal };
+  }
+
+  private async attachRideReservations(rides: RideAdminItem[]) {
+    if (!rides.length) return rides;
+    const internalHeaders = this.internalHeaders();
+    const reservationsMap = new Map<string, RideReservation[]>();
+
+    await Promise.all(
+      rides.map(async (ride) => {
+        try {
+          const res = await axios.get<{ data: BookingAdminItem[] }>(`${BOOKING}/admin/bookings`, {
+            params: { rideId: ride.id, limit: 200 },
+            headers: internalHeaders,
+          });
+          reservationsMap.set(ride.id, Array.isArray(res.data?.data) ? res.data.data : []);
+        } catch (err) {
+          reservationsMap.set(ride.id, []);
+        }
+      }),
+    );
+
+    const passengerIds = new Set<string>();
+    reservationsMap.forEach((reservations) => {
+      reservations.forEach((booking) => {
+        if (booking?.passengerId) passengerIds.add(booking.passengerId);
+      });
+    });
+
+    const passengerMap = new Map<string, AccountProfile>();
+    await Promise.all(
+      Array.from(passengerIds).map(async (id) => {
+        try {
+          const res = await axios.get<AccountProfile>(`${IDENTITY}/internal/accounts/${id}`, {
+            headers: internalHeaders,
+          });
+          passengerMap.set(id, res.data);
+        } catch {
+          passengerMap.set(id, { id });
+        }
+      }),
+    );
+
+    return rides.map((ride) => {
+      const reservations = reservationsMap.get(ride.id) ?? [];
+      const detailedReservations: RideReservation[] = reservations.map((booking) => {
+        const passenger = passengerMap.get(booking.passengerId);
+        return {
+          id: booking.id,
+          rideId: booking.rideId,
+          passengerId: booking.passengerId,
+          seats: booking.seats,
+          amount: booking.amount,
+          status: booking.status,
+          passengerName: passenger?.fullName || passenger?.companyName || passenger?.email || null,
+          passengerEmail: passenger?.email || null,
+        };
+      });
+      return {
+        ...ride,
+        reservations: detailedReservations,
+      };
+    });
   }
 }
