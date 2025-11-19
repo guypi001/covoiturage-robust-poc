@@ -11,6 +11,8 @@ export function Results() {
   const nav = useNavigate();
   const { lastSearch, results, setResults, setLoading, loading, error, setError, setSearch } = useApp();
   const account = useApp((state) => state.account);
+  const savedRides = useApp((state) => state.savedRides);
+  const toggleSavedRide = useApp((state) => state.toggleSavedRide);
   const theme = account?.homePreferences?.theme ?? 'default';
   const themeStyle = HOME_THEME_STYLE[theme] ?? HOME_THEME_STYLE.default;
   const chipsStyle = themeStyle.chips;
@@ -349,17 +351,32 @@ export function Results() {
 
         {!isSearching && !error && hasResults && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {deferredResults.map((ride) => (
-              <RideCard
-                key={ride.rideId}
-                {...ride}
-                onBook={() => nav(`/booking/${ride.rideId}`)}
-                onDetails={() => nav(`/ride/${ride.rideId}`)}
-                onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
-                contactBusy={contactingRideId === ride.rideId}
-                variant="dark"
-              />
-            ))}
+            {deferredResults.map((ride) => {
+              const saved = Boolean(savedRides[ride.rideId]);
+              return (
+                <RideCard
+                  key={ride.rideId}
+                  {...ride}
+                  onBook={() => nav(`/booking/${ride.rideId}`)}
+                  onDetails={() => nav(`/ride/${ride.rideId}`)}
+                  onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
+                  contactBusy={contactingRideId === ride.rideId}
+                  variant="dark"
+                  saved={saved}
+                  onToggleSaved={() =>
+                    toggleSavedRide({
+                      rideId: ride.rideId,
+                      originCity: ride.originCity,
+                      destinationCity: ride.destinationCity,
+                      departureAt: ride.departureAt,
+                      pricePerSeat: ride.pricePerSeat,
+                      seatsAvailable: ride.seatsAvailable,
+                      driverLabel: ride.driverLabel,
+                    })
+                  }
+                />
+              );
+            })}
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Clock, MapPin, User2, Shield, Info, Link2 } from 'lucide-react';
+import { ArrowRight, Clock, MapPin, User2, Shield, Info, Link2, Heart } from 'lucide-react';
 
 type Props = {
   rideId?: string;
@@ -18,6 +18,8 @@ type Props = {
   onContact?: () => void;
   contactBusy?: boolean;
   variant?: 'light' | 'dark';
+  saved?: boolean;
+  onToggleSaved?: () => void;
 };
 
 export default function RideCard({
@@ -37,6 +39,8 @@ export default function RideCard({
   contactBusy,
   variant = 'light',
   showPublisher = true,
+  saved = false,
+  onToggleSaved,
 }: Props) {
   const extractFirstName = (value?: string | null) => {
     if (!value) return undefined;
@@ -110,7 +114,10 @@ export default function RideCard({
       };
 
   const normalizedDriverLabel = driverLabel?.trim();
-  const authorName = normalizedDriverLabel && normalizedDriverLabel.length > 0 ? normalizedDriverLabel : 'Trajet généré par KariGo';
+  const authorName =
+    extractFirstName(normalizedDriverLabel) ||
+    (normalizedDriverLabel && normalizedDriverLabel.length > 0 ? normalizedDriverLabel : undefined) ||
+    'Conducteur KariGo';
   const authorInitial = authorName.charAt(0).toUpperCase();
   const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
   const authorStyles =
@@ -149,14 +156,32 @@ export default function RideCard({
               </span>
               {(normalizedDriverLabel || driverId) && (
                 <span className={palette.chipDriver}>
-                  <Shield size={12} /> {normalizedDriverLabel ?? 'Trajet KariGo'}
+                  <Shield size={12} /> {extractFirstName(normalizedDriverLabel) ?? authorName}
                 </span>
               )}
             </div>
           </div>
-          <div className="text-right">
-            <div className={`text-2xl font-bold ${palette.price}`}>{pricePerSeat.toLocaleString()} XOF</div>
-            <div className={`text-xs ${palette.subtitle}`}>par siège</div>
+          <div className="text-right w-full sm:w-auto flex items-start justify-end gap-3">
+            <div>
+              <div className={`text-2xl font-bold ${palette.price}`}>{pricePerSeat.toLocaleString()} XOF</div>
+              <div className={`text-xs ${palette.subtitle}`}>par siège</div>
+            </div>
+            {onToggleSaved && (
+              <button
+                type="button"
+                onClick={onToggleSaved}
+                className={`rounded-full border p-2 transition ${
+                  saved
+                    ? 'border-rose-300 bg-rose-50 text-rose-600'
+                    : variant === 'dark'
+                      ? 'border-white/20 text-slate-300 hover:border-rose-300 hover:text-rose-400'
+                      : 'border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-500'
+                }`}
+                aria-label={saved ? 'Retirer de ma liste' : 'Sauvegarder ce trajet'}
+              >
+                <Heart size={16} fill={saved ? 'currentColor' : 'none'} />
+              </button>
+            )}
           </div>
         </div>
         {showPublisher && (

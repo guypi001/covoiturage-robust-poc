@@ -44,6 +44,7 @@ type State = {
   authReady: boolean;
   authError?: string;
   messageBadge: number;
+  savedRides: Record<string, SavedRide>;
 };
 
 type Actions = {
@@ -56,6 +57,41 @@ type Actions = {
   clearSession: () => void;
   initializeAuth: () => Promise<void>;
   refreshMessageBadge: () => Promise<void>;
+  toggleSavedRide: (ride: SavedRide) => void;
+  removeSavedRide: (rideId: string) => void;
+};
+
+export type SavedRide = {
+  rideId: string;
+  originCity: string;
+  destinationCity: string;
+  departureAt: string;
+  pricePerSeat: number;
+  seatsAvailable: number;
+  driverLabel?: string | null;
+};
+
+const SAVED_KEY = 'kari_saved_rides';
+const loadSavedRides = (): Record<string, SavedRide> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(SAVED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+};
+
+const persistSavedRides = (saved: Record<string, SavedRide>) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SAVED_KEY, JSON.stringify(saved));
+  } catch {
+    // ignore
+  }
 };
 
 export const useApp = create<State & Actions>((set, get) => ({
@@ -66,6 +102,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   authLoading: false,
   authReady: initialToken ? false : true,
   messageBadge: 0,
+  savedRides: loadSavedRides(),
   setPassenger: (id) => set({ passengerId: id }),
   setSearch: (q) => set({ lastSearch: q }),
   setResults: (r) => set({ results: r }),
@@ -157,6 +194,27 @@ export const useApp = create<State & Actions>((set, get) => ({
     } catch {
       // garde la valeur actuelle
     }
+  },
+  toggleSavedRide: (ride) => {
+    set((state) => {
+      const next = { ...state.savedRides };
+      if (next[ride.rideId]) {
+        delete next[ride.rideId];
+      } else {
+        next[ride.rideId] = ride;
+      }
+      persistSavedRides(next);
+      return { savedRides: next };
+    });
+  },
+  removeSavedRide: (rideId) => {
+    set((state) => {
+      if (!state.savedRides[rideId]) return state;
+      const next = { ...state.savedRides };
+      delete next[rideId];
+      persistSavedRides(next);
+      return { savedRides: next };
+    });
   },
 }));
 
