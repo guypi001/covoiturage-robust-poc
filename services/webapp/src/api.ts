@@ -121,7 +121,7 @@ export function registerUnauthorizedHandler(handler: () => void) {
 
 api.interceptors.request.use((config) => {
   if (!config.headers) {
-    config.headers = {};
+    config.headers = new AxiosHeaders();
   }
   const headers = config.headers;
   const hasAuthHeader =
@@ -315,12 +315,12 @@ export async function getMessageNotifications(userId: string): Promise<MessageNo
 }
 
 export async function createBooking(payload: { rideId: string; passengerId: string; seats: number }) {
-  const { data } = await api.post(`${BOOKING_URL}/bookings`, payload);
+  const { data } = await api.post(`${BFF_URL}/bookings`, payload);
   return data; // { id, holdId?, amount, status, ... }
 }
 
 export async function captureBookingPayment(payload: { bookingId: string; amount: number; holdId?: string }) {
-  const { data } = await api.post(`${PAYMENT_URL}/payments/capture`, payload);
+  const { data } = await api.post(`${BFF_URL}/payments/capture`, payload);
   return data;
 }
 

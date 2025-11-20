@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, Clock, MapPin, User2, Shield, Info, Link2, Heart } from 'lucide-react';
 import { useApp } from '../store';
+import { useRideAvailability } from '../hooks/useRideAvailability';
 
 type Props = {
   rideId?: string;
@@ -44,6 +45,12 @@ export default function RideCard({
   onToggleSaved,
 }: Props) {
   const viewer = useApp((state) => state.account);
+  const { seatsAvailable: liveSeatsAvailable, seatsTotal: liveSeatsTotal } = useRideAvailability(
+    rideId,
+    seatsAvailable,
+    seatsTotal,
+  );
+  const soldOut = liveSeatsAvailable <= 0;
   const extractFirstName = (value?: string | null) => {
     if (!value) return undefined;
     const trimmed = value.trim();
@@ -53,7 +60,8 @@ export default function RideCard({
   const dt = new Date(departureAt);
   const dateLabel = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeLabel = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const seatsLabel = typeof seatsTotal === 'number' ? `${seatsAvailable}/${seatsTotal}` : `${seatsAvailable}`;
+  const seatsLabel =
+    typeof liveSeatsTotal === 'number' ? `${liveSeatsAvailable}/${liveSeatsTotal}` : `${liveSeatsAvailable}`;
   const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied' | 'error'>('idle');
   const [photoError, setPhotoError] = useState(false);
   const shareUrl = rideId
@@ -93,7 +101,7 @@ export default function RideCard({
 
   const palette = variant === 'dark'
     ? {
-        container: 'rounded-[26px] border border-white/10 bg-slate-900/60 p-5 shadow-md shadow-slate-900/40 backdrop-blur',
+        container: 'relative rounded-[26px] border border-white/10 bg-slate-900/60 p-5 shadow-md shadow-slate-900/40 backdrop-blur',
         title: 'text-slate-50',
         subtitle: 'text-slate-300',
         badgeBase: 'inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200',
@@ -104,7 +112,7 @@ export default function RideCard({
         button: 'bg-emerald-500 hover:bg-emerald-400 text-slate-900',
       }
     : {
-        container: 'rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-lg',
+        container: 'relative rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-lg',
         title: 'text-slate-900',
         subtitle: 'text-slate-500',
         badgeBase: 'inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600',
@@ -141,7 +149,19 @@ export default function RideCard({
         };
 
   return (
-    <article className={palette.container}>
+    <article
+      className={`${palette.container} ${
+        soldOut ? 'grayscale opacity-70 transition-none hover:shadow-none' : ''
+      }`}
+    >
+      {soldOut && (
+        <div className="pointer-events-none absolute inset-0 rounded-[inherit] border border-slate-300/60 bg-slate-200/60"></div>
+      )}
+      {soldOut && (
+        <span className="pointer-events-none absolute right-5 top-5 inline-flex items-center rounded-full bg-slate-900/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white mix-blend-multiply">
+          Complet
+        </span>
+      )}
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2 min-w-0">
@@ -159,7 +179,7 @@ export default function RideCard({
                 <Clock size={12} /> {timeLabel}
               </span>
               <span className={`${palette.badgeBase}`}>
-                <User2 size={12} /> {seatsLabel} siège(s)
+                <User2 size={12} /> {soldOut ? 'Complet' : `${seatsLabel} siège(s)`}
               </span>
               {(normalizedDriverLabel || driverId) && (
                 <span className={palette.chipDriver}>
@@ -251,10 +271,11 @@ export default function RideCard({
           {onBook && (
             <button
               type="button"
-              className={palette.button}
+              className={`${palette.button} ${soldOut ? 'cursor-not-allowed opacity-60' : ''}`}
               onClick={onBook}
+              disabled={soldOut}
             >
-              Réserver
+              {soldOut ? 'Complet' : 'Réserver'}
             </button>
           )}
         </div>

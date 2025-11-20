@@ -32,6 +32,12 @@ type LastSearch = {
   toMeta?: LocationMeta;
 };
 
+type RideAvailability = {
+  seatsAvailable: number;
+  seatsTotal?: number;
+  updatedAt: number;
+};
+
 type State = {
   lastSearch?: LastSearch;
   results: Ride[];
@@ -45,6 +51,7 @@ type State = {
   authError?: string;
   messageBadge: number;
   savedRides: Record<string, SavedRide>;
+  rideAvailability: Record<string, RideAvailability>;
 };
 
 type Actions = {
@@ -59,6 +66,7 @@ type Actions = {
   refreshMessageBadge: () => Promise<void>;
   toggleSavedRide: (ride: SavedRide) => void;
   removeSavedRide: (rideId: string) => void;
+  setRideAvailability: (rideId: string, seatsAvailable: number, seatsTotal?: number) => void;
 };
 
 export type SavedRide = {
@@ -103,6 +111,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   authReady: initialToken ? false : true,
   messageBadge: 0,
   savedRides: loadSavedRides(),
+  rideAvailability: {},
   setPassenger: (id) => set({ passengerId: id }),
   setSearch: (q) => set({ lastSearch: q }),
   setResults: (r) => set({ results: r }),
@@ -216,6 +225,28 @@ export const useApp = create<State & Actions>((set, get) => ({
       return { savedRides: next };
     });
   },
+  setRideAvailability: (rideId, seatsAvailable, seatsTotal) =>
+    set((state) => {
+      if (!rideId) return state;
+      const prev = state.rideAvailability[rideId];
+      if (
+        prev &&
+        prev.seatsAvailable === seatsAvailable &&
+        (seatsTotal ?? prev.seatsTotal) === prev.seatsTotal
+      ) {
+        return state;
+      }
+      return {
+        rideAvailability: {
+          ...state.rideAvailability,
+          [rideId]: {
+            seatsAvailable,
+            seatsTotal: seatsTotal ?? prev?.seatsTotal,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    }),
 }));
 
 if (initialToken) {

@@ -21,10 +21,11 @@ import { CreditCard, Smartphone, Wallet as WalletIcon, Trash2 } from 'lucide-rea
 export function Booking() {
   const { rideId } = useParams<{ rideId: string }>();
   const nav = useNavigate();
-  const { results, passengerId, token } = useApp((state) => ({
+  const { results, passengerId, token, setRideAvailability } = useApp((state) => ({
     results: state.results,
     passengerId: state.passengerId,
     token: state.token,
+    setRideAvailability: state.setRideAvailability,
   }));
   const memoRide = useMemo(() => results.find((x) => x.rideId === rideId), [rideId, results]);
 
@@ -55,7 +56,10 @@ export function Booking() {
           driverId: data.driverId,
           status: data.status,
         };
-        if (!cancelled) setRide(normalized);
+        if (!cancelled) {
+          setRide(normalized);
+          setRideAvailability(normalized.rideId, normalized.seatsAvailable, normalized.seatsTotal);
+        }
       } catch (e: any) {
         if (!cancelled) setFetchError(e?.message || 'Trajet introuvable');
       } finally {
@@ -65,7 +69,7 @@ export function Booking() {
     return () => {
       cancelled = true;
     };
-  }, [memoRide, rideId]);
+  }, [memoRide, rideId, setRideAvailability]);
 
   const [seats, setSeats] = useState(1);
   useEffect(() => {
@@ -95,6 +99,7 @@ export function Booking() {
   const [newCardForm, setNewCardForm] = useState({ holder: '', number: '', expiry: '' });
   const [newMobileForm, setNewMobileForm] = useState({ provider: 'MTN Money', phone: '' });
   const [instantMobileForm, setInstantMobileForm] = useState({ provider: 'MTN Money', phone: '' });
+  const [cashCommitmentOpen, setCashCommitmentOpen] = useState(false);
   const selectedMethod =
     selectedMethodId === 'cash'
       ? { type: 'CASH' as const, label: 'Paiement en espèces' }
@@ -114,6 +119,34 @@ export function Booking() {
       paymentSimulationRef.current = null;
     };
   }, []);
+
+  const syncRideAvailability = useCallback(async () => {
+    if (!rideId) return;
+    try {
+      const latest = await getRide(rideId);
+      if (!latest || (latest as any)?.error) return;
+      const normalized: Ride = {
+        rideId: latest.id,
+        originCity: latest.originCity,
+        destinationCity: latest.destinationCity,
+        departureAt: latest.departureAt,
+        pricePerSeat: latest.pricePerSeat,
+        seatsTotal: latest.seatsTotal,
+        seatsAvailable: latest.seatsAvailable,
+        driverId: latest.driverId,
+        status: latest.status,
+      };
+      setRide(normalized);
+      setRideAvailability(normalized.rideId, normalized.seatsAvailable, normalized.seatsTotal);
+      useApp.setState((state) => ({
+        results: state.results.map((item) =>
+          item.rideId === normalized.rideId ? { ...item, seatsAvailable: normalized.seatsAvailable } : item,
+        ),
+      }));
+    } catch {
+      // ignore refresh failure
+    }
+  }, [rideId, setRideAvailability]);
 
   const refreshPaymentMethods = useCallback(async () => {
     if (!token) {
@@ -201,13 +234,25 @@ export function Booking() {
       const remaining = Math.max(0, (ride?.seatsAvailable ?? 0) - seats);
       setRide((prev) => (prev ? { ...prev, seatsAvailable: remaining } : prev));
       setSeats((prev) => (remaining > 0 ? Math.min(prev, remaining) : 1));
+      setRideAvailability(ride.rideId, remaining, ride.seatsTotal);
       useApp.setState((state) => ({
         results: state.results.map((item) =>
           item.rideId === ride.rideId ? { ...item, seatsAvailable: remaining } : item,
         ),
       }));
     } catch (e: any) {
-      setBookingError(e?.message || 'Erreur pendant la réservation');
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail || e?.response?.data?.error;
+      const detailLower = typeof detail === 'string' ? detail.toLowerCase() : '';
+      if (status === 409 && e?.response?.data?.error === 'not_enough_seats') {
+        setBookingError(detail || 'Plus assez de sièges disponibles.');
+        await syncRideAvailability();
+      } else if (detailLower.includes('seat lock')) {
+        setBookingError('Plus assez de sièges disponibles. Nous venons de synchroniser le trajet.');
+        await syncRideAvailability();
+      } else {
+        setBookingError(detail || e?.message || 'Erreur pendant la réservation');
+      }
     } finally {
       setLoading(false);
     }
@@ -453,7 +498,13 @@ export function Booking() {
                 </div>
                 <button
                   className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  onClick={pay}
+                  onClick={() => {
+                    if (selectedMethodId === 'cash') {
+                      setCashCommitmentOpen(true);
+                    } else {
+                      void pay();
+                    }
+                  }}
                   disabled={paying || !!paymentMessage}
                 >
                   {paying ? 'Paiement…' : 'Payer maintenant'}
@@ -823,6 +874,44 @@ export function Booking() {
           </section>
         </div>
       </div>
+      {cashCommitmentOpen && bookingResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
+          <div className="w-full max-w-md space-y-4 rounded-3xl bg-white p-6 text-slate-900 shadow-2xl">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paiement en espèces</p>
+              <p className="mt-2 text-xl font-semibold text-slate-900">Je m’engage à payer le jour du départ</p>
+            </div>
+            <p className="text-sm text-slate-600">
+              En choisissant l’espèce, tu confirmes que tu verseras{' '}
+              <span className="font-semibold text-slate-900">
+                {bookingResult.amount?.toLocaleString?.() ?? bookingResult.amount} XOF
+              </span>{' '}
+              directement au conducteur avant le départ. Merci d’arriver avec le montant exact.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                onClick={() => setCashCommitmentOpen(false)}
+                disabled={paying}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                onClick={() => {
+                  setCashCommitmentOpen(false);
+                  void pay();
+                }}
+                disabled={paying}
+              >
+                Je m’engage
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

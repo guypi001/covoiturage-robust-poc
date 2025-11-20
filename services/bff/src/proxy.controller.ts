@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   HttpException,
+  HttpStatus,
   InternalServerErrorException,
   NotFoundException,
   Param,
@@ -126,7 +127,7 @@ export class ProxyController {
   async myPaymentMethods(@Req() req: any) {
     const account = await this.fetchMyAccount(req);
     if (!account?.id) {
-      throw new ForbiddenException('account_not_found');
+      return [];
     }
     return this.forward(
       () =>
@@ -189,8 +190,95 @@ export class ProxyController {
   }
 
   @Post('bookings')
-  async booking(@Body() body: any) {
-    return this.forward(() => axios.post(`${BOOKING}/bookings`, body), 'booking');
+  async booking(@Body() body: any, @Req() req: any) {
+    const account = await this.fetchMyAccount(req);
+    const rideId = body?.rideId;
+    const seatsRaw = body?.seats;
+    const seats = Number(seatsRaw);
+    if (!rideId || typeof rideId !== 'string') {
+      throw new HttpException({ error: 'ride_id_required' }, 400);
+    }
+    if (!Number.isFinite(seats) || seats <= 0) {
+      throw new HttpException({ error: 'invalid_seats' }, 400);
+    }
+    const passengerId =
+      (account?.id && typeof account.id === 'string' && account.id.length > 0
+        ? account.id
+        : typeof body?.passengerId === 'string' && body.passengerId.length > 0
+          ? body.passengerId
+          : undefined) ?? `guest-${Date.now()}`;
+    let rideSeatsAvailable: number | undefined;
+    let rideStatus: string | undefined;
+    try {
+      const rideResp = await axios.get(`${RIDE}/rides/${rideId}`, { headers: this.internalHeaders() });
+      rideSeatsAvailable = Number(rideResp.data?.seatsAvailable ?? 0);
+      rideStatus = rideResp.data?.status;
+      if (!Number.isFinite(rideSeatsAvailable)) rideSeatsAvailable = 0;
+    } catch (err: any) {
+      throw new HttpException(
+        { error: 'ride_not_found', detail: 'Impossible de récupérer ce trajet pour le moment.' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    if (rideStatus && rideStatus !== 'PUBLISHED') {
+      throw new HttpException({ error: 'ride_closed', detail: 'Ce trajet n’est plus disponible.' }, HttpStatus.CONFLICT);
+    }
+
+    if (!rideSeatsAvailable || rideSeatsAvailable <= 0) {
+      throw new HttpException({ error: 'not_enough_seats', detail: 'Plus aucun siège n’est disponible.' }, HttpStatus.CONFLICT);
+    }
+
+    const normalizedSeats = Math.min(Math.floor(seats), rideSeatsAvailable);
+    if (normalizedSeats < 1) {
+      throw new HttpException({ error: 'not_enough_seats', detail: 'Plus assez de sièges pour ta demande.' }, HttpStatus.CONFLICT);
+    }
+    if (normalizedSeats < Math.floor(seats)) {
+      throw new HttpException(
+        {
+          error: 'not_enough_seats',
+          detail: `Il reste uniquement ${rideSeatsAvailable} place(s).`,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const payload = { rideId, seats: normalizedSeats, passengerId };
+    try {
+      return await this.forward(() => axios.post(`${BOOKING}/bookings`, payload), 'booking');
+    } catch (err: any) {
+      if (err instanceof HttpException) {
+        const status = err.getStatus?.();
+        if (status === HttpStatus.BAD_REQUEST) {
+          const response = err.getResponse() as any;
+          const detail = typeof response === 'object' ? response?.detail || response?.error : undefined;
+          const lower = typeof detail === 'string' ? detail.toLowerCase() : '';
+          if (lower.includes('seat lock')) {
+            let seatsAvailable: number | undefined;
+            try {
+              const ride = await axios
+                .get(`${RIDE}/rides/${rideId}`, { headers: this.internalHeaders() })
+                .then((res) => res.data)
+                .catch(() => null);
+              if (ride && typeof ride.seatsAvailable === 'number') seatsAvailable = ride.seatsAvailable;
+            } catch {
+              // ignore refresh errors
+            }
+            throw new HttpException(
+              {
+                error: 'not_enough_seats',
+                detail:
+                  seatsAvailable !== undefined
+                    ? `Il ne reste que ${seatsAvailable} place(s) disponibles`
+                    : 'Plus assez de sièges disponibles',
+              },
+              HttpStatus.CONFLICT,
+            );
+          }
+        }
+      }
+      throw err;
+    }
   }
 
   @Post('payments/capture')
@@ -944,10 +1032,17 @@ export class ProxyController {
 
   private async fetchMyAccount(req: any): Promise<AccountProfile | null> {
     const headers = this.extractAuthHeaders(req);
-    return this.forward<AccountProfile | null>(
-      () => axios.get<AccountProfile | null>(`${IDENTITY}/profiles/me`, { headers }),
-      'identity',
-    );
+    try {
+      return await this.forward<AccountProfile | null>(
+        () => axios.get<AccountProfile | null>(`${IDENTITY}/profiles/me`, { headers }),
+        'identity',
+      );
+    } catch (err) {
+      if (err instanceof HttpException && err.getStatus && err.getStatus() === 401) {
+        return null;
+      }
+      throw err;
+    }
   }
 
   private async ensureCompanyAccount(req: any): Promise<AccountProfile> {
