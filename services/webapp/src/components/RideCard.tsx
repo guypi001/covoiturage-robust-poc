@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowRight, Clock, MapPin, User2, Shield, Info, Link2, Heart } from 'lucide-react';
+import { useApp } from '../store';
 
 type Props = {
   rideId?: string;
@@ -42,6 +43,7 @@ export default function RideCard({
   saved = false,
   onToggleSaved,
 }: Props) {
+  const viewer = useApp((state) => state.account);
   const extractFirstName = (value?: string | null) => {
     if (!value) return undefined;
     const trimmed = value.trim();
@@ -114,9 +116,14 @@ export default function RideCard({
       };
 
   const normalizedDriverLabel = driverLabel?.trim();
+  const fallbackViewerLabel =
+    driverId && viewer?.id === driverId
+      ? viewer.fullName || viewer.companyName || viewer.email || undefined
+      : undefined;
+  const rawName = normalizedDriverLabel || fallbackViewerLabel;
   const authorName =
-    extractFirstName(normalizedDriverLabel) ||
-    (normalizedDriverLabel && normalizedDriverLabel.length > 0 ? normalizedDriverLabel : undefined) ||
+    extractFirstName(rawName) ||
+    (rawName && rawName.length > 0 ? rawName : undefined) ||
     'Conducteur KariGo';
   const authorInitial = authorName.charAt(0).toUpperCase();
   const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
