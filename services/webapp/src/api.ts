@@ -523,6 +523,19 @@ export type RideReservation = {
   passengerEmail?: string | null;
 };
 
+export type PaymentMethod = {
+  id: string;
+  type: 'CARD' | 'MOBILE_MONEY' | 'CASH';
+  label?: string | null;
+  provider?: string | null;
+  last4?: string | null;
+  expiresAt?: string | null;
+  phoneNumber?: string | null;
+  isDefault?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AdminUpdateRidePayload = {
   originCity?: string;
   destinationCity?: string;
@@ -913,6 +926,37 @@ export async function getMyPublishedRides(
   return data;
 }
 
+export async function getMyPaymentMethods(token: string): Promise<PaymentMethod[]> {
+  const { data } = await api.get<PaymentMethod[]>(`${BFF_URL}/me/payment-methods`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function addPaymentMethod(
+  token: string,
+  payload: {
+    type: 'CARD' | 'MOBILE_MONEY' | 'CASH';
+    label?: string;
+    provider?: string;
+    last4?: string;
+    expiresAt?: string;
+    phoneNumber?: string;
+  },
+): Promise<PaymentMethod> {
+  const { data } = await api.post<PaymentMethod>(`${BFF_URL}/me/payment-methods`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function deletePaymentMethod(token: string, methodId: string) {
+  const { data } = await api.delete<{ ok: boolean }>(`${BFF_URL}/me/payment-methods/${methodId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
 export async function requestGmailOtp(payload: { email: string }) {
   const { data } = await api.post(`${IDENTITY_URL}/auth/gmail/request`, payload);
   return data;
@@ -924,7 +968,7 @@ export async function verifyGmailOtp(payload: { email: string; code: string }): 
 }
 
 export async function getMyProfile(token: string): Promise<Account> {
-  const { data } = await api.get<Account>(`${IDENTITY_URL}/profiles/me`, {
+  const { data } = await api.get<Account>(`${BFF_URL}/me/profile`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;

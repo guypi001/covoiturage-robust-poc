@@ -45,6 +45,7 @@ const RIDE = rideHosts[0] ?? 'http://ride:3000';
 const SEARCH = process.env.SEARCH_URL || 'http://search:3003';
 const BOOKING = process.env.BOOKING_URL || 'http://booking:3004';
 const PAYMENT = process.env.PAYMENT_URL || 'http://payment:3005';
+const WALLET = process.env.WALLET_URL || 'http://wallet:3008';
 const IDENTITY = process.env.IDENTITY_URL || 'http://identity:3000';
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY || 'super-internal-key';
 let ProxyController = class ProxyController {
@@ -62,6 +63,36 @@ let ProxyController = class ProxyController {
             seatsAvailable: body?.seatsAvailable !== undefined ? body.seatsAvailable : body?.seatsTotal,
         };
         return this.forward(() => axios_1.default.post(`${RIDE}/rides`, payload), 'ride');
+    }
+    async myPaymentMethods(req) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.get(`${WALLET}/payment-methods`, {
+            params: { ownerId: account.id },
+            headers: this.internalHeaders(),
+        }), 'wallet');
+    }
+    async addPaymentMethod(req, body) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.post(`${WALLET}/payment-methods`, {
+            ...body,
+            ownerId: account.id,
+        }, { headers: this.internalHeaders() }), 'wallet');
+    }
+    async deletePaymentMethod(req, id) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.delete(`${WALLET}/payment-methods/${id}`, {
+            params: { ownerId: account.id },
+            headers: this.internalHeaders(),
+        }), 'wallet');
     }
     async search(q) {
         return this.forward(() => axios_1.default.get(`${SEARCH}/search`, { params: q }), 'search');
@@ -636,6 +667,29 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "createRide", null);
+__decorate([
+    (0, common_1.Get)('me/payment-methods'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "myPaymentMethods", null);
+__decorate([
+    (0, common_1.Post)('me/payment-methods'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "addPaymentMethod", null);
+__decorate([
+    (0, common_1.Delete)('me/payment-methods/:id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "deletePaymentMethod", null);
 __decorate([
     (0, common_1.Get)('search'),
     __param(0, (0, common_1.Query)()),

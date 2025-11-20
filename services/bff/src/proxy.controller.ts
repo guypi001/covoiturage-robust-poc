@@ -41,6 +41,7 @@ const RIDE = rideHosts[0] ?? 'http://ride:3000';
 const SEARCH = process.env.SEARCH_URL || 'http://search:3003';
 const BOOKING = process.env.BOOKING_URL || 'http://booking:3004';
 const PAYMENT = process.env.PAYMENT_URL || 'http://payment:3005';
+const WALLET = process.env.WALLET_URL || 'http://wallet:3008';
 const IDENTITY = process.env.IDENTITY_URL || 'http://identity:3000';
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY || 'super-internal-key';
 
@@ -67,6 +68,19 @@ type RideReservation = {
   status: string;
   passengerName?: string | null;
   passengerEmail?: string | null;
+};
+
+type PaymentMethod = {
+  id: string;
+  type: 'CARD' | 'MOBILE_MONEY' | 'CASH';
+  label?: string | null;
+  provider?: string | null;
+  last4?: string | null;
+  expiresAt?: string | null;
+  phoneNumber?: string | null;
+  isDefault?: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type BookingAdminItem = {
@@ -108,9 +122,70 @@ export class ProxyController {
     return this.forward(() => axios.post(`${RIDE}/rides`, payload), 'ride');
   }
 
+  @Get('me/payment-methods')
+  async myPaymentMethods(@Req() req: any) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+    return this.forward(
+      () =>
+        axios.get(`${WALLET}/payment-methods`, {
+          params: { ownerId: account.id },
+          headers: this.internalHeaders(),
+        }),
+      'wallet',
+    );
+  }
+
+  @Post('me/payment-methods')
+  async addPaymentMethod(@Req() req: any, @Body() body: any) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+    return this.forward(
+      () =>
+        axios.post(
+          `${WALLET}/payment-methods`,
+          {
+            ...body,
+            ownerId: account.id,
+          },
+          { headers: this.internalHeaders() },
+        ),
+      'wallet',
+    );
+  }
+
+  @Delete('me/payment-methods/:id')
+  async deletePaymentMethod(@Req() req: any, @Param('id') id: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+    return this.forward(
+      () =>
+        axios.delete(`${WALLET}/payment-methods/${id}`, {
+          params: { ownerId: account.id },
+          headers: this.internalHeaders(),
+        }),
+      'wallet',
+    );
+  }
+
   @Get('search')
   async search(@Query() q: any) {
     return this.forward(() => axios.get(`${SEARCH}/search`, { params: q }), 'search');
+  }
+
+  @Get('me/profile')
+  async myProfile(@Req() req: any) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('auth_required');
+    }
+    return account;
   }
 
   @Post('bookings')

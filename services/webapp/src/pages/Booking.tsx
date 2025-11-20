@@ -1,17 +1,31 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { captureBookingPayment, createBooking, getRide, type Ride } from '../api';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import {
+  captureBookingPayment,
+  createBooking,
+  getRide,
+  getMyPaymentMethods,
+  addPaymentMethod,
+  deletePaymentMethod,
+  type Ride,
+  type PaymentMethod,
+} from '../api';
 import {
   startPaymentSimulation,
   type PaymentSimulationHandle,
   type PaymentSimulationStep,
 } from '../utils/paymentSimulation';
+import { CreditCard, Smartphone, Wallet as WalletIcon, Trash2 } from 'lucide-react';
 
 export function Booking() {
   const { rideId } = useParams<{ rideId: string }>();
   const nav = useNavigate();
-  const { results, passengerId } = useApp();
+  const { results, passengerId, token } = useApp((state) => ({
+    results: state.results,
+    passengerId: state.passengerId,
+    token: state.token,
+  }));
   const memoRide = useMemo(() => results.find((x) => x.rideId === rideId), [rideId, results]);
 
   const [ride, setRide] = useState<Ride | undefined>(memoRide);
@@ -71,6 +85,28 @@ export function Booking() {
   const [paymentError, setPaymentError] = useState<string>();
   const [paymentSteps, setPaymentSteps] = useState<PaymentSimulationStep[]>([]);
   const paymentSimulationRef = useRef<PaymentSimulationHandle | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [methodsLoading, setMethodsLoading] = useState(false);
+  const [methodsError, setMethodsError] = useState<string>();
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('cash');
+  const [showMethodForm, setShowMethodForm] = useState(false);
+  const [savingMethod, setSavingMethod] = useState(false);
+  const [newMethodType, setNewMethodType] = useState<'CARD' | 'MOBILE_MONEY'>('CARD');
+  const [newCardForm, setNewCardForm] = useState({ holder: '', number: '', expiry: '' });
+  const [newMobileForm, setNewMobileForm] = useState({ provider: 'MTN Money', phone: '' });
+  const [instantMobileForm, setInstantMobileForm] = useState({ provider: 'MTN Money', phone: '' });
+  const selectedMethod =
+    selectedMethodId === 'cash'
+      ? { type: 'CASH' as const, label: 'Paiement en espèces' }
+      : selectedMethodId === 'mobile-instant'
+      ? {
+          type: 'MOBILE_MONEY' as const,
+          label:
+            `${instantMobileForm.provider} ${instantMobileForm.phone || ''}`.trim() || 'Mobile money instantané',
+          provider: instantMobileForm.provider,
+          phoneNumber: instantMobileForm.phone,
+        }
+      : paymentMethods.find((m) => m.id === selectedMethodId);
 
   useEffect(() => {
     return () => {
@@ -78,6 +114,31 @@ export function Booking() {
       paymentSimulationRef.current = null;
     };
   }, []);
+
+  const refreshPaymentMethods = useCallback(async () => {
+    if (!token) {
+      setPaymentMethods([]);
+      setSelectedMethodId('cash');
+      return;
+    }
+    try {
+      setMethodsLoading(true);
+      setMethodsError(undefined);
+      const data = await getMyPaymentMethods(token);
+      setPaymentMethods(Array.isArray(data) ? data : []);
+      if (Array.isArray(data) && data.length > 0) {
+        setSelectedMethodId((prev) => (prev === 'cash' ? data[0].id : prev));
+      }
+    } catch (err: any) {
+      setMethodsError(err?.response?.data?.message || err?.message || 'Impossible de charger tes moyens de paiement.');
+    } finally {
+      setMethodsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refreshPaymentMethods();
+  }, [refreshPaymentMethods]);
 
   if (fetching && !ride) {
     return <div className="glass p-6 rounded-2xl">Chargement du trajet…</div>;
@@ -88,6 +149,36 @@ export function Booking() {
 
   const seatsUnavailable = ride.seatsAvailable <= 0;
   const amount = seatsUnavailable ? 0 : seats * ride.pricePerSeat;
+  const departureLabel = new Date(ride.departureAt).toLocaleString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const reservationStepStatus = bookingResult ? 'done' : loading ? 'active' : 'pending';
+  const paymentStepStatus = paymentMessage ? 'done' : paying ? 'active' : bookingResult ? 'ready' : 'pending';
+  const confirmationStepStatus = paymentMessage ? 'done' : 'pending';
+  const timelineSteps = [
+    {
+      id: 'reservation',
+      title: 'Réservation',
+      status: reservationStepStatus,
+      description: bookingResult ? `Réf ${bookingResult.id}` : 'Choisis tes sièges et confirme.',
+    },
+    {
+      id: 'payment',
+      title: 'Paiement',
+      status: paymentStepStatus,
+      description: selectedMethod?.label || 'Sélectionne ton moyen favori.',
+    },
+    {
+      id: 'confirmation',
+      title: 'Confirmation',
+      status: confirmationStepStatus,
+      description: paymentMessage || 'Recevras ton reçu automatiquement.',
+    },
+  ];
 
   async function submit() {
     setBookingError(undefined);
@@ -124,6 +215,21 @@ export function Booking() {
 
   async function pay() {
     if (!bookingResult) return;
+    const method =
+      selectedMethodId === 'cash'
+        ? { type: 'CASH' as const, label: 'Paiement en espèces' }
+        : selectedMethodId === 'mobile-instant'
+        ? {
+            type: 'MOBILE_MONEY' as const,
+            label: `${instantMobileForm.provider} ${instantMobileForm.phone || ''}`.trim(),
+            provider: instantMobileForm.provider,
+            phoneNumber: instantMobileForm.phone,
+          }
+        : paymentMethods.find((m) => m.id === selectedMethodId);
+    if (!method) {
+      setPaymentError('Choisis un moyen de paiement.');
+      return;
+    }
     setPaymentError(undefined);
     setPaymentMessage(undefined);
     paymentSimulationRef.current?.cancel();
@@ -137,9 +243,15 @@ export function Booking() {
         bookingId: bookingResult.id,
         amount: bookingResult.amount,
         holdId: bookingResult.holdId ?? undefined,
+        paymentMethodId: method?.id,
+        paymentMethodType: method?.type ?? 'CASH',
       });
       await simulation.promise;
-      setPaymentMessage('Paiement confirmé 🥳');
+      setPaymentMessage(
+        method.type === 'CASH'
+          ? 'Paiement en espèces confirmé 🥳'
+          : `Paiement confirmé via ${method.label || method.provider || method.type} 🥳`,
+      );
     } catch (e: any) {
       simulation.cancel();
       await simulation.promise.catch(() => undefined);
@@ -162,134 +274,555 @@ export function Booking() {
     }
   }
 
+  const handleAddPaymentMethod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) {
+      setMethodsError('Connecte-toi pour enregistrer un moyen de paiement.');
+      return;
+    }
+    try {
+      setSavingMethod(true);
+      setMethodsError(undefined);
+      if (newMethodType === 'CARD') {
+        const digits = newCardForm.number.replace(/\D/g, '');
+        if (digits.length < 12) throw new Error('Numéro de carte invalide');
+        const last4 = digits.slice(-4);
+        const brand = digits.startsWith('4')
+          ? 'VISA'
+          : digits.startsWith('5')
+            ? 'MASTERCARD'
+            : 'CARTE';
+        const label = newCardForm.holder
+          ? `${newCardForm.holder} •••• ${last4}`
+          : `Carte •••• ${last4}`;
+        await addPaymentMethod(token, {
+          type: 'CARD',
+          label,
+          provider: brand,
+          last4,
+          expiresAt: newCardForm.expiry,
+        });
+      } else {
+        if (!newMobileForm.phone.trim()) throw new Error('Numéro requis');
+        await addPaymentMethod(token, {
+          type: 'MOBILE_MONEY',
+          label: `${newMobileForm.provider} ${newMobileForm.phone}`,
+          provider: newMobileForm.provider,
+          phoneNumber: newMobileForm.phone,
+        });
+      }
+      setShowMethodForm(false);
+      setNewCardForm({ holder: '', number: '', expiry: '' });
+      setNewMobileForm({ provider: 'MTN Money', phone: '' });
+      await refreshPaymentMethods();
+    } catch (err: any) {
+      setMethodsError(err?.response?.data?.message || err?.message || 'Impossible d’enregistrer le moyen de paiement.');
+    } finally {
+      setSavingMethod(false);
+    }
+  };
+
+  const handleDeleteMethod = async (methodId: string) => {
+    if (!token) return;
+    try {
+      await deletePaymentMethod(token, methodId);
+      if (selectedMethodId === methodId) {
+        setSelectedMethodId('cash');
+      }
+      await refreshPaymentMethods();
+    } catch (err: any) {
+      setMethodsError(err?.response?.data?.message || err?.message || 'Suppression impossible.');
+    }
+  };
+
   return (
-    <div className="glass p-6 rounded-2xl space-y-5">
-      <div className="flex items-center justify-between gap-4">
+    <div className="mx-auto max-w-6xl space-y-6 rounded-3xl bg-white px-4 py-6 text-slate-900 shadow-xl sm:px-8">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
-          <div className="text-xl font-semibold text-white">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trajet</p>
+          <p className="text-2xl font-semibold text-slate-900">
             {ride.originCity} → {ride.destinationCity}
-          </div>
-          <div className="text-white/60 text-sm">
-            Départ {new Date(ride.departureAt).toLocaleString()} • {ride.seatsAvailable} siège(s) dispo
-          </div>
+          </p>
+          <p className="text-sm text-slate-600">
+            {departureLabel} • {ride.seatsAvailable} siège(s) restants
+          </p>
         </div>
         <button
-          className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs"
+          className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
           onClick={() => nav(`/ride/${ride.rideId}`)}
         >
-          Voir les détails
+          Voir la fiche trajet
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="text-white/70">Sièges</label>
-        <input
-          type="number"
-          min={1}
-          max={Math.max(1, ride.seatsAvailable)}
-          value={seats}
-          onChange={(e) => {
-            const next = Number(e.target.value || 1);
-            setSeats(Math.min(Math.max(1, next), Math.max(1, ride.seatsAvailable)));
-          }}
-          className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 w-24"
-        />
-      </div>
-      {seatsUnavailable && (
-        <div className="text-sm text-amber-300 bg-amber-900/30 border border-amber-800 rounded-xl px-3 py-2">
-          Plus aucune place disponible pour ce trajet.
-        </div>
-      )}
-
-      <div className="text-emerald-300 font-semibold text-lg">Total: {amount.toLocaleString()} XOF</div>
-
-      <div className="flex items-center gap-3">
-        <button
-          disabled={loading || seatsUnavailable}
-          onClick={submit}
-          className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Réservation…' : 'Confirmer la réservation'}
-        </button>
-        <button
-          className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15"
-          onClick={() => nav(-1)}
-        >
-          Retour
-        </button>
-      </div>
-
-      {bookingError && <div className="text-red-300">{bookingError}</div>}
-      {bookingMessage && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-emerald-200">
-          {bookingMessage}
-        </div>
-      )}
-
-      {bookingResult && (
-        <div className="space-y-3 border border-white/10 rounded-2xl p-4 bg-white/5">
-          <div className="text-sm text-white/70">
-            Numéro de réservation&nbsp;
-            <span className="text-white font-medium">{bookingResult.id}</span>
-          </div>
-          <div className="text-sm text-white/70">
-            Montant confirmé&nbsp;
-            <span className="text-white font-medium">{bookingResult.amount?.toLocaleString?.() ?? bookingResult.amount} XOF</span>
-          </div>
-          {bookingResult.holdId && (
-            <div className="text-sm text-white/70">
-              Hold portefeuille&nbsp;
-              <span className="text-white font-medium">{bookingResult.holdId}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-3">
-            <button
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={pay}
-              disabled={paying || !!paymentMessage}
-            >
-              {paying ? 'Paiement…' : 'Payer maintenant'}
-            </button>
-            {paymentMessage && <span className="text-emerald-300 text-sm">{paymentMessage}</span>}
-            {paymentError && <span className="text-red-300 text-sm">{paymentError}</span>}
-          </div>
-          {paymentSteps.length > 0 && (
-            <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-              <div className="text-xs uppercase tracking-wide text-white/50">Simulation du paiement</div>
-              <div className="space-y-2">
-                {paymentSteps.map((step) => (
-                  <div key={step.id} className="flex items-center gap-3 text-sm">
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        step.status === 'done'
-                          ? 'bg-emerald-400'
-                          : step.status === 'active'
-                          ? 'bg-amber-300 animate-pulse'
-                          : step.status === 'error'
-                          ? 'bg-red-400'
-                          : 'bg-white/30'
-                      }`}
-                    ></span>
-                    <span
-                      className={
-                        step.status === 'error'
-                          ? 'text-red-300'
-                          : step.status === 'done'
-                          ? 'text-emerald-200'
-                          : step.status === 'active'
-                          ? 'text-white'
-                          : 'text-white/70'
-                      }
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                ))}
+      <div className="grid gap-6 lg:grid-cols-[1.7fr,1fr]">
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-slate-600">Nombre de sièges</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, ride.seatsAvailable)}
+                  value={seats}
+                  onChange={(e) => {
+                    const next = Number(e.target.value || 1);
+                    setSeats(Math.min(Math.max(1, next), Math.max(1, ride.seatsAvailable)));
+                  }}
+                  className="mt-2 h-12 w-24 rounded-2xl border border-slate-300 bg-white text-center text-2xl font-semibold text-slate-900"
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-slate-600">Disponibles</span>
+                <span className="mt-2 text-2xl font-semibold text-emerald-600">{ride.seatsAvailable}</span>
+                <span className="text-xs text-slate-500">Encore {ride.seatsAvailable} place(s)</span>
+              </div>
+              <div className="flex-1 rounded-2xl border border-dashed border-slate-300 bg-white/60 p-4 text-sm text-slate-600">
+                Ajuste le nombre de sièges puis valide pour verrouiller ta réservation avant les autres passagers.
               </div>
             </div>
+            {seatsUnavailable && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Plus aucune place disponible pour ce trajet.
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-sm text-slate-500">Montant estimé</p>
+                <p className="text-3xl font-semibold text-slate-900">{amount.toLocaleString()} XOF</p>
+              </div>
+              <div className="text-sm text-slate-500">
+                Prix par siège&nbsp;
+                <span className="font-semibold text-slate-900">{ride.pricePerSeat.toLocaleString()} XOF</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Parcours de réservation</p>
+                <p className="text-xs text-slate-500">
+                  Réserve, paie, puis reçois automatiquement ton reçu dans ton espace KariGo.
+                </p>
+              </div>
+              {bookingMessage && (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  {bookingMessage}
+                </span>
+              )}
+            </div>
+            <div className="mt-5 space-y-5">
+              {timelineSteps.map((step) => {
+                const dotClass =
+                  step.status === 'done'
+                    ? 'bg-emerald-500'
+                    : step.status === 'active'
+                    ? 'bg-amber-500 animate-pulse'
+                    : step.status === 'ready'
+                    ? 'bg-sky-500'
+                    : 'bg-slate-300';
+                const titleClass =
+                  step.status === 'done'
+                    ? 'text-emerald-700'
+                    : step.status === 'active'
+                    ? 'text-slate-900'
+                    : step.status === 'ready'
+                    ? 'text-sky-700'
+                    : 'text-slate-500';
+                return (
+                  <div key={step.id} className="flex gap-4">
+                    <div className={`mt-1 h-3 w-3 rounded-full ${dotClass}`} />
+                    <div>
+                      <p className={`text-sm font-semibold ${titleClass}`}>{step.title}</p>
+                      <p className="text-sm text-slate-500">{step.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {bookingResult && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Réservation confirmée</p>
+                  <p className="text-xs text-slate-500">Réf {bookingResult.id}</p>
+                </div>
+                <button
+                  className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  onClick={pay}
+                  disabled={paying || !!paymentMessage}
+                >
+                  {paying ? 'Paiement…' : 'Payer maintenant'}
+                </button>
+              </div>
+              <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                <div>
+                  Montant&nbsp;
+                  <span className="font-semibold text-slate-900">
+                    {bookingResult.amount?.toLocaleString?.() ?? bookingResult.amount} XOF
+                  </span>
+                </div>
+                <div>
+                  Moyen sélectionné&nbsp;
+                  <span className="font-semibold text-slate-900">
+                    {selectedMethod?.label || (selectedMethod?.type === 'CASH' ? 'Espèces' : selectedMethod?.type)}
+                  </span>
+                </div>
+                {bookingResult.holdId && (
+                  <div>
+                    Wallet hold&nbsp;
+                    <span className="font-semibold text-slate-900">{bookingResult.holdId}</span>
+                  </div>
+                )}
+                <div>
+                  Sièges réservés&nbsp;
+                  <span className="font-semibold text-slate-900">{seats}</span>
+                </div>
+              </div>
+              {paymentMessage && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
+                  {paymentMessage}
+                </div>
+              )}
+              {paymentError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700">
+                  {paymentError}
+                </div>
+              )}
+              {paymentSteps.length > 0 && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Simulation du paiement
+                  </p>
+                  <div className="space-y-2">
+                    {paymentSteps.map((step) => (
+                      <div key={step.id} className="flex items-center gap-3 text-sm">
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${
+                            step.status === 'done'
+                              ? 'bg-emerald-500'
+                              : step.status === 'active'
+                              ? 'bg-amber-500 animate-pulse'
+                              : step.status === 'error'
+                              ? 'bg-rose-500'
+                              : 'bg-slate-300'
+                          }`}
+                        />
+                        <span
+                          className={
+                            step.status === 'error'
+                              ? 'text-rose-600'
+                              : step.status === 'done'
+                              ? 'text-emerald-700'
+                              : step.status === 'active'
+                              ? 'text-slate-900'
+                              : 'text-slate-500'
+                          }
+                        >
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
           )}
         </div>
-      )}
+
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Choisis un moyen de paiement</p>
+                <p className="text-xs text-slate-500">
+                  Cartes bancaires/Visa, mobile money, payer en cash le jour J ou enregistre ton wallet.
+                </p>
+              </div>
+              {token ? (
+                <button
+                  type="button"
+                  onClick={() => setShowMethodForm((prev) => !prev)}
+                  className="text-xs font-semibold text-slate-900 underline"
+                >
+                  {showMethodForm ? 'Fermer' : 'Enregistrer un moyen'}
+                </button>
+              ) : (
+                <span className="text-xs font-semibold text-slate-400">
+                  Connecte-toi pour mémoriser tes moyens favoris
+                </span>
+              )}
+            </div>
+            {methodsError && (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
+                {methodsError}
+              </div>
+            )}
+            <div className="mt-4 grid gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedMethodId('cash')}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  selectedMethodId === 'cash'
+                    ? 'border-slate-900 bg-slate-900/5 shadow-sm'
+                    : 'border-slate-200 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <WalletIcon size={18} className="text-slate-900" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Espèces à bord</p>
+                    <p className="text-xs text-slate-500">Paiement au départ, confirmation avec le conducteur.</p>
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedMethodId('mobile-instant')}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  selectedMethodId === 'mobile-instant'
+                    ? 'border-slate-900 bg-slate-900/5 shadow-sm'
+                    : 'border-slate-200 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <Smartphone size={18} className="text-slate-900" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Mobile money instantané</p>
+                      <p className="text-xs text-slate-500">
+                        Saisis ton numéro (MTN, Orange, Moov) et confirme depuis ton téléphone.
+                      </p>
+                    </div>
+                  </div>
+                  {selectedMethodId === 'mobile-instant' && (
+                    <div className="space-y-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm">
+                      <div className="flex flex-wrap gap-2">
+                        {['MTN Money', 'Orange Money', 'Moov Money'].map((provider) => (
+                          <button
+                            key={provider}
+                            type="button"
+                            onClick={() => setInstantMobileForm((prev) => ({ ...prev, provider }))}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              instantMobileForm.provider === provider
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {provider}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="tel"
+                        value={instantMobileForm.phone}
+                        onChange={(e) => setInstantMobileForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        placeholder="+225 07 07 07 07"
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 placeholder:text-slate-400"
+                      />
+                    </div>
+                  )}
+                </div>
+              </button>
+              {methodsLoading && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Chargement…</div>
+              )}
+              {!methodsLoading &&
+                paymentMethods.map((method) => (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => setSelectedMethodId(method.id)}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      selectedMethodId === method.id
+                        ? 'border-slate-900 bg-slate-900/5 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {method.type === 'CARD' ? (
+                        <CreditCard size={18} className="text-slate-900" />
+                      ) : (
+                        <Smartphone size={18} className="text-slate-900" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{method.label || method.provider || method.type}</p>
+                        <p className="text-xs text-slate-500">
+                          {method.type === 'CARD'
+                            ? `•••• ${method.last4 ?? '****'} · Exp ${method.expiresAt ?? '--/--'}`
+                            : method.phoneNumber || 'Numéro inconnu'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteMethod(method.id);
+                        }}
+                        className="ml-auto text-slate-400 transition hover:text-rose-500"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </button>
+                ))}
+            </div>
+            {showMethodForm && token && (
+              <form className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4" onSubmit={handleAddPaymentMethod}>
+                <div className="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span>Nouveau moyen</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewMethodType('CARD')}
+                      className={`rounded-full px-3 py-1 ${
+                        newMethodType === 'CARD' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                      }`}
+                    >
+                      Carte
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewMethodType('MOBILE_MONEY')}
+                      className={`rounded-full px-3 py-1 ${
+                        newMethodType === 'MOBILE_MONEY'
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                      }`}
+                    >
+                      Mobile money
+                    </button>
+                  </div>
+                </div>
+                {newMethodType === 'CARD' ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="sm:col-span-2 space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">Nom sur la carte</label>
+                      <input
+                        type="text"
+                        value={newCardForm.holder}
+                        onChange={(e) => setNewCardForm((prev) => ({ ...prev, holder: e.target.value }))}
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900"
+                        placeholder="Koman Traoré"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">Numéro</label>
+                      <input
+                        type="text"
+                        value={newCardForm.number}
+                        onChange={(e) => setNewCardForm((prev) => ({ ...prev, number: e.target.value }))}
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900"
+                        placeholder="4111 1111 1111 1111"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">Expiration</label>
+                      <input
+                        type="text"
+                        value={newCardForm.expiry}
+                        onChange={(e) => setNewCardForm((prev) => ({ ...prev, expiry: e.target.value }))}
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900"
+                        placeholder="08/28"
+                        required
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">Opérateur</label>
+                      <select
+                        value={newMobileForm.provider}
+                        onChange={(e) => setNewMobileForm((prev) => ({ ...prev, provider: e.target.value }))}
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900"
+                      >
+                        <option>MTN Money</option>
+                        <option>Orange Money</option>
+                        <option>Moov Money</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">Numéro</label>
+                      <input
+                        type="tel"
+                        value={newMobileForm.phone}
+                        onChange={(e) => setNewMobileForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900"
+                        placeholder="+225 07 07 07 07"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={savingMethod}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {savingMethod ? 'Enregistrement…' : 'Enregistrer ce moyen'}
+                </button>
+              </form>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Récapitulatif</p>
+              <p className="text-xs text-slate-500">Valide ton panier puis passe au paiement moderne.</p>
+            </div>
+            <div className="space-y-2 text-sm text-slate-600">
+              <div className="flex justify-between">
+                <span>Prix par place</span>
+                <span className="font-semibold text-slate-900">{ride.pricePerSeat.toLocaleString()} XOF</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Places sélectionnées</span>
+                <span className="font-semibold text-slate-900">{seats}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Méthode</span>
+                <span className="font-semibold text-slate-900">
+                  {selectedMethod?.label || (selectedMethod?.type === 'CASH' ? 'Espèces' : 'À choisir')}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-900">
+                <span>Total</span>
+                <span>{amount.toLocaleString()} XOF</span>
+              </div>
+            </div>
+            {bookingError && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{bookingError}</div>
+            )}
+            {bookingMessage && !bookingResult && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                {bookingMessage}
+              </div>
+            )}
+            <div className="grid gap-2">
+              <button
+                disabled={loading || seatsUnavailable}
+                onClick={submit}
+                className="rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {loading ? 'Réservation…' : 'Confirmer la réservation'}
+              </button>
+              <button
+                className="rounded-full border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-500"
+                onClick={() => nav(-1)}
+              >
+                Retour
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
