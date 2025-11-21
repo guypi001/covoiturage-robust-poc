@@ -57,8 +57,10 @@ export class BookingController {
 
     // 2) calcul du montant
     let amount = 0;
+    let rideDetails: any;
     try {
       const ride = (await http({ method: 'GET', url: `${RIDE_URL}/rides/${dto.rideId}` })).data;
+      rideDetails = ride;
       amount = (ride?.pricePerSeat || 0) * dto.seats;
     } catch (e: any) {
       this.logger.warn(`Impossible de récupérer le prix du trajet ${dto.rideId}: ${e?.message ?? e}`);
@@ -103,6 +105,25 @@ export class BookingController {
     } catch (e: any) {
       bookingFailureCounter.inc({ reason: 'event_bus' });
       this.logger.error(`Kafka publish failed for booking ${saved.id}: ${e?.message ?? e}`);
+    }
+
+    try {
+      await this.bus.publish(
+        'booking.confirmed',
+        {
+          bookingId: saved.id,
+          passengerId: saved.passengerId,
+          rideId: saved.rideId,
+          seats: saved.seats,
+          amount,
+          originCity: rideDetails?.originCity,
+          destinationCity: rideDetails?.destinationCity,
+          departureAt: rideDetails?.departureAt,
+        },
+        saved.passengerId,
+      );
+    } catch (e: any) {
+      this.logger.warn(`Unable to publish booking.confirmed for ${saved.id}: ${e?.message ?? e}`);
     }
 
     await this.refreshAggregates();

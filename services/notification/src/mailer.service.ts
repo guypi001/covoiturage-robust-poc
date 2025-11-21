@@ -8,6 +8,16 @@ type MessageEmailPayload = {
   conversationId?: string;
 };
 
+type BookingEmailPayload = {
+  passengerName: string;
+  originCity?: string | null;
+  destinationCity?: string | null;
+  departureAt?: string | null;
+  seats?: number;
+  amount?: number;
+  rideId?: string;
+};
+
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
@@ -35,6 +45,61 @@ export class MailerService {
       secure,
       auth: { user, pass },
     });
+  }
+
+  async sendBookingConfirmationEmail(to: string, payload: BookingEmailPayload) {
+    if (!this.transporter) {
+      this.logger.warn(`sendBookingConfirmationEmail skipped (no transporter). Target ${to}`);
+      return false;
+    }
+
+    const departureLabel = payload.departureAt
+      ? new Date(payload.departureAt).toLocaleString('fr-FR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'bientôt';
+    const link = `${this.frontendUrl.replace(/\/$/, '')}/my-trips`;
+    const subject = 'Ta réservation KariGo est confirmée ✅';
+    const amountLabel = payload.amount ? `${payload.amount.toLocaleString?.() ?? payload.amount} XOF` : undefined;
+
+    const textLines = [
+      `Bonjour ${payload.passengerName},`,
+      `Ta réservation pour le trajet ${payload.originCity ?? '?'} → ${payload.destinationCity ?? '?'} est confirmée.`,
+      `Départ : ${departureLabel}`,
+      `Places réservées : ${payload.seats ?? 1}`,
+    ];
+    if (amountLabel) textLines.push(`Montant : ${amountLabel}`);
+    textLines.push('', `Consulte ta réservation : ${link}`, '', 'Bon voyage avec KariGo !');
+
+    const htmlParts = [
+      `<p>Bonjour ${payload.passengerName},</p>`,
+      `<p>Ta réservation pour le trajet <strong>${payload.originCity ?? '?'}</strong> → <strong>${payload.destinationCity ?? '?'}</strong> est confirmée.</p>`,
+      `<ul style="padding-left:18px;color:#333;">
+        <li><strong>Départ :</strong> ${departureLabel}</li>
+        <li><strong>Places :</strong> ${payload.seats ?? 1}</li>
+        ${amountLabel ? `<li><strong>Montant :</strong> ${amountLabel}</li>` : ''}
+      </ul>`,
+      `<p><a href="${link}" style="background:#0c6efd;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Voir ma réservation</a></p>`,
+      '<p>Bon voyage avec KariGo !</p>',
+    ];
+
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to,
+        subject,
+        text: textLines.join('\n'),
+        html: htmlParts.join(''),
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(`sendBookingConfirmationEmail failed for ${to}: ${(err as Error)?.message || err}`);
+      return false;
+    }
   }
 
   async sendMessageEmail(to: string, payload: MessageEmailPayload) {

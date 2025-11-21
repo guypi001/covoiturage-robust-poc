@@ -13,6 +13,17 @@ type MessageSentEvent = {
   createdAt?: string;
 };
 
+type BookingConfirmedEvent = {
+  bookingId: string;
+  passengerId: string;
+  rideId: string;
+  seats?: number;
+  amount?: number;
+  originCity?: string | null;
+  destinationCity?: string | null;
+  departureAt?: string | null;
+};
+
 @Module({ controllers: [MetricsController], providers: [EventBus, MailerService, IdentityClient] })
 export class AppModule implements OnModuleInit {
   private readonly logger = new Logger(AppModule.name);
@@ -40,6 +51,10 @@ export class AppModule implements OnModuleInit {
 
     await this.bus.subscribe('notif-group', 'message.sent', async (evt) => {
       await this.handleMessageSent(evt as MessageSentEvent);
+    });
+
+    await this.bus.subscribe('notif-group', 'booking.confirmed', async (evt) => {
+      await this.handleBookingConfirmed(evt as BookingConfirmedEvent);
     });
 
     await this.bus.subscribe('notif-group', 'message.read', async (evt) => {
@@ -76,6 +91,27 @@ export class AppModule implements OnModuleInit {
 
     if (!sent) {
       this.logger.warn(`Echec de l'envoi de l'email de notification pour ${recipient.email}`);
+    }
+  }
+
+  private async handleBookingConfirmed(evt: BookingConfirmedEvent) {
+    if (!evt?.passengerId) return;
+    const passenger = await this.identity.getAccountById(evt.passengerId);
+    if (!passenger?.email) {
+      this.logger.warn(`Impossible d'envoyer la confirmation: email manquant pour ${evt.passengerId}`);
+      return;
+    }
+    const sent = await this.mailer.sendBookingConfirmationEmail(passenger.email, {
+      passengerName: this.resolveName(passenger),
+      originCity: evt.originCity,
+      destinationCity: evt.destinationCity,
+      departureAt: evt.departureAt,
+      seats: evt.seats,
+      amount: evt.amount,
+      rideId: evt.rideId,
+    });
+    if (!sent) {
+      this.logger.warn(`Echec de la confirmation email pour ${passenger.email}`);
     }
   }
 }

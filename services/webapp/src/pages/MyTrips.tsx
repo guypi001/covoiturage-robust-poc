@@ -53,6 +53,8 @@ const extractFirstName = (value?: string | null) => {
   return trimmed.split(/\s+/)[0];
 };
 
+const PASSENGER_NAME_PREF_KEY = 'kari_show_passenger_names';
+
 const formatDate = (value?: string | null, withTime = true) => {
   if (!value) return 'Date inconnue';
   try {
@@ -88,7 +90,12 @@ export default function MyTrips() {
   const [ridesSummary, setRidesSummary] = useState<RideAdminSummary | undefined>();
   const [ridesError, setRidesError] = useState<string>();
   const [ridesLoading, setRidesLoading] = useState(true);
-  const [showPassengerNames, setShowPassengerNames] = useState(false);
+  const [showPassengerNames, setShowPassengerNames] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(PASSENGER_NAME_PREF_KEY);
+    if (stored === null) return true;
+    return stored === 'true';
+  });
 
   const refreshBookings = async () => {
     if (!token) return;
@@ -123,6 +130,11 @@ export default function MyTrips() {
     void refreshBookings();
     void refreshRides();
   }, [token]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(PASSENGER_NAME_PREF_KEY, String(showPassengerNames));
+  }, [showPassengerNames]);
 
   const enrichedBookings = useMemo<BookingWithMeta[]>(() => {
     const now = Date.now();
@@ -345,26 +357,34 @@ export default function MyTrips() {
                 Suis les places restantes, le tarif et l’état de publication de chaque trajet créé.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => void refreshRides()}
-                disabled={ridesLoading}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-50"
-              >
-                <RefreshCw size={14} /> Actualiser
-              </button>
-              <button
-                type="button"
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                  showPassengerNames
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 text-slate-600 hover:border-emerald-200 hover:text-emerald-700'
-                }`}
-                onClick={() => setShowPassengerNames((prev) => !prev)}
-              >
-                {showPassengerNames ? 'Masquer les prénoms' : 'Afficher les prénoms'}
-              </button>
+            <div className="flex flex-col gap-2 lg:items-end">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void refreshRides()}
+                  disabled={ridesLoading}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-50"
+                >
+                  <RefreshCw size={14} /> Actualiser
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    showPassengerNames
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 text-slate-600 hover:border-emerald-200 hover:text-emerald-700'
+                  }`}
+                  onClick={() => setShowPassengerNames((prev) => !prev)}
+                  aria-pressed={showPassengerNames}
+                >
+                  {showPassengerNames ? 'Masquer les prénoms' : 'Afficher les prénoms'}
+                </button>
+              </div>
+              <p className={`text-xs ${showPassengerNames ? 'text-emerald-600' : 'text-slate-500'}`}>
+                {showPassengerNames
+                  ? 'Les prénoms sont affichés (visible uniquement pour vous).'
+                  : 'Clique sur le bouton pour révéler les prénoms des passagers.'}
+              </p>
             </div>
           </div>
 
