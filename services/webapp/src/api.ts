@@ -102,6 +102,8 @@ const MESSAGING_URL = resolveServiceUrl(
 );
 const BFF_URL = resolveServiceUrl(import.meta.env.VITE_BFF_URL, 3000, '/api/bff', true);
 
+export const IDENTITY_BASE_URL = IDENTITY_URL;
+
 const api = axios.create();
 
 let authToken: string | undefined;

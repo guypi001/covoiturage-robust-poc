@@ -40,6 +40,7 @@ import * as bcrypt from 'bcryptjs';
 import { OtpService } from './otp.service';
 import { MailerService } from './mailer.service';
 import { randomBytes } from 'crypto';
+import axios from 'axios';
 
 type SafeAccount = Omit<Account, 'passwordHash'>;
 
@@ -96,10 +97,28 @@ const APP_PUBLIC_URL = (() => {
 })();
 const ACCOUNT_STATUS_VALUES: AccountStatus[] = ['ACTIVE', 'SUSPENDED'];
 const ACCOUNT_ROLE_VALUES: AccountRole[] = ['USER', 'ADMIN'];
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
+  private readonly googleConfig = {
+    clientId: process.env.GOOGLE_CLIENT_ID?.trim(),
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim(),
+    redirectUri:
+      process.env.GOOGLE_REDIRECT_URI?.trim() ||
+      `${APP_PUBLIC_URL.replace(/\/$/, '')}/api/identity/auth/google/callback`,
+  };
+  private readonly oauthStates = new Map<
+    string,
+    {
+      redirectOrigin: string;
+      createdAt: number;
+    }
+  >();
   constructor(
     @InjectRepository(Account) private readonly accounts: Repository<Account>,
     @InjectRepository(PasswordResetToken)
@@ -292,6 +311,190 @@ export class AuthService implements OnModuleInit {
       }
     } catch (err) {
       this.logger.error(`refreshAccountMetrics failed: ${(err as Error)?.message ?? err}`);
+    }
+  }
+
+  private purgeOAuthStates() {
+    const cutoff = Date.now() - OAUTH_STATE_TTL_MS;
+    for (const [key, value] of this.oauthStates.entries()) {
+      if (value.createdAt < cutoff) {
+        this.oauthStates.delete(key);
+      }
+    }
+  }
+
+  private sanitizeRedirectOrigin(candidate?: string | null) {
+    if (!candidate) return new URL(APP_PUBLIC_URL).origin;
+    try {
+      const base = new URL(APP_PUBLIC_URL);
+      const url = new URL(candidate);
+      return url.origin === base.origin ? url.origin : base.origin;
+    } catch {
+      return new URL(APP_PUBLIC_URL).origin;
+    }
+  }
+
+  private createOAuthState(redirect?: string) {
+    this.purgeOAuthStates();
+    const state = randomBytes(16).toString('hex');
+    this.oauthStates.set(state, {
+      redirectOrigin: this.sanitizeRedirectOrigin(redirect),
+      createdAt: Date.now(),
+    });
+    return state;
+  }
+
+  private consumeOAuthState(value?: string | null) {
+    if (!value) return undefined;
+    const record = this.oauthStates.get(value);
+    if (record) {
+      this.oauthStates.delete(value);
+    }
+    return record;
+  }
+
+  private ensureGoogleConfig() {
+    if (!this.googleConfig.clientId || !this.googleConfig.clientSecret) {
+      throw new ServiceUnavailableException('google_oauth_disabled');
+    }
+  }
+
+  getGoogleOAuthUrl(redirect?: string) {
+    this.ensureGoogleConfig();
+    const state = this.createOAuthState(redirect);
+    const params = new URLSearchParams({
+      client_id: this.googleConfig.clientId!,
+      redirect_uri: this.googleConfig.redirectUri!,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state,
+      prompt: 'select_account',
+      access_type: 'online',
+    });
+    return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+  }
+
+  private buildOAuthResponseHtml(payload: { success: boolean; data?: any; error?: string; targetOrigin: string }) {
+    const message = {
+      type: 'kari:oauth',
+      payload: payload.success ? payload.data : { error: payload.error || 'Connexion impossible.' },
+    };
+    const serialized = JSON.stringify(message);
+    const target = JSON.stringify(payload.targetOrigin || APP_PUBLIC_URL);
+    const fallbackText = payload.success
+      ? 'Connexion réussie. Tu peux fermer cette fenêtre.'
+      : payload.error || 'Connexion impossible. Ferme cette fenêtre.';
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8" /><title>Connexion KariGo</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:24px;text-align:center;">
+<p>${fallbackText}</p>
+<script>
+(function(){
+  try {
+    var payload = ${serialized};
+    var origin = ${target};
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(payload, origin);
+      window.close();
+    }
+  } catch (err) {
+    console.error('oauth popup error', err);
+  }
+})();
+</script>
+</body></html>`;
+  }
+
+  async handleGoogleOAuthCallback(params: { code?: string; state?: string; error?: string }) {
+    this.ensureGoogleConfig();
+    const stateRecord = this.consumeOAuthState(params.state);
+    const targetOrigin = stateRecord?.redirectOrigin || new URL(APP_PUBLIC_URL).origin;
+    if (!stateRecord) {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        error: 'state_invalid',
+        targetOrigin,
+      });
+    }
+    if (params.error) {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        error: params.error,
+        targetOrigin,
+      });
+    }
+    if (!params.code) {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        error: 'code_absent',
+        targetOrigin,
+      });
+    }
+    try {
+      const tokenRes = await axios.post(
+        GOOGLE_TOKEN_URL,
+        new URLSearchParams({
+          code: params.code,
+          client_id: this.googleConfig.clientId!,
+          client_secret: this.googleConfig.clientSecret!,
+          redirect_uri: this.googleConfig.redirectUri!,
+          grant_type: 'authorization_code',
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
+      const accessToken = tokenRes.data?.access_token;
+      if (!accessToken) {
+        throw new ServiceUnavailableException('google_token_failed');
+      }
+      const profileRes = await axios.get(GOOGLE_USERINFO_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const profile = profileRes.data;
+      const email = profile?.email?.toLowerCase();
+      if (!email) {
+        throw new UnauthorizedException('google_email_missing');
+      }
+      if (profile.email_verified === false) {
+        throw new ForbiddenException('google_email_unverified');
+      }
+      let account = await this.accounts.findOne({ where: { email } });
+      if (!account) {
+        const pwd = await this.hashPassword(randomBytes(12).toString('hex'));
+        account = this.accounts.create({
+          email,
+          passwordHash: pwd,
+          fullName: profile?.name ?? undefined,
+          type: 'INDIVIDUAL',
+          role: 'USER',
+          status: 'ACTIVE',
+        });
+        account = await this.accounts.save(account);
+        accountCreatedCounter.inc({ type: account.type });
+      } else {
+        if (!account.fullName && profile?.name) {
+          account.fullName = profile.name;
+          await this.accounts.save(account);
+        }
+      }
+      this.ensureAccountActive(account);
+      const token = this.sign(account);
+      accountLoginCounter.inc({ type: account.type });
+      return this.buildOAuthResponseHtml({
+        success: true,
+        targetOrigin,
+        data: {
+          token,
+          account: this.sanitize(account),
+        },
+      });
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'google_oauth_failed';
+      this.logger.error(`Google OAuth callback error: ${message}`);
+      return this.buildOAuthResponseHtml({
+        success: false,
+        targetOrigin,
+        error: message,
+      });
     }
   }
 

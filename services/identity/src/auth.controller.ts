@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
   RegisterCompanyDto,
@@ -9,6 +9,7 @@ import {
   RequestPasswordResetDto,
   ConfirmPasswordResetDto,
 } from './dto';
+import { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -47,5 +48,23 @@ export class AuthController {
   @Post('password/reset')
   resetPassword(@Body() dto: ConfirmPasswordResetDto) {
     return this.auth.confirmPasswordReset(dto);
+  }
+
+  @Get('google/start')
+  async startGoogle(@Res() res: Response, @Query('redirect') redirect?: string) {
+    const url = this.auth.getGoogleOAuthUrl(redirect);
+    res.redirect(url);
+  }
+
+  @Get('google/callback')
+  async googleCallback(
+    @Res() res: Response,
+    @Query('code') code?: string,
+    @Query('state') state?: string,
+    @Query('error') error?: string,
+  ) {
+    const html = await this.auth.handleGoogleOAuthCallback({ code, state, error });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   }
 }

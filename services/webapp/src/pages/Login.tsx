@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ShieldCheck, MailCheck, KeyRound, CircleAlert } from 'lucide-react';
-import { loginAccount, requestGmailOtp, verifyGmailOtp } from '../api';
+import { loginAccount, requestGmailOtp, verifyGmailOtp, IDENTITY_BASE_URL } from '../api';
 import { useApp } from '../store';
 import { AuthLayout } from '../components/AuthLayout';
 import { GmailLogo } from '../components/icons/GmailLogo';
@@ -33,6 +33,7 @@ export default function Login() {
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpMessage, setOtpMessage] = useState<string>();
   const sanitizeOtpInput = (value: string) => value.replace(/\D+/g, '').slice(0, 8);
+  const [googleAuthPending, setGoogleAuthPending] = useState(false);
 
   useEffect(() => {
     if (!authReady) {
@@ -45,6 +46,25 @@ export default function Login() {
       navigate('/', { replace: true });
     }
   }, [token, authReady, navigate]);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (!event?.data || event.data.type !== 'kari:oauth') return;
+      if (event.origin !== window.location.origin) return;
+      setGoogleAuthPending(false);
+      const payload = event.data.payload;
+      if (payload?.error) {
+        setError(payload.error);
+        return;
+      }
+      if (payload?.token && payload?.account) {
+        setSession(payload.token, payload.account);
+        navigate('/', { replace: true });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [navigate, setSession]);
 
   const resetOtp = () => {
     setOtpStep('email');
@@ -128,6 +148,26 @@ export default function Login() {
     }
   };
 
+  const startGoogleOAuth = useCallback(() => {
+    setError(undefined);
+    if (typeof window === 'undefined') return;
+    const width = 520;
+    const height = 640;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const url = `${IDENTITY_BASE_URL}/auth/google/start?redirect=${encodeURIComponent(window.location.origin)}`;
+    const popup = window.open(
+      url,
+      'kari-google-oauth',
+      `width=${width},height=${height},left=${left},top=${top},resizable,scrollbars`,
+    );
+    if (!popup) {
+      setError('Fenêtre pop-up bloquée. Autorise les pop-ups pour KariGo.');
+      return;
+    }
+    setGoogleAuthPending(true);
+  }, []);
+
   const showLoader = !authReady || authLoading;
 
   const hero = useMemo(
@@ -143,7 +183,7 @@ export default function Login() {
             Connecte-toi en quelques secondes
           </h2>
           <p className="text-sm leading-relaxed text-white/85">
-            Choisis un mot de passe ou reçois un code Gmail pour accéder à KariGo.
+            Clique sur « Continuer avec Google », utilise ton mot de passe ou reçois un code Gmail.
           </p>
         </div>
 
@@ -187,6 +227,22 @@ export default function Login() {
       }
     >
       <div className="card highlight p-5 sm:p-6 lg:p-8 space-y-6 sm:space-y-7">
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={startGoogleOAuth}
+            className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300"
+          >
+            <GmailLogo className="h-5 w-5" />
+            <span>{googleAuthPending ? 'Fenêtre Google ouverte…' : 'Continuer avec Google'}</span>
+          </button>
+          <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-slate-400">
+            <span className="flex-1 border-t border-slate-200" />
+            <span>ou</span>
+            <span className="flex-1 border-t border-slate-200" />
+          </div>
+        </div>
+
         <div
           className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 bg-slate-100/80 p-1.5 sm:p-2 rounded-2xl text-sm"
           role="tablist"
