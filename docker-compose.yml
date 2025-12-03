@@ -70,7 +70,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     volumes:
-      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops:/etc/prometheus:ro
     ports: ["9091:9090"]  # évite le conflit avec un 9090 local déjà pris
     restart: unless-stopped
     depends_on:

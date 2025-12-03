@@ -52,8 +52,14 @@ export class AuthController {
 
   @Get('google/start')
   async startGoogle(@Res() res: Response, @Query('redirect') redirect?: string) {
-    const url = this.auth.getGoogleOAuthUrl(redirect);
-    res.redirect(url);
+    if (this.auth.isGoogleOAuthEnabled()) {
+      const url = this.auth.getGoogleOAuthUrl(redirect);
+      res.redirect(url);
+      return;
+    }
+    const html = this.auth.startMockGoogleFlow(redirect);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   }
 
   @Get('google/callback')
@@ -64,6 +70,13 @@ export class AuthController {
     @Query('error') error?: string,
   ) {
     const html = await this.auth.handleGoogleOAuthCallback({ code, state, error });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  }
+
+  @Post('google/mock/complete')
+  async completeMockGoogle(@Res() res: Response, @Body() body: { state?: string; email?: string }) {
+    const html = await this.auth.completeMockGoogle(body);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   }

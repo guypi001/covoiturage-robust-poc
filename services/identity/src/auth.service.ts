@@ -117,6 +117,7 @@ export class AuthService implements OnModuleInit {
     {
       redirectOrigin: string;
       createdAt: number;
+      provider: 'google' | 'mock';
     }
   >();
   constructor(
@@ -334,12 +335,13 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private createOAuthState(redirect?: string) {
+  private createOAuthState(redirect?: string, provider: 'google' | 'mock' = 'google') {
     this.purgeOAuthStates();
     const state = randomBytes(16).toString('hex');
     this.oauthStates.set(state, {
       redirectOrigin: this.sanitizeRedirectOrigin(redirect),
       createdAt: Date.now(),
+      provider,
     });
     return state;
   }
@@ -353,15 +355,15 @@ export class AuthService implements OnModuleInit {
     return record;
   }
 
-  private ensureGoogleConfig() {
-    if (!this.googleConfig.clientId || !this.googleConfig.clientSecret) {
-      throw new ServiceUnavailableException('google_oauth_disabled');
-    }
+  isGoogleOAuthEnabled() {
+    return Boolean(this.googleConfig.clientId && this.googleConfig.clientSecret);
   }
 
   getGoogleOAuthUrl(redirect?: string) {
-    this.ensureGoogleConfig();
-    const state = this.createOAuthState(redirect);
+    if (!this.isGoogleOAuthEnabled()) {
+      throw new ServiceUnavailableException('google_oauth_disabled');
+    }
+    const state = this.createOAuthState(redirect, 'google');
     const params = new URLSearchParams({
       client_id: this.googleConfig.clientId!,
       redirect_uri: this.googleConfig.redirectUri!,
@@ -406,13 +408,19 @@ export class AuthService implements OnModuleInit {
   }
 
   async handleGoogleOAuthCallback(params: { code?: string; state?: string; error?: string }) {
-    this.ensureGoogleConfig();
     const stateRecord = this.consumeOAuthState(params.state);
     const targetOrigin = stateRecord?.redirectOrigin || new URL(APP_PUBLIC_URL).origin;
-    if (!stateRecord) {
+    if (!stateRecord || stateRecord.provider !== 'google') {
       return this.buildOAuthResponseHtml({
         success: false,
         error: 'state_invalid',
+        targetOrigin,
+      });
+    }
+    if (!this.isGoogleOAuthEnabled()) {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        error: 'google_oauth_disabled',
         targetOrigin,
       });
     }
@@ -457,35 +465,11 @@ export class AuthService implements OnModuleInit {
       if (profile.email_verified === false) {
         throw new ForbiddenException('google_email_unverified');
       }
-      let account = await this.accounts.findOne({ where: { email } });
-      if (!account) {
-        const pwd = await this.hashPassword(randomBytes(12).toString('hex'));
-        account = this.accounts.create({
-          email,
-          passwordHash: pwd,
-          fullName: profile?.name ?? undefined,
-          type: 'INDIVIDUAL',
-          role: 'USER',
-          status: 'ACTIVE',
-        });
-        account = await this.accounts.save(account);
-        accountCreatedCounter.inc({ type: account.type });
-      } else {
-        if (!account.fullName && profile?.name) {
-          account.fullName = profile.name;
-          await this.accounts.save(account);
-        }
-      }
-      this.ensureAccountActive(account);
-      const token = this.sign(account);
-      accountLoginCounter.inc({ type: account.type });
+      const result = await this.upsertOAuthAccount(email, profile?.name);
       return this.buildOAuthResponseHtml({
         success: true,
         targetOrigin,
-        data: {
-          token,
-          account: this.sanitize(account),
-        },
+        data: result,
       });
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'google_oauth_failed';
@@ -494,6 +478,91 @@ export class AuthService implements OnModuleInit {
         success: false,
         targetOrigin,
         error: message,
+      });
+    }
+  }
+
+  private async upsertOAuthAccount(email: string, displayName?: string) {
+    const normalized = this.normalizeEmail(email);
+    let account = await this.accounts.findOne({ where: { email: normalized } });
+    if (!account) {
+      const pwd = await this.hashPassword(randomBytes(12).toString('hex'));
+      account = this.accounts.create({
+        email: normalized,
+        passwordHash: pwd,
+        fullName: displayName ?? undefined,
+        type: 'INDIVIDUAL',
+        role: 'USER',
+        status: 'ACTIVE',
+      });
+      account = await this.accounts.save(account);
+      accountCreatedCounter.inc({ type: account.type });
+    } else if (!account.fullName && displayName) {
+      account.fullName = displayName;
+      await this.accounts.save(account);
+    }
+    this.ensureAccountActive(account);
+    const token = this.sign(account);
+    accountLoginCounter.inc({ type: account.type });
+    return { token, account: this.sanitize(account) };
+  }
+
+  startMockGoogleFlow(redirect?: string) {
+    const state = this.createOAuthState(redirect, 'mock');
+    const submitUrl = `${APP_PUBLIC_URL.replace(/\/$/, '')}/api/identity/auth/google/mock/complete`;
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8" /><title>Connexion KariGo</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#f4f4f4;margin:0;padding:24px;} .card{background:#fff;border-radius:16px;padding:24px;box-shadow:0 12px 35px rgba(15,23,42,.15);} label{font-size:13px;color:#475569;font-weight:600;} input{width:100%;font-size:15px;margin-top:8px;padding:10px 14px;border-radius:12px;border:1px solid #cbd5f5;} button{width:100%;margin-top:16px;background:#0c6efd;border:none;color:#fff;font-weight:600;padding:12px;border-radius:999px;font-size:15px;cursor:pointer;} .header{display:flex;align-items:center;gap:12px;margin-bottom:16px;} .logo{width:36px;height:36px;border-radius:12px;background:#0c6efd;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;} </style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="logo">K</div>
+    <div>
+      <div style="font-weight:600;font-size:16px;">Connexion KariGo</div>
+      <div style="font-size:13px;color:#475569;">Confirme ton email pour continuer</div>
+    </div>
+  </div>
+  <form method="POST" action="${submitUrl}">
+    <input type="hidden" name="state" value="${state}" />
+    <label>Email</label>
+    <input type="email" name="email" placeholder="prenom@gmail.com" required />
+    <button type="submit">Autoriser l’accès</button>
+  </form>
+</div>
+</body></html>`;
+  }
+
+  async completeMockGoogle(params: { state?: string; email?: string }) {
+    const stateRecord = this.consumeOAuthState(params.state);
+    const targetOrigin = stateRecord?.redirectOrigin || new URL(APP_PUBLIC_URL).origin;
+    if (!stateRecord || stateRecord.provider !== 'mock') {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        error: 'state_invalid',
+        targetOrigin,
+      });
+    }
+    const email = params.email?.trim().toLowerCase();
+    if (!email) {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        error: 'email_requis',
+        targetOrigin,
+      });
+    }
+    try {
+      const result = await this.upsertOAuthAccount(email, email.split('@')[0]);
+      return this.buildOAuthResponseHtml({
+        success: true,
+        targetOrigin,
+        data: result,
+      });
+    } catch (err: any) {
+      return this.buildOAuthResponseHtml({
+        success: false,
+        targetOrigin,
+        error: err?.message || 'mock_oauth_failed',
       });
     }
   }

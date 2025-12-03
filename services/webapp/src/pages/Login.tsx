@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ShieldCheck, MailCheck, KeyRound, CircleAlert } from 'lucide-react';
-import { loginAccount, requestGmailOtp, verifyGmailOtp, IDENTITY_BASE_URL } from '../api';
+import { loginAccount, requestGmailOtp, verifyGmailOtp } from '../api';
 import { useApp } from '../store';
 import { AuthLayout } from '../components/AuthLayout';
 import { GmailLogo } from '../components/icons/GmailLogo';
@@ -155,7 +155,8 @@ export default function Login() {
     const height = 640;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
-    const url = `${IDENTITY_BASE_URL}/auth/google/start?redirect=${encodeURIComponent(window.location.origin)}`;
+    const identityBase = new URL('/api/identity/', window.location.origin).toString().replace(/\/$/, '');
+    const url = `${identityBase}/auth/google/start?redirect=${encodeURIComponent(window.location.origin)}`;
     const popup = window.open(
       url,
       'kari-google-oauth',
