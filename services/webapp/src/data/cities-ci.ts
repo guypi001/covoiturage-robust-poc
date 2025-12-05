@@ -53,7 +53,33 @@ export const CI_CITIES: City[] = [
     lat: 5.2118,
     lng: -3.73884,
   },
-  { name: 'Jacqueville', region: 'Grands-Ponts', lat: 5.213, lng: -4.413 },
+  {
+    name: 'Jacqueville',
+    region: 'Grands-Ponts',
+    alt: ['Jacque Ville', 'Jacque-Ville'],
+    lat: 5.213,
+    lng: -4.413,
+  },
+  {
+    name: 'Assinie-Mafia',
+    region: 'Sud-Comoé',
+    alt: ['Assinie', 'Assinie Mafia'],
+    lat: 5.1307,
+    lng: -3.2745,
+  },
+  {
+    name: 'Grand-Lahou',
+    region: 'Grands-Ponts',
+    alt: ['Grand Lahou'],
+    lat: 5.2353,
+    lng: -5.0024,
+  },
+  {
+    name: 'Sassandra',
+    region: 'Gbôklé',
+    lat: 4.9529,
+    lng: -6.0857,
+  },
 ];
 
 const strip = (s: string) =>

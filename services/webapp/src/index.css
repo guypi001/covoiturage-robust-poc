@@ -133,6 +133,9 @@ p, ul, ol{ margin: 0; }
   transition: box-shadow .16s, border-color .16s, background-color .16s;
   padding: .65rem .9rem;
 }
+.input-with-icon{
+  padding-left: 2.75rem;
+}
 .input.input-lg{
   height: 56px;
   border-radius: 1rem;

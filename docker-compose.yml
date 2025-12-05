@@ -1,6 +1,28 @@
 version: "3.9"
 
 services:
+  traefik:
+    image: traefik:v3.1
+    profiles: ["proxy"]
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-change-me@example.com}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    networks:
+      - proxy
+    restart: unless-stopped
+
   postgres:
     image: postgis/postgis:16-3.4
     environment:
@@ -56,7 +78,7 @@ services:
       - redpanda:8082
     ports:
       - "19092:19092"   # accès Kafka depuis l’hôte => localhost:19092
-      - "9644:9644"     # Admin API
+      - "19644:9644"    # Admin API (hôte => localhost:19644)
     restart: unless-stopped
 
   redpanda-console:
@@ -217,6 +239,19 @@ services:
         condition: service_started
     ports: ["3006:80"]
     restart: unless-stopped
+    networks:
+      - default
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.webapp.rule=Host(`${WEBAPP_HOST:-localhost}`)
+      - traefik.http.routers.webapp.entrypoints=websecure
+      - traefik.http.routers.webapp.tls.certresolver=letsencrypt
+      - traefik.http.routers.webapp-http.rule=Host(`${WEBAPP_HOST:-localhost}`)
+      - traefik.http.routers.webapp-http.entrypoints=web
+      - traefik.http.routers.webapp-http.middlewares=webapp-https-redirect
+      - traefik.http.middlewares.webapp-https-redirect.redirectscheme.scheme=https
+      - traefik.http.services.webapp.loadbalancer.server.port=80
 
 
 
@@ -229,3 +264,8 @@ services:
 volumes:
   pgdata: {}
   pgadmin: {}
+  traefik-letsencrypt: {}
+
+networks:
+  proxy:
+    driver: bridge

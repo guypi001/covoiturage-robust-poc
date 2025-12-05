@@ -14,6 +14,33 @@ docker compose up --build --detach
 # Administration métier: http://localhost:3006/admin/accounts (connecte-toi avec un compte ADMIN)
 ```
 
+## HTTPS en prod + mode local
+
+- **Local** : rien à changer, continue d’utiliser `make up` (ou `docker compose up -d`). Le port `3006` reste exposé directement depuis `webapp`, et Traefik n’est pas démarré car il est derrière un profil Compose (`proxy`).
+
+- **VPS avec HTTPS** :
+  1. Crée `app.example.com` → IP du serveur, ouvre les ports 80/443 (`sudo ufw allow 80/tcp && sudo ufw allow 443/tcp`).
+  2. Place-toi dans le dossier du projet et crée un `.env` (copie possible depuis `.env.example`) :
+     ```bash
+     cat <<'EOF' > .env
+     WEBAPP_HOST=app.example.com
+     TRAEFIK_ACME_EMAIL=ops@example.com
+     EOF
+     ```
+  3. Bâtis/démarre avec le profil proxy :
+     ```bash
+     docker compose --profile proxy up -d --build traefik webapp
+     docker compose --profile proxy up -d
+     ```
+     (Tu peux remplacer par `make up` puis `docker compose --profile proxy up -d traefik` si tu préfères.)
+  4. Vérifie la génération des certificats :
+     ```bash
+     docker compose --profile proxy logs -f traefik
+     ```
+  5. Accède ensuite à `https://app.example.com`. Traefik écoute en 80/443, gère Let’s Encrypt via HTTP challenge et reverse-proxy l’app SPA (qui continue de router les `/api/...` vers les microservices internes).
+
+> Besoin d’exposer d’autres services (Grafana, Prometheus, etc.) ? Ajoute-les au réseau `proxy`, configure les labels Traefik (`traefik.http.routers.*`) avec leurs sous-domaines, puis relance `docker compose --profile proxy up -d`.
+
 ## Gestion des comptes
 
 - Le premier compte créé est automatiquement promu administrateur pour initialiser la supervision.

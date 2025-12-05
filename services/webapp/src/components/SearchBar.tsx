@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Calendar, MapPin, Search, Users, RefreshCcw, Settings2 } from 'lucide-react';
+import { Calendar, Search, Users, RefreshCcw, Settings2 } from 'lucide-react';
 import CityAutocomplete from './CityAutocomplete';
 import type { LocationMeta } from '../types/location';
 import type { HomeSearchTheme, HomeThemeId } from '../constants/homePreferences';
@@ -58,6 +58,7 @@ export default function SearchBar({
   theme = 'default',
   searchTheme,
 }: Props) {
+  const MAX_SEATS = 10;
   const tokens = useMemo<HomeSearchTheme>(() => {
     const fallback: HomeSearchTheme = {
       panel: 'border border-white/80 bg-white/98 shadow-xl shadow-sky-100/60 backdrop-blur-xl',
@@ -116,6 +117,19 @@ export default function SearchBar({
     });
   };
 
+  const parseTime = (value?: string) => {
+    if (!value) return null;
+    const [h, m] = value.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+  const afterMinutes = parseTime(departureAfter);
+  const beforeMinutes = parseTime(departureBefore);
+  const hasTimeRangeError =
+    typeof afterMinutes === 'number' &&
+    typeof beforeMinutes === 'number' &&
+    afterMinutes > beforeMinutes;
+
   return (
     <form
       className={`search-sticky relative w-full overflow-hidden rounded-[32px] px-8 md:px-16 py-10 space-y-7 transition ${tokens.panel}`}
@@ -123,6 +137,7 @@ export default function SearchBar({
         e.preventDefault();
         onSubmit();
       }}
+      noValidate
       aria-label="Formulaire de recherche de trajets"
     >
       <div className="space-y-4">
@@ -136,6 +151,26 @@ export default function SearchBar({
             <RefreshCcw size={12} /> Inverser
           </button>
         </div>
+
+        {quickSamples.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Suggestions instantanées
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-sm">
+              {quickSamples.map(([sampleFrom, sampleTo]) => (
+                <button
+                  key={`${sampleFrom}-${sampleTo}`}
+                  type="button"
+                  onClick={() => applySample(sampleFrom, sampleTo)}
+                  className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-700"
+                >
+                  {sampleFrom} → {sampleTo}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -175,7 +210,7 @@ export default function SearchBar({
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1">
               <label className={`text-xs font-semibold ${labelClass}`}>Date de départ</label>
               <div className="relative">
@@ -183,7 +218,7 @@ export default function SearchBar({
                 <input
                   ref={dateRef}
                   type="date"
-                  className={`input h-14 w-full pl-12 pr-12 text-base ${tokens.fieldLg}`}
+                  className={`input input-with-icon h-14 w-full pr-12 text-base ${tokens.fieldLg}`}
                   min={minDate}
                   value={date ?? ''}
                   onChange={(e) => onChange({ date: e.currentTarget.value })}
@@ -206,30 +241,40 @@ export default function SearchBar({
                 <input
                   type="number"
                   min={1}
-                  max={10}
-                  className={`input h-14 w-full pl-12 text-base ${tokens.fieldLg}`}
+                  className={`input input-with-icon h-14 w-full text-base ${tokens.fieldLg}`}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={seats}
-                  onChange={(e) => onChange({ seats: Math.max(1, Number(e.currentTarget.value) || 1) })}
+                  onChange={(e) => {
+                    const raw = Number(e.currentTarget.value);
+                    const safe = Number.isFinite(raw) ? Math.max(1, Math.min(MAX_SEATS, raw)) : 1;
+                    onChange({ seats: safe });
+                  }}
                 />
               </div>
-              <p className="text-xs text-slate-400">Maximum 10 sièges par réservation.</p>
+              <p className="text-xs text-slate-400">Entre 1 et {MAX_SEATS} sièges par réservation.</p>
             </div>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Suggestions</p>
-          <div className="flex flex-wrap gap-2">
-            {quickSamples.map(([sampleFrom, sampleTo]) => (
-              <button
-                key={`${sampleFrom}-${sampleTo}`}
-                type="button"
-                onClick={() => applySample(sampleFrom, sampleTo)}
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-700"
-              >
-                {sampleFrom} → {sampleTo}
-              </button>
-            ))}
+            <div className="space-y-1">
+              <label className={`text-xs font-semibold ${labelClass}`}>Budget maximum (F CFA)</label>
+              <input
+                type="number"
+                min={0}
+                step={500}
+                className={`input h-14 w-full text-base ${tokens.fieldLg}`}
+                placeholder="Plafond souhaité"
+                value={typeof priceMax === 'number' ? priceMax : ''}
+                onChange={(e) => {
+                  const raw = e.currentTarget.value;
+                  const parsed = Number(raw);
+                  if (!raw) {
+                    onChange({ priceMax: undefined });
+                    return;
+                  }
+                  onChange({ priceMax: Number.isFinite(parsed) ? Math.max(0, parsed) : undefined });
+                }}
+              />
+              <p className="text-xs text-slate-400">Affiche uniquement les trajets sous ce montant.</p>
+            </div>
           </div>
         </div>
 
@@ -240,33 +285,13 @@ export default function SearchBar({
             className="flex w-full items-center justify-between text-sm font-semibold text-slate-700"
           >
             <span className="inline-flex items-center gap-2">
-              <Settings2 size={14} /> Options avancées
+              <Settings2 size={14} /> Filtres avancés
             </span>
             <span className="text-xs text-slate-500">{showAdvanced ? 'Masquer' : 'Afficher'}</span>
           </button>
           {showAdvanced && (
             <div className="mt-3 space-y-3 text-sm text-slate-600">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),minmax(0,0.6fr)]">
-                <div>
-                  <label className={`text-xs font-semibold ${labelClass}`}>Budget maximum (F CFA)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={500}
-                    className={`input mt-1 h-12 w-full text-sm ${tokens.fieldLg}`}
-                    placeholder="Prix max"
-                    value={typeof priceMax === 'number' ? priceMax : ''}
-                    onChange={(e) => {
-                      const raw = e.currentTarget.value;
-                      const parsed = Number(raw);
-                      if (!raw) {
-                        onChange({ priceMax: undefined });
-                        return;
-                      }
-                      onChange({ priceMax: Number.isFinite(parsed) ? parsed : undefined });
-                    }}
-                  />
-                </div>
                 <div>
                   <label className={`text-xs font-semibold ${labelClass}`}>Trier par</label>
                   <select
@@ -280,25 +305,33 @@ export default function SearchBar({
                   </select>
                 </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className={`text-xs font-semibold ${labelClass}`}>Pas avant</label>
+              <div>
+                <label className={`text-xs font-semibold ${labelClass}`}>Départ entre</label>
+                <div className="mt-1 grid grid-cols-2 gap-2">
                   <input
                     type="time"
-                    className={`input mt-1 h-12 w-full text-sm ${tokens.fieldLg}`}
+                    className={`input h-12 w-full text-sm ${tokens.fieldLg}`}
                     value={departureAfter ?? ''}
                     onChange={(e) => onChange({ departureAfter: e.currentTarget.value || undefined })}
+                    placeholder="08:00"
                   />
-                </div>
-                <div>
-                  <label className={`text-xs font-semibold ${labelClass}`}>Pas après</label>
                   <input
                     type="time"
-                    className={`input mt-1 h-12 w-full text-sm ${tokens.fieldLg}`}
+                    className={`input h-12 w-full text-sm ${tokens.fieldLg}`}
                     value={departureBefore ?? ''}
                     onChange={(e) => onChange({ departureBefore: e.currentTarget.value || undefined })}
+                    placeholder="18:00"
                   />
                 </div>
+                {hasTimeRangeError ? (
+                  <p className="mt-1 text-xs text-red-600">
+                    L’heure de fin doit être postérieure à l’heure de début.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-400">
+                    Ex. 08h à 12h pour afficher uniquement les départs du matin.
+                  </p>
+                )}
               </div>
             </div>
           )}

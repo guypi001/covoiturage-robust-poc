@@ -247,7 +247,7 @@ export default function CityAutocomplete({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="input input-lg w-full pl-12 pr-4"
+          className="input input-lg input-with-icon w-full pr-4"
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls="city-listbox"
