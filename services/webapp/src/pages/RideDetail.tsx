@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowRight, Calendar, Clock, MapPin, Shield, Phone, Mail, Star } from 'lucide-react';
+import { ArrowRight, Calendar, Clock, Shield, Phone, Mail, Star } from 'lucide-react';
 import { useApp } from '../store';
 import { getRide, getPublicProfile, sendChatMessage, type Ride, type Account } from '../api';
 import { upsertPendingAcquisition } from '../utils/pendingAcquisitions';
+import { RouteMap } from '../components/RouteMap';
+import type { LocationMeta } from '../types/location';
+import { CityBadge, CityIcon } from '../utils/cityIcons';
 
 const extractFirstName = (value?: string | null) => {
   if (!value) return undefined;
@@ -19,6 +22,7 @@ export function RideDetail() {
   const token = useApp((state) => state.token);
   const currentAccount = useApp((state) => state.account);
   const refreshBadge = useApp((state) => state.refreshMessageBadge);
+  const lastSearch = useApp((state) => state.lastSearch);
 
   const [ride, setRide] = useState<Ride | undefined>(storeRide);
   const [loading, setLoading] = useState(false);
@@ -208,6 +212,20 @@ export function RideDetail() {
     nav(`/profile/${driver.id}`);
   };
 
+  const normalizeCity = (value?: string) => value?.trim().toLowerCase();
+  const originMeta: LocationMeta | undefined =
+    ride &&
+    lastSearch &&
+    normalizeCity(lastSearch.fromMeta?.city) === normalizeCity(ride.originCity)
+      ? lastSearch.fromMeta ?? undefined
+      : undefined;
+  const destinationMeta: LocationMeta | undefined =
+    ride &&
+    lastSearch &&
+    normalizeCity(lastSearch.toMeta?.city) === normalizeCity(ride.destinationCity)
+      ? lastSearch.toMeta ?? undefined
+      : undefined;
+
   return (
     <div className="glass p-6 rounded-2xl space-y-6">
       <header className="space-y-2">
@@ -226,12 +244,17 @@ export function RideDetail() {
           </span>
         </div>
         <h1 className="flex flex-wrap items-center gap-2 text-3xl font-semibold text-slate-900">
-          <MapPin size={24} className="text-emerald-300" />
-          <span>{ride.originCity}</span>
+          <CityBadge name={ride.originCity} className="text-lg" />
           <ArrowRight size={22} className="text-slate-900/50" />
-          <span>{ride.destinationCity}</span>
+          <CityBadge name={ride.destinationCity} className="text-lg" />
         </h1>
       </header>
+
+      <RouteMap
+        origin={{ label: ride.originCity, meta: originMeta }}
+        destination={{ label: ride.destinationCity, meta: destinationMeta }}
+        departureAt={ride.departureAt}
+      />
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr),minmax(0,1fr)]">
         <div className="rounded-2xl border border-slate-200 bg-white/5 p-5 text-slate-900/80 space-y-4">
@@ -334,17 +357,21 @@ export function RideDetail() {
           <p className="text-xs uppercase tracking-wide text-slate-900/60">Détails du trajet</p>
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-3">
-              <MapPin size={16} className="text-emerald-300" />
               <div>
                 <p className="text-xs uppercase text-slate-900/50">Départ</p>
-                <p className="text-lg font-semibold text-slate-900">{ride.originCity}</p>
+                <p className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <CityIcon city={ride.originCity} />
+                  <span>{ride.originCity}</span>
+                </p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <MapPin size={16} className="text-emerald-300" />
               <div>
                 <p className="text-xs uppercase text-slate-900/50">Arrivée</p>
-                <p className="text-lg font-semibold text-slate-900">{ride.destinationCity}</p>
+                <p className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <CityIcon city={ride.destinationCity} />
+                  <span>{ride.destinationCity}</span>
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3 text-sm text-slate-900/70">

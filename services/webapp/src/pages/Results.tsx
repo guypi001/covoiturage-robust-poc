@@ -1,11 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Filter, RefreshCw, MapPin, Clock, SlidersHorizontal, AlertCircle, RotateCcw } from 'lucide-react';
+import { Filter, RefreshCw, Clock, SlidersHorizontal, AlertCircle, RotateCcw } from 'lucide-react';
 import { useApp } from '../store';
 import RideCard from '../components/RideCard';
 import { HOME_THEME_STYLE } from '../constants/homePreferences';
 import { useRideContact } from '../hooks/useRideContact';
 import { useRideSearch } from '../hooks/useRideSearch';
+import { CityBadge } from '../utils/cityIcons';
 
 export function Results() {
   const nav = useNavigate();
@@ -150,11 +151,13 @@ export function Results() {
       <div className="container-wide space-y-6">
         <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex-1 min-w-[220px]">
+            <div className="flex-1 min-w-[220px] space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trajet demandé</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {lastSearch.from} → {lastSearch.to}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-lg font-semibold text-slate-900">
+                <CityBadge name={lastSearch.from} />
+                <span className="text-slate-400">→</span>
+                <CityBadge name={lastSearch.to} />
+              </div>
             </div>
             <button
               type="button"

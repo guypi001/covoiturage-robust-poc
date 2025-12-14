@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ArrowRight, Clock, MapPin, User2, Shield, Info, Link2, Heart, Tag } from 'lucide-react';
+import { Info, Heart, Link2 } from 'lucide-react';
 import { useApp } from '../store';
 import { useRideAvailability } from '../hooks/useRideAvailability';
+import { CityIcon } from '../utils/cityIcons';
 
 type Props = {
   rideId?: string;
@@ -69,52 +70,25 @@ export default function RideCard({
       ? `${window.location.origin}/ride/${rideId}`
       : `/ride/${rideId}`
     : undefined;
-  const highlightItems = [
-    {
-      id: 'departure',
-      icon: Clock,
-      label: 'Départ',
-      value: `Le ${dateLabel} à ${timeLabel}`,
-    },
-    {
-      id: 'seats',
-      icon: User2,
-      label: 'Disponibilité',
-      value: soldOut
-        ? 'Aucune place disponible'
-        : `${liveSeatsAvailable} place${liveSeatsAvailable > 1 ? 's' : ''} disponibles (${seatsLabel})`,
-    },
-    {
-      id: 'price',
-      icon: Tag,
-      label: 'Tarif',
-      value: `${pricePerSeat.toLocaleString()} XOF par siège`,
-    },
-  ];
   const baseActionClass =
     'inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition';
-
   const handleCopyLink = async () => {
     if (!shareUrl) return;
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
         setShareFeedback('copied');
-      } else {
-        if (typeof document !== 'undefined') {
-          const textarea = document.createElement('textarea');
-          textarea.value = shareUrl;
-          textarea.style.position = 'fixed';
-          textarea.style.left = '-1000px';
-          document.body.appendChild(textarea);
-          textarea.focus();
-          textarea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textarea);
-          setShareFeedback('copied');
-        } else {
-          setShareFeedback('error');
-        }
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = shareUrl;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-1000px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        setShareFeedback('copied');
       }
     } catch {
       setShareFeedback('error');
@@ -125,26 +99,24 @@ export default function RideCard({
 
   const palette = variant === 'dark'
     ? {
-        container:
-          'relative rounded-[28px] border border-white/10 bg-slate-900/70 p-6 shadow-lg shadow-slate-900/50 backdrop-blur',
+        container: 'relative rounded-2xl border border-white/10 bg-slate-900/80 p-5 shadow-lg',
         title: 'text-white',
         subtitle: 'text-slate-300',
         price: 'text-emerald-300',
-        infoCard: 'border border-white/10 bg-white/5 text-white/80',
+        info: 'text-slate-200',
         actionsBorder: 'border-white/15 text-slate-100 hover:bg-white/10',
         contact: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20',
         button: 'bg-emerald-500 hover:bg-emerald-400 text-slate-900',
       }
     : {
-        container:
-          'relative rounded-[30px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6 shadow-lg shadow-slate-200/60',
+        container: 'relative rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/70',
         title: 'text-slate-900',
         subtitle: 'text-slate-500',
         price: 'text-slate-900',
-        infoCard: 'border border-slate-200 bg-white text-slate-700 shadow-sm',
+        info: 'text-slate-700',
         actionsBorder: 'border-slate-200 text-slate-700 hover:bg-slate-50',
         contact: 'border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100',
-        button: 'bg-slate-900 text-white hover:bg-slate-800 inline-flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold',
+        button: 'bg-slate-900 text-white hover:bg-slate-800 inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold',
       };
 
   const normalizedDriverLabel = driverLabel?.trim();
@@ -159,19 +131,6 @@ export default function RideCard({
     'Conducteur KariGo';
   const authorInitial = authorName.charAt(0).toUpperCase();
   const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
-  const authorStyles =
-    variant === 'dark'
-      ? {
-          text: 'text-slate-300',
-          name: 'text-white',
-          avatar: 'border-white/20 bg-white/10 text-white',
-        }
-      : {
-          text: 'text-slate-500',
-          name: 'text-slate-800',
-          avatar: 'border-slate-200 bg-slate-100 text-slate-600',
-        };
-
   return (
     <article
       className={`${palette.container} ${
@@ -186,26 +145,19 @@ export default function RideCard({
           </span>
         </>
       )}
-      <div className="mx-auto flex w-full flex-col gap-6 lg:max-w-5xl">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-sky-600">
-              <span>Départ {dateLabel}</span>
-              <span className="h-1 w-1 rounded-full bg-sky-500" />
-              <span>{timeLabel}</span>
-            </div>
-            <div className={`flex flex-wrap items-center gap-2 text-2xl font-bold ${palette.title}`}>
-              <MapPin className={variant === 'dark' ? 'text-emerald-300' : 'text-sky-600'} size={18} />
-              <span className="truncate">{originCity}</span>
-              <ArrowRight size={16} className={variant === 'dark' ? 'text-slate-500' : 'text-slate-300'} />
-              <span className="truncate">{destinationCity}</span>
-            </div>
+      <div className="flex flex-col gap-4">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-wide">Départ</p>
+            <p className="text-sm font-semibold text-slate-800">
+              {dateLabel} · {timeLabel}
+            </p>
           </div>
-          <div className="flex items-start gap-3 text-right">
-            <div className="space-y-1 text-sm text-slate-500">
-              <p className={`text-3xl font-bold ${palette.price}`}>{pricePerSeat.toLocaleString()} XOF</p>
-              <p className="text-sm font-semibold text-slate-600">
-                {soldOut ? 'Complet' : `${liveSeatsAvailable} place(s) · ${seatsLabel} dispo`}
+          <div className="flex items-center gap-4 text-right">
+            <div className="text-sm">
+              <p className={`text-2xl font-bold ${palette.price}`}>{pricePerSeat.toLocaleString()} XOF</p>
+              <p className={`text-xs font-semibold ${palette.info}`}>
+                {soldOut ? 'Complet' : `${liveSeatsAvailable} pl. (${seatsLabel})`}
               </p>
             </div>
             {onToggleSaved && (
@@ -227,9 +179,45 @@ export default function RideCard({
           </div>
         </header>
 
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-50 to-white px-3 py-1.5 text-sm font-semibold text-slate-900 ring-1 ring-slate-200">
+              <CityIcon city={originCity} />
+              <span>{originCity}</span>
+            </div>
+            <div className="relative flex-1">
+              <svg viewBox="0 0 200 30" preserveAspectRatio="none" className="w-full h-10">
+                <defs>
+                  <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#7dd3fc" />
+                    <stop offset="50%" stopColor="#38bdf8" />
+                    <stop offset="100%" stopColor="#0ea5e9" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M0 20 C40 10, 60 30, 100 15 S160 25, 200 12"
+                  fill="none"
+                  stroke="url(#waveGrad)"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  className="drop-shadow"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-between px-4">
+                <div className="h-3 w-3 rounded-full bg-white ring-2 ring-sky-400 shadow-sm" />
+                <div className="h-3 w-3 rounded-full bg-white ring-2 ring-sky-600 shadow-sm" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-full bg-gradient-to-r from-white to-sky-50 px-3 py-1.5 text-sm font-semibold text-slate-900 ring-1 ring-slate-200">
+              <CityIcon city={destinationCity} />
+              <span>{destinationCity}</span>
+            </div>
+          </div>
+        </div>
+
         {showPublisher && (
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white/70 px-4 py-3 text-xs text-slate-500">
-            <div className="h-11 w-11 overflow-hidden rounded-full border border-slate-200 bg-white shadow-inner">
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-200 bg-white shadow-inner">
               {showAvatarPhoto ? (
                 <img
                   src={driverPhotoUrl || ''}
@@ -245,30 +233,12 @@ export default function RideCard({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900">{authorName}</p>
-              <p className="text-xs text-slate-500 truncate">
-                {normalizedDriverLabel ? 'Conducteur vérifié' : 'Trajet généré par KariGo'}
+              <p className="text-[11px] text-slate-500 truncate">
+                {normalizedDriverLabel ? 'Conducteur vérifié' : 'Trajet KariGo'}
               </p>
             </div>
           </div>
         )}
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {highlightItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.id}
-                className={`rounded-2xl px-4 py-3 ${palette.infoCard}`}
-              >
-                <p className="text-[11px] uppercase tracking-wide text-slate-400">{item.label}</p>
-                <div className="mt-2 flex items-start gap-2 text-sm font-semibold leading-snug text-slate-900">
-                  <Icon size={16} className="text-sky-500" />
-                  <span className="text-slate-800">{item.value}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {shareUrl && (
