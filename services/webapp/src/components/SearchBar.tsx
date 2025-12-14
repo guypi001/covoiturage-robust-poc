@@ -236,23 +236,41 @@ export default function SearchBar({
             </div>
             <div className="space-y-1">
               <label className={`text-xs font-semibold ${labelClass}`}>Nombre de sièges</label>
-              <div className="relative">
-                <Users className={`absolute left-3 top-1/2 -translate-y-1/2 ${tokens.icon}`} size={16} />
-                <input
-                  type="number"
-                  min={1}
-                  max={MAX_SEATS}
-                  step={1}
-                  className={`input input-with-icon h-14 w-full text-base ${tokens.fieldLg}`}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={seats}
-                  onChange={(e) => {
-                    const raw = Number(e.currentTarget.value);
-                    const safe = Number.isFinite(raw) ? Math.max(1, Math.min(MAX_SEATS, raw)) : 1;
-                    onChange({ seats: safe });
-                  }}
-                />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="h-14 w-14 rounded-xl border border-slate-200 bg-slate-50 text-lg font-bold text-slate-700 transition hover:bg-slate-100"
+                  onClick={() => onChange({ seats: Math.max(1, seats - 1) })}
+                  aria-label="Diminuer le nombre de sièges"
+                >
+                  −
+                </button>
+                <div className="relative flex-1">
+                  <Users className={`absolute left-3 top-1/2 -translate-y-1/2 ${tokens.icon}`} size={16} />
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_SEATS}
+                    step={1}
+                    className={`input input-with-icon h-14 w-full text-base ${tokens.fieldLg}`}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={seats}
+                    onChange={(e) => {
+                      const raw = Number(e.currentTarget.value);
+                      const safe = Number.isFinite(raw) ? Math.max(1, Math.min(MAX_SEATS, raw)) : seats;
+                      onChange({ seats: safe });
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="h-14 w-14 rounded-xl border border-slate-200 bg-slate-50 text-lg font-bold text-slate-700 transition hover:bg-slate-100"
+                  onClick={() => onChange({ seats: Math.min(MAX_SEATS, seats + 1) })}
+                  aria-label="Augmenter le nombre de sièges"
+                >
+                  +
+                </button>
               </div>
               <p className="text-xs text-slate-400">Entre 1 et {MAX_SEATS} sièges par réservation.</p>
             </div>
