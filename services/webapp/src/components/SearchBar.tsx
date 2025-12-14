@@ -241,6 +241,8 @@ export default function SearchBar({
                 <input
                   type="number"
                   min={1}
+                  max={MAX_SEATS}
+                  step={1}
                   className={`input input-with-icon h-14 w-full text-base ${tokens.fieldLg}`}
                   inputMode="numeric"
                   pattern="[0-9]*"

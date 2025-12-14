@@ -148,19 +148,25 @@ export default function Home() {
     };
   };
 
-  // Lance la recherche et affiche les résultats sur la même page
-  async function onSubmit() {
-    const fromCity = form.from.trim();
-    const toCity = form.to.trim();
+const normalizeCityInput = (value: string) => value.split(',')[0].trim();
+
+// Lance la recherche et affiche les résultats sur la même page
+async function onSubmit() {
+    const rawFrom = form.from.trim();
+    const rawTo = form.to.trim();
+    const fromCity = normalizeCityInput(rawFrom);
+    const toCity = normalizeCityInput(rawTo);
     if (!fromCity || !toCity) {
       setError('Renseigne départ et arrivée');
       return;
     }
-    if (!isKnownCiCity(fromCity)) {
+    const fromKnown = isKnownCiCity(fromCity);
+    const toKnown = isKnownCiCity(toCity);
+    if (!fromKnown && !form.fromMeta?.lat) {
       setError('Sélectionne un point de départ valide.');
       return;
     }
-    if (!isKnownCiCity(toCity)) {
+    if (!toKnown && !form.toMeta?.lat) {
       setError('Sélectionne une arrivée valide.');
       return;
     }
