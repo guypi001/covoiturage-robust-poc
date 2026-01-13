@@ -14,10 +14,13 @@ import {
 import axios from 'axios';
 
 const IDENTITY_URL = process.env.IDENTITY_URL || 'http://identity:3000';
+const METRICS_REFRESH_DEBOUNCE_MS = 5000;
 
 @Controller('rides')
 export class RideController {
   private readonly logger = new Logger(RideController.name);
+  private refreshTimer?: ReturnType<typeof setTimeout>;
+  private refreshInFlight = false;
 
   constructor(
     @InjectRepository(Ride) private rides: Repository<Ride>,
@@ -28,11 +31,23 @@ export class RideController {
   }
 
   private async refreshAggregates() {
+    if (this.refreshInFlight) return;
+    this.refreshInFlight = true;
     try {
       await refreshRideGauges(this.rides);
     } catch (err) {
       this.logger.warn(`refreshAggregates failed: ${(err as Error)?.message ?? err}`);
+    } finally {
+      this.refreshInFlight = false;
     }
+  }
+
+  private queueRefresh() {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      void this.refreshAggregates();
+    }, METRICS_REFRESH_DEBOUNCE_MS);
   }
 
   @Post()
@@ -92,7 +107,7 @@ export class RideController {
 
       ridePublishedCounter.inc({ origin_city: saved.originCity, destination_city: saved.destinationCity });
       ridePriceHistogram.observe(saved.pricePerSeat);
-      await this.refreshAggregates();
+      this.queueRefresh();
 
       return res.status(HttpStatus.CREATED).json(saved);
     } catch (e: any) {
@@ -224,7 +239,7 @@ export class RideController {
       ride.seatsAvailable -= n;
       await this.rides.save(ride);
       rideLockAttemptCounter.inc({ result: 'success' });
-      await this.refreshAggregates();
+      this.queueRefresh();
       return res.status(HttpStatus.OK).json({ ok: true, seatsAvailable: ride.seatsAvailable });
     } catch (err: any) {
       rideLockAttemptCounter.inc({ result: 'error' });

@@ -10,7 +10,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Not, Repository } from 'typeorm';
+import { In, LessThan, Not, Repository } from 'typeorm';
 import { Account, AccountRole, AccountStatus, HomePreferences, PasswordResetToken } from './entities';
 import {
   RegisterCompanyDto,
@@ -821,6 +821,25 @@ export class AuthService implements OnModuleInit {
   async getProfile(accountId: string): Promise<SafeAccount | null> {
     const account = await this.accounts.findOne({ where: { id: accountId } });
     return account ? this.sanitize(account) : null;
+  }
+
+  async getProfiles(accountIds: string[]): Promise<SafeAccount[]> {
+    const ids = Array.from(
+      new Set(
+        accountIds
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ).slice(0, 500);
+    if (!ids.length) {
+      return [];
+    }
+    const accounts = await this.accounts.find({ where: { id: In(ids) } });
+    const accountMap = new Map(accounts.map((account) => [account.id, account]));
+    return ids
+      .map((id) => accountMap.get(id))
+      .filter((account): account is Account => Boolean(account))
+      .map((account) => this.sanitize(account));
   }
 
   async updateIndividualProfile(

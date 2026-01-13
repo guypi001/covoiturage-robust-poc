@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Filter, RefreshCw, Clock, SlidersHorizontal, AlertCircle, RotateCcw } from 'lucide-react';
+import { Filter, RefreshCw, Clock, SlidersHorizontal, AlertCircle, RotateCcw, MapPin, Wallet, Zap, Users } from 'lucide-react';
 import { useApp } from '../store';
 import RideCard from '../components/RideCard';
 import { HOME_THEME_STYLE } from '../constants/homePreferences';
@@ -99,6 +99,27 @@ export function Results() {
   const totalResults = deferredResults.length;
   const hasResults = totalResults > 0;
   const isSearching = loading || ridePending;
+  const seatsCount = lastSearch.seats ?? 1;
+
+  const insights = useMemo(() => {
+    if (!deferredResults.length) return null;
+    let cheapest = deferredResults[0];
+    let earliest = deferredResults[0];
+    let mostSeats = deferredResults[0];
+    for (const ride of deferredResults) {
+      if (ride.pricePerSeat < cheapest.pricePerSeat) cheapest = ride;
+      if (new Date(ride.departureAt).getTime() < new Date(earliest.departureAt).getTime()) {
+        earliest = ride;
+      }
+      if (ride.seatsAvailable > mostSeats.seatsAvailable) mostSeats = ride;
+    }
+    return { cheapest, earliest, mostSeats };
+  }, [deferredResults]);
+
+  const applyQuickSort = async (sort: 'soonest' | 'cheapest' | 'seats') => {
+    if (!lastSearch) return;
+    await performSearch({ ...lastSearch, sort });
+  };
 
   const normalizedDraft = useMemo(() => {
     const price = Number(filterDraft.priceMax);
@@ -202,6 +223,70 @@ export function Results() {
             </span>
           </div>
         </div>
+
+        {insights && hasResults && (
+          <div className="grid gap-3 lg:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => void applyQuickSort('cheapest')}
+              className="group rounded-3xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-emerald-100/70"
+            >
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                  <Wallet size={18} />
+                </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Meilleur prix</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {insights.cheapest.pricePerSeat.toLocaleString()} XOF / siège
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Total pour {seatsCount} sièges : {(insights.cheapest.pricePerSeat * seatsCount).toLocaleString()} XOF
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-emerald-700">Voir les offres les plus économiques</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => void applyQuickSort('soonest')}
+              className="group rounded-3xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-sky-100/70"
+            >
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                  <Zap size={18} />
+                </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Départ le plus tôt</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {new Date(insights.earliest.departureAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {new Date(insights.earliest.departureAt).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-sky-700">Prioriser les départs rapides</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => void applyQuickSort('seats')}
+              className="group rounded-3xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-violet-100/70"
+            >
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+                  <Users size={18} />
+                </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Plus de places</p>
+                  <p className="text-lg font-semibold text-slate-900">{insights.mostSeats.seatsAvailable} sièges</p>
+                  <p className="text-xs text-slate-500">Idéal pour voyager en groupe</p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-violet-700">Filtrer sur les trajets spacieux</p>
+            </button>
+          </div>
+        )}
 
         {lastSearch && (
           <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
@@ -354,14 +439,15 @@ export function Results() {
 
         {!isSearching && !error && hasResults && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {deferredResults.map((ride) => {
-              const saved = Boolean(savedRides[ride.rideId]);
-              return (
-                <RideCard
-                  key={ride.rideId}
-                  {...ride}
-                  onBook={() => nav(`/booking/${ride.rideId}`)}
-                  onDetails={() => nav(`/ride/${ride.rideId}`)}
+                {deferredResults.map((ride) => {
+                  const saved = Boolean(savedRides[ride.rideId]);
+                  return (
+                    <RideCard
+                      key={ride.rideId}
+                      {...ride}
+                      selectedSeats={lastSearch.seats ?? 1}
+                      onBook={() => nav(`/booking/${ride.rideId}`)}
+                      onDetails={() => nav(`/ride/${ride.rideId}`)}
                   onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
                   contactBusy={contactingRideId === ride.rideId}
                   variant="dark"

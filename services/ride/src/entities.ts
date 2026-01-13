@@ -15,6 +15,7 @@ export type ScheduleStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 export type ScheduleRecurrence = 'NONE' | 'DAILY' | 'WEEKLY';
 
 @Entity('rides')
+@Index(['driverId', 'status', 'departureAt'])
 export class Ride {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

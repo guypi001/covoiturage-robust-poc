@@ -1,8 +1,10 @@
 // services/booking/src/entities/booking.entity.ts
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'PAID' | 'CANCELLED';
 
 @Entity('bookings')
+@Index(['rideId', 'createdAt'])
+@Index(['passengerId', 'status', 'createdAt'])
 export class Booking {
   @PrimaryGeneratedColumn('uuid') id!: string;
 

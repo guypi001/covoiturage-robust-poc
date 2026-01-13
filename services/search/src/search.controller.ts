@@ -113,9 +113,17 @@ export class SearchController {
     if (!hits.length) return [];
 
     // 3) filtrage corridor (trajet qui passe “près de” les points from/to) + sens (a.t < b.t)
+    const cityCache = new Map<string, ReturnType<GeoService['getCity']>>();
+    const getCityCached = (name: string) => {
+      if (cityCache.has(name)) return cityCache.get(name);
+      const city = this.geo.getCity(name);
+      cityCache.set(name, city);
+      return city;
+    };
+
     const filtered = hits.filter((r) => {
-      const o = this.geo.getCity(r.originCity);
-      const d = this.geo.getCity(r.destinationCity);
+      const o = getCityCached(r.originCity);
+      const d = getCityCached(r.destinationCity);
       if (!o || !d) return false;
       const a = this.geo.isNearCorridor(cFrom, o, d, BUFFER_KM);
       const b = this.geo.isNearCorridor(cTo, o, d, BUFFER_KM);

@@ -47,11 +47,17 @@ export const CI_CITIES_GEO: CiCityGeo[] = [
 const norm = (s: string) =>
   s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
 
-export function findCityGeo(name: string): { lat: number; lng: number; name: string } | null {
-  const q = norm(name);
-  for (const c of CI_CITIES_GEO) {
-    if (norm(c.name) === q) return { lat: c.lat, lng: c.lng, name: c.name };
-    if (c.alt?.some(a => norm(a) === q)) return { lat: c.lat, lng: c.lng, name: c.name };
+const normalizedCityIndex = new Map<string, CiCityGeo>();
+for (const city of CI_CITIES_GEO) {
+  normalizedCityIndex.set(norm(city.name), city);
+  if (city.alt) {
+    for (const alt of city.alt) {
+      normalizedCityIndex.set(norm(alt), city);
+    }
   }
-  return null;
+}
+
+export function findCityGeo(name: string): { lat: number; lng: number; name: string } | null {
+  const entry = normalizedCityIndex.get(norm(name));
+  return entry ? { lat: entry.lat, lng: entry.lng, name: entry.name } : null;
 }

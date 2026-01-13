@@ -18,10 +18,13 @@ import {
 // ⚠️ En réseau Docker, "ride" écoute sur 3000 (pas 3002).
 const RIDE_URL   = process.env.RIDE_URL   || 'http://ride:3000';
 const WALLET_URL = process.env.WALLET_URL || 'http://wallet:3000';
+const METRICS_REFRESH_DEBOUNCE_MS = 5000;
 
 @Controller('bookings')
 export class BookingController {
   private readonly logger = new Logger(BookingController.name);
+  private refreshTimer?: ReturnType<typeof setTimeout>;
+  private refreshInFlight = false;
 
   constructor(
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
@@ -31,11 +34,23 @@ export class BookingController {
   }
 
   private async refreshAggregates() {
+    if (this.refreshInFlight) return;
+    this.refreshInFlight = true;
     try {
       await refreshBookingGauges(this.bookings);
     } catch (err) {
       this.logger.warn(`refreshAggregates failed: ${(err as Error)?.message ?? err}`);
+    } finally {
+      this.refreshInFlight = false;
     }
+  }
+
+  private queueRefresh() {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      void this.refreshAggregates();
+    }, METRICS_REFRESH_DEBOUNCE_MS);
   }
 
   @Get(':id')
@@ -126,7 +141,7 @@ export class BookingController {
       this.logger.warn(`Unable to publish booking.confirmed for ${saved.id}: ${e?.message ?? e}`);
     }
 
-    await this.refreshAggregates();
+    this.queueRefresh();
 
     return res.status(HttpStatus.OK).json(saved);
   }

@@ -23,6 +23,8 @@ import {
 import { InternalGuard } from './internal.guard';
 import { refreshFleetGauges } from './metrics';
 
+const METRICS_REFRESH_DEBOUNCE_MS = 5000;
+
 type VehicleListQuery = {
   search?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
@@ -40,12 +42,33 @@ type ScheduleListQuery = {
 @Controller('admin/companies/:companyId/vehicles')
 @UseGuards(InternalGuard)
 export class FleetAdminController {
+  private refreshTimer?: ReturnType<typeof setTimeout>;
+  private refreshInFlight = false;
+
   constructor(
     @InjectRepository(FleetVehicle)
     private readonly vehicles: Repository<FleetVehicle>,
     @InjectRepository(VehicleSchedule)
     private readonly schedules: Repository<VehicleSchedule>,
   ) {}
+
+  private async refreshFleetAggregates() {
+    if (this.refreshInFlight) return;
+    this.refreshInFlight = true;
+    try {
+      await refreshFleetGauges(this.vehicles, this.schedules);
+    } finally {
+      this.refreshInFlight = false;
+    }
+  }
+
+  private queueRefresh() {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      void this.refreshFleetAggregates();
+    }, METRICS_REFRESH_DEBOUNCE_MS);
+  }
 
   @Get()
   async listVehicles(@Param('companyId') companyId: string, @Query() query: VehicleListQuery) {
@@ -174,7 +197,7 @@ export class FleetAdminController {
     });
 
     const saved = await this.vehicles.save(record);
-    await refreshFleetGauges(this.vehicles, this.schedules);
+    this.queueRefresh();
     return saved;
   }
 
@@ -202,7 +225,7 @@ export class FleetAdminController {
     if (dto.status !== undefined) vehicle.status = dto.status;
 
     const saved = await this.vehicles.save(vehicle);
-    await refreshFleetGauges(this.vehicles, this.schedules);
+    this.queueRefresh();
     return saved;
   }
 
@@ -217,7 +240,7 @@ export class FleetAdminController {
     }
     vehicle.status = 'INACTIVE';
     const saved = await this.vehicles.save(vehicle);
-    await refreshFleetGauges(this.vehicles, this.schedules);
+    this.queueRefresh();
     return saved;
   }
 
@@ -337,7 +360,7 @@ export class FleetAdminController {
     });
 
     const saved = await this.schedules.save(schedule);
-    await refreshFleetGauges(this.vehicles, this.schedules);
+    this.queueRefresh();
     return saved;
   }
 
@@ -431,7 +454,7 @@ export class FleetAdminController {
     schedule.reservedSeats = nextReservedSeats;
 
     const saved = await this.schedules.save(schedule);
-    await refreshFleetGauges(this.vehicles, this.schedules);
+    this.queueRefresh();
     return saved;
   }
 
@@ -449,7 +472,7 @@ export class FleetAdminController {
     }
     schedule.status = 'CANCELLED';
     const saved = await this.schedules.save(schedule);
-    await refreshFleetGauges(this.vehicles, this.schedules);
+    this.queueRefresh();
     return saved;
   }
 }

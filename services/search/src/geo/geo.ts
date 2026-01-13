@@ -57,6 +57,8 @@ export function pointToSegmentMeters(
 
 @Injectable()
 export class GeoService {
+  private readonly nearbyCache = new Map<string, string[]>();
+
   /** Coordonnées d'une ville (avec alt/variantes). */
   getCity(name: string): (Pt & { name: string }) | undefined {
     const c = findCityGeo(name);
@@ -68,12 +70,17 @@ export class GeoService {
   nearbyCities(centerName: string, radiusKm: number): string[] {
     const c = this.getCity(centerName);
     if (!c) return [centerName];
+    const cacheKey = `${c.name.toLowerCase()}|${radiusKm}`;
+    const cached = this.nearbyCache.get(cacheKey);
+    if (cached) return cached;
     const R = radiusKm * 1000;
     const res = CI_CITIES_GEO
       .filter((v) => haversineMeters(c, { lat: v.lat, lng: v.lng }) <= R)
       .map((v) => v.name);
     if (!res.includes(c.name)) res.push(c.name);
-    return Array.from(new Set(res));
+    const result = Array.from(new Set(res));
+    this.nearbyCache.set(cacheKey, result);
+    return result;
   }
 
   /** Le point p est-il dans le corridor (bufferKm) du segment AB ? */

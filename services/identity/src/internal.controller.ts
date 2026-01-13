@@ -1,4 +1,12 @@
-import { BadRequestException, Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { InternalGuard } from './internal.guard';
 
@@ -19,5 +27,21 @@ export class InternalController {
       throw new NotFoundException('account_not_found');
     }
     return account;
+  }
+
+  @Get('accounts')
+  async listAccounts(@Query('ids') ids?: string) {
+    const list = typeof ids === 'string'
+      ? ids
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+          .slice(0, 500)
+      : [];
+    if (!list.length) {
+      return { data: [] };
+    }
+    const accounts = await this.auth.getProfiles(list);
+    return { data: accounts };
   }
 }

@@ -428,6 +428,7 @@ async function onSubmit() {
                     <RideCard
                       key={ride.rideId}
                       {...ride}
+                      selectedSeats={lastSearch?.seats ?? form.seats ?? 1}
                       onBook={() => nav(`/booking/${ride.rideId}`)}
                       onDetails={() => nav(`/ride/${ride.rideId}`)}
                       onContact={account?.id && ride.driverId ? () => contactDriver(ride as Ride) : undefined}
@@ -530,6 +531,66 @@ async function onSubmit() {
               </Link>
             </div>
           </aside>
+        </div>
+      </section>
+
+      <section className="section-block pt-4 pb-16">
+        <div className="container-wide">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer centric</p>
+              <h2 className="text-2xl font-semibold text-slate-900">
+                Un parcours clair, rapide et sans friction
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm text-slate-600">
+                Chaque etape est pensee pour te faire gagner du temps, comparer les options utiles et
+                reserver avec confiance.
+              </p>
+            </div>
+            <a
+              href="mailto:support@karigo.ci"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-600"
+            >
+              Parler au support
+              <ArrowRight size={14} />
+            </a>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                  <Clock size={18} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Recherche en quelques secondes</p>
+                  <p className="text-xs text-slate-500">Suggestions rapides, filtres clairs, resultat immediat.</p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                  <ShieldCheck size={18} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Confiance et transparence</p>
+                  <p className="text-xs text-slate-500">Prix par siege + total, profils visibles et clairs.</p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                  <Star size={18} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Accompagnement local</p>
+                  <p className="text-xs text-slate-500">Equipe disponible pour ajuster un trajet ou un paiement.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

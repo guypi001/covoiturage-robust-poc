@@ -12,6 +12,7 @@ type Props = {
   pricePerSeat: number;
   seatsAvailable: number;
   seatsTotal?: number;
+  selectedSeats?: number;
   driverId?: string;
   driverLabel?: string | null;
   driverPhotoUrl?: string | null;
@@ -33,6 +34,7 @@ export default function RideCard({
   pricePerSeat,
   seatsAvailable,
   seatsTotal,
+  selectedSeats,
   driverId,
   driverLabel,
   driverPhotoUrl,
@@ -63,6 +65,8 @@ export default function RideCard({
   const timeLabel = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const seatsLabel =
     typeof liveSeatsTotal === 'number' ? `${liveSeatsAvailable}/${liveSeatsTotal}` : `${liveSeatsAvailable}`;
+  const seatsCount = Math.max(1, Number.isFinite(selectedSeats as number) ? Number(selectedSeats) : 1);
+  const totalPrice = pricePerSeat * seatsCount;
   const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied' | 'error'>('idle');
   const [photoError, setPhotoError] = useState(false);
   const shareUrl = rideId
@@ -159,6 +163,11 @@ export default function RideCard({
               <p className={`text-xs font-semibold ${palette.info}`}>
                 {soldOut ? 'Complet' : `${liveSeatsAvailable} pl. (${seatsLabel})`}
               </p>
+              {seatsCount > 1 && (
+                <p className={`text-[11px] ${palette.subtitle}`}>
+                  Total pour {seatsCount} sièges : {totalPrice.toLocaleString()} XOF
+                </p>
+              )}
             </div>
             {onToggleSaved && (
               <button

@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Ride } from './entities';
 import { InternalGuard } from './internal.guard';
 import { AdminUpdateRideDto } from './dto';
@@ -100,6 +100,22 @@ export class AdminRideController {
       limit,
       summary,
     };
+  }
+
+  @Get('batch')
+  async batch(@Query('ids') ids?: string) {
+    const list = typeof ids === 'string'
+      ? ids
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+          .slice(0, 200)
+      : [];
+    if (!list.length) {
+      return { data: [] };
+    }
+    const items = await this.rides.find({ where: { id: In(list) } });
+    return { data: items };
   }
 
   @Get(':id')

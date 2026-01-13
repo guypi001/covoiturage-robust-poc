@@ -324,16 +324,24 @@ export class ProxyController {
     );
 
     const rideMap = new Map<string, any>();
-    await Promise.all(
-      uniqueRideIds.map(async (rideId) => {
-        try {
-          const ride = await axios.get(`${RIDE}/rides/${rideId}`);
-          rideMap.set(rideId, ride.data);
-        } catch (err) {
-          rideMap.set(rideId, null);
-        }
-      }),
-    );
+    if (uniqueRideIds.length) {
+      try {
+        const payload = await this.forward<{ data: any[] }>(
+          () =>
+            axios.get(`${RIDE}/admin/rides/batch`, {
+              params: { ids: uniqueRideIds.join(',') },
+              headers: this.internalHeaders(),
+            }),
+          'ride',
+        );
+        const rides = Array.isArray(payload?.data) ? payload.data : [];
+        rides.forEach((ride) => {
+          if (ride?.id) rideMap.set(ride.id, ride);
+        });
+      } catch {
+        uniqueRideIds.forEach((rideId) => rideMap.set(rideId, null));
+      }
+    }
 
     return {
       ...bookingPayload,
@@ -1068,7 +1076,7 @@ export class ProxyController {
   }
 
   private internalHeaders() {
-    return { 'x-internal-key': INTERNAL_KEY };
+    return { 'x-internal-key': INTERNAL_KEY, 'x-internal-api-key': INTERNAL_KEY };
   }
 
   private computeActivityMetrics(rides: any[], bookings: any[]) {
@@ -1130,20 +1138,24 @@ export class ProxyController {
     if (!rides.length) return rides;
     const internalHeaders = this.internalHeaders();
     const reservationsMap = new Map<string, RideReservation[]>();
-
-    await Promise.all(
-      rides.map(async (ride) => {
-        try {
-          const res = await axios.get<{ data: BookingAdminItem[] }>(`${BOOKING}/admin/bookings`, {
-            params: { rideId: ride.id, limit: 200 },
-            headers: internalHeaders,
-          });
-          reservationsMap.set(ride.id, Array.isArray(res.data?.data) ? res.data.data : []);
-        } catch (err) {
-          reservationsMap.set(ride.id, []);
-        }
-      }),
-    );
+    const rideIds = rides.map((ride) => ride.id).filter(Boolean);
+    if (rideIds.length) {
+      try {
+        const res = await axios.get<{ data: BookingAdminItem[] }>(`${BOOKING}/admin/bookings/batch`, {
+          params: { rideIds: rideIds.join(',') },
+          headers: internalHeaders,
+        });
+        const bookings = Array.isArray(res.data?.data) ? res.data.data : [];
+        bookings.forEach((booking) => {
+          if (!booking?.rideId) return;
+          const existing = reservationsMap.get(booking.rideId) ?? [];
+          existing.push(booking);
+          reservationsMap.set(booking.rideId, existing);
+        });
+      } catch {
+        rideIds.forEach((rideId) => reservationsMap.set(rideId, []));
+      }
+    }
 
     const passengerIds = new Set<string>();
     reservationsMap.forEach((reservations) => {
@@ -1153,18 +1165,21 @@ export class ProxyController {
     });
 
     const passengerMap = new Map<string, AccountProfile>();
-    await Promise.all(
-      Array.from(passengerIds).map(async (id) => {
-        try {
-          const res = await axios.get<AccountProfile>(`${IDENTITY}/internal/accounts/${id}`, {
-            headers: internalHeaders,
-          });
-          passengerMap.set(id, res.data);
-        } catch {
-          passengerMap.set(id, { id });
-        }
-      }),
-    );
+    const passengerIdList = Array.from(passengerIds);
+    if (passengerIdList.length) {
+      try {
+        const res = await axios.get<{ data: AccountProfile[] }>(`${IDENTITY}/internal/accounts`, {
+          params: { ids: passengerIdList.join(',') },
+          headers: internalHeaders,
+        });
+        const accounts = Array.isArray(res.data?.data) ? res.data.data : [];
+        accounts.forEach((account) => {
+          if (account?.id) passengerMap.set(account.id, account);
+        });
+      } catch {
+        passengerIdList.forEach((id) => passengerMap.set(id, { id }));
+      }
+    }
 
     return rides.map((ride) => {
       const reservations = reservationsMap.get(ride.id) ?? [];

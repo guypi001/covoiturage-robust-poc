@@ -57,6 +57,7 @@ export class Conversation {
 }
 
 @Entity('messages')
+@Index(['conversationId', 'createdAt'])
 export class Message {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -104,6 +105,7 @@ export class Message {
 
 @Entity('message_notifications')
 @Index(['recipientId', 'conversationId', 'messageId'])
+@Index(['recipientId', 'ack', 'createdAt'])
 export class MessageNotification {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
