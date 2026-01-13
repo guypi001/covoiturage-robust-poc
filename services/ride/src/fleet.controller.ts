@@ -355,27 +355,41 @@ export class FleetAdminController {
       throw new NotFoundException('schedule_not_found');
     }
 
-    if (dto.originCity !== undefined) schedule.originCity = dto.originCity.trim();
-    if (dto.destinationCity !== undefined) schedule.destinationCity = dto.destinationCity.trim();
-
-    if (dto.departureAt !== undefined) {
-      const departure = new Date(dto.departureAt);
-      if (!Number.isFinite(departure.getTime())) {
-        throw new BadRequestException('invalid_departure');
-      }
-      schedule.departureAt = departure;
+    if (dto.originCity !== undefined) {
+      schedule.originCity = dto.originCity.trim();
+    }
+    if (dto.destinationCity !== undefined) {
+      schedule.destinationCity = dto.destinationCity.trim();
     }
 
-    if (dto.arrivalEstimate !== undefined) {
-      if (dto.arrivalEstimate === null) {
-        schedule.arrivalEstimate = null;
-      } else {
-        const arrival = new Date(dto.arrivalEstimate);
-        if (!Number.isFinite(arrival.getTime())) {
-          throw new BadRequestException('invalid_arrival');
-        }
-        schedule.arrivalEstimate = arrival;
-      }
+    const nextDeparture =
+      dto.departureAt !== undefined ? new Date(dto.departureAt) : schedule.departureAt;
+    if (!Number.isFinite(nextDeparture.getTime())) {
+      throw new BadRequestException('invalid_departure');
+    }
+    if (dto.departureAt !== undefined && nextDeparture.getTime() < Date.now() - 5 * 60 * 1000) {
+      throw new BadRequestException('departure_in_past');
+    }
+
+    let nextArrival: Date | null =
+      dto.arrivalEstimate !== undefined
+        ? dto.arrivalEstimate === null
+          ? null
+          : new Date(dto.arrivalEstimate)
+        : schedule.arrivalEstimate ?? null;
+    if (nextArrival && !Number.isFinite(nextArrival.getTime())) {
+      throw new BadRequestException('invalid_arrival');
+    }
+
+    if (nextArrival && nextArrival.getTime() <= nextDeparture.getTime()) {
+      throw new BadRequestException('arrival_before_departure');
+    }
+
+    const plannedSeatsRaw =
+      dto.plannedSeats !== undefined ? dto.plannedSeats : schedule.plannedSeats;
+    const nextPlannedSeats = Number(plannedSeatsRaw);
+    if (!Number.isFinite(nextPlannedSeats) || nextPlannedSeats <= 0) {
+      throw new BadRequestException('invalid_planned_seats');
     }
 
     if (dto.plannedSeats !== undefined) {
@@ -383,18 +397,38 @@ export class FleetAdminController {
       if (!vehicle) {
         throw new NotFoundException('vehicle_not_found');
       }
-      if (dto.plannedSeats > vehicle.seats) {
+      if (nextPlannedSeats > vehicle.seats) {
         throw new BadRequestException('planned_seats_exceed_vehicle_capacity');
       }
-      schedule.plannedSeats = dto.plannedSeats;
     }
 
-    if (dto.pricePerSeat !== undefined) schedule.pricePerSeat = dto.pricePerSeat;
+    const reservedSeatsRaw =
+      dto.reservedSeats !== undefined ? dto.reservedSeats : schedule.reservedSeats;
+    const nextReservedSeats = Number(reservedSeatsRaw);
+    if (!Number.isFinite(nextReservedSeats) || nextReservedSeats < 0) {
+      throw new BadRequestException('invalid_reserved_seats');
+    }
+    if (nextReservedSeats > nextPlannedSeats) {
+      throw new BadRequestException('reserved_seats_exceed_planned');
+    }
+
+    if (dto.pricePerSeat !== undefined) {
+      const nextPrice = Number(dto.pricePerSeat);
+      if (!Number.isFinite(nextPrice) || nextPrice < 0) {
+        throw new BadRequestException('invalid_price_per_seat');
+      }
+      schedule.pricePerSeat = nextPrice;
+    }
+
     if (dto.recurrence !== undefined) schedule.recurrence = dto.recurrence;
     if (dto.notes !== undefined) schedule.notes = dto.notes?.trim() || null;
     if (dto.metadata !== undefined) schedule.metadata = dto.metadata ?? null;
     if (dto.status !== undefined) schedule.status = dto.status;
-    if (dto.reservedSeats !== undefined) schedule.reservedSeats = dto.reservedSeats;
+
+    schedule.departureAt = nextDeparture;
+    schedule.arrivalEstimate = nextArrival;
+    schedule.plannedSeats = nextPlannedSeats;
+    schedule.reservedSeats = nextReservedSeats;
 
     const saved = await this.schedules.save(schedule);
     await refreshFleetGauges(this.vehicles, this.schedules);
