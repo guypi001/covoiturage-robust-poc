@@ -5,6 +5,8 @@ import { MailerService } from './mailer.service';
 import { IdentityClient, AccountSummary } from './identity.client';
 import { BookingClient } from './booking.client';
 import { RideClient } from './ride.client';
+import { PushController } from './push.controller';
+import { PushService } from './push.service';
 
 type MessageSentEvent = {
   messageId: string;
@@ -36,8 +38,8 @@ type PaymentCapturedEvent = {
 };
 
 @Module({
-  controllers: [MetricsController],
-  providers: [EventBus, MailerService, IdentityClient, BookingClient, RideClient],
+  controllers: [MetricsController, PushController],
+  providers: [EventBus, MailerService, IdentityClient, BookingClient, RideClient, PushService],
 })
 export class AppModule implements OnModuleInit {
   private readonly logger = new Logger(AppModule.name);

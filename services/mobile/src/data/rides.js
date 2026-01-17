@@ -1,0 +1,32 @@
+export const sampleRides = [
+  {
+    id: 'ride-1',
+    origin: 'Abidjan',
+    destination: 'Yamoussoukro',
+    departure: 'Aujourd’hui 08:30',
+    seats: '2/4',
+    price: '2 000 XOF',
+    driver: 'Kouadio',
+    liveTracking: true,
+  },
+  {
+    id: 'ride-2',
+    origin: 'Bouaké',
+    destination: 'Abidjan',
+    departure: 'Aujourd’hui 10:15',
+    seats: '1/3',
+    price: '3 500 XOF',
+    driver: 'Nadia',
+    liveTracking: false,
+  },
+  {
+    id: 'ride-3',
+    origin: 'Abidjan',
+    destination: 'Daloa',
+    departure: 'Demain 07:00',
+    seats: '4/6',
+    price: '4 000 XOF',
+    driver: 'Soro',
+    liveTracking: true,
+  },
+];
