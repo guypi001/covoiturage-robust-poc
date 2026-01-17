@@ -1,16 +1,20 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Filter, RefreshCw, Clock, SlidersHorizontal, AlertCircle, RotateCcw, MapPin, Wallet, Zap, Users } from 'lucide-react';
-import { useApp } from '../store';
-import RideCard from '../components/RideCard';
+import { buildSearchKey, useApp } from '../store';
+import RideCard, { RideCardSkeleton } from '../components/RideCard';
 import { HOME_THEME_STYLE } from '../constants/homePreferences';
 import { useRideContact } from '../hooks/useRideContact';
 import { useRideSearch } from '../hooks/useRideSearch';
 import { CityBadge } from '../utils/cityIcons';
 
+const RESULTS_STALE_MS = 60000;
+
 export function Results() {
   const nav = useNavigate();
   const { lastSearch, results, setResults, setLoading, loading, error, setError, setSearch } = useApp();
+  const resultsUpdatedAt = useApp((state) => state.resultsUpdatedAt);
+  const resultsQueryKey = useApp((state) => state.resultsQueryKey);
   const account = useApp((state) => state.account);
   const savedRides = useApp((state) => state.savedRides);
   const toggleSavedRide = useApp((state) => state.toggleSavedRide);
@@ -21,6 +25,8 @@ export function Results() {
   const { contactDriver, contactingRideId, contactError, clearContactError } = useRideContact();
   const { execute: runRideSearch, isPending: ridePending } = useRideSearch();
   const deferredResults = useDeferredValue(results);
+  const currentSearchKey = useMemo(() => buildSearchKey(lastSearch), [lastSearch]);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const draftFromSearch = useCallback(
     () => ({
@@ -29,6 +35,7 @@ export function Results() {
       departureBefore: lastSearch?.departureBefore ?? '',
       seats: lastSearch?.seats ?? 1,
       sort: lastSearch?.sort ?? 'soonest',
+      liveTracking: lastSearch?.liveTracking ?? false,
     }),
     [lastSearch],
   );
@@ -42,11 +49,12 @@ export function Results() {
   const performSearch = useCallback(
     async (nextSearch: typeof lastSearch) => {
       if (!nextSearch) return;
+      const queryKey = buildSearchKey(nextSearch);
       setSearch(nextSearch);
       setLoading(true);
       setError(undefined);
       const result = await runRideSearch(nextSearch, {
-        onSuccess: (rides) => setResults(rides),
+        onSuccess: (rides) => setResults(rides, queryKey),
         onError: (message) => setError(message),
       });
       if (!result.aborted) {
@@ -62,8 +70,16 @@ export function Results() {
   }, [lastSearch, performSearch]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!lastSearch) return;
+    const isFresh =
+      currentSearchKey &&
+      resultsQueryKey === currentSearchKey &&
+      typeof resultsUpdatedAt === 'number' &&
+      Date.now() - resultsUpdatedAt < RESULTS_STALE_MS;
+    if (!isFresh) {
+      void refresh();
+    }
+  }, [currentSearchKey, lastSearch, refresh, resultsQueryKey, resultsUpdatedAt]);
 
   if (!lastSearch) {
     return (
@@ -100,6 +116,25 @@ export function Results() {
   const hasResults = totalResults > 0;
   const isSearching = loading || ridePending;
   const seatsCount = lastSearch.seats ?? 1;
+  const showSkeletons = isSearching && totalResults === 0;
+  const isCurrentResultSet =
+    Boolean(currentSearchKey) &&
+    resultsQueryKey === currentSearchKey &&
+    typeof resultsUpdatedAt === 'number';
+  const lastUpdatedLabel = useMemo(() => {
+    if (!isCurrentResultSet || !resultsUpdatedAt) return null;
+    const diffMs = Math.max(0, nowTick - resultsUpdatedAt);
+    const diffMinutes = Math.floor(diffMs / 60000);
+    if (diffMinutes <= 0) return 'À l’instant';
+    if (diffMinutes < 60) return `Il y a ${diffMinutes} min`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    return `Il y a ${diffHours} h`;
+  }, [isCurrentResultSet, nowTick, resultsUpdatedAt]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const insights = useMemo(() => {
     if (!deferredResults.length) return null;
@@ -129,6 +164,7 @@ export function Results() {
       departureBefore: filterDraft.departureBefore || undefined,
       seats: Math.max(1, filterDraft.seats || 1),
       sort: filterDraft.sort,
+      liveTracking: Boolean(filterDraft.liveTracking),
     };
   }, [filterDraft]);
 
@@ -139,7 +175,8 @@ export function Results() {
       (normalizedDraft.departureAfter || undefined) !== (lastSearch.departureAfter ?? undefined) ||
       (normalizedDraft.departureBefore || undefined) !== (lastSearch.departureBefore ?? undefined) ||
       normalizedDraft.seats !== (lastSearch.seats ?? 1) ||
-      normalizedDraft.sort !== (lastSearch.sort ?? 'soonest')
+      normalizedDraft.sort !== (lastSearch.sort ?? 'soonest') ||
+      normalizedDraft.liveTracking !== Boolean(lastSearch.liveTracking)
     );
   }, [lastSearch, normalizedDraft]);
 
@@ -152,6 +189,7 @@ export function Results() {
       departureBefore: normalizedDraft.departureBefore,
       seats: normalizedDraft.seats,
       sort: normalizedDraft.sort,
+      liveTracking: normalizedDraft.liveTracking,
     };
     await performSearch(nextSearch);
   };
@@ -189,6 +227,11 @@ export function Results() {
               <RefreshCw size={14} />
               Actualiser
             </button>
+            {lastUpdatedLabel && (
+              <span className="text-xs text-slate-500">
+                Dernier rafraîchissement : {lastUpdatedLabel}
+              </span>
+            )}
           </div>
 
           <div className={`mt-4 flex flex-wrap gap-2 text-xs ${baseTextClass}`}>
@@ -216,6 +259,11 @@ export function Results() {
                 <Filter size={12} />
                 {lastSearch.departureAfter ? `Après ${lastSearch.departureAfter}` : ''}
                 {lastSearch.departureBefore ? ` avant ${lastSearch.departureBefore}` : ''}
+              </span>
+            )}
+            {lastSearch.liveTracking && (
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.accent}`}>
+                Suivi en direct
               </span>
             )}
             <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
@@ -405,6 +453,23 @@ export function Results() {
                 </div>
               </div>
 
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={Boolean(filterDraft.liveTracking)}
+                  onChange={(e) =>
+                    setFilterDraft((prev) => ({
+                      ...prev,
+                      liveTracking: e.currentTarget.checked,
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+                />
+                <span className="text-xs font-semibold text-slate-500">
+                  Suivi en direct activé
+                </span>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="submit"
@@ -425,10 +490,16 @@ export function Results() {
           <ErrorBanner message={contactError} tone="warning" onDismiss={clearContactError} />
         )}
 
-        {isSearching && (
-          <div className="grid gap-4 md:grid-cols-2">
-            {[...Array(4)].map((_, idx) => (
-              <div key={idx} className="h-40 rounded-2xl border border-slate-100 bg-slate-50 animate-pulse" />
+        {isSearching && hasResults && (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            Actualisation des résultats en cours…
+          </div>
+        )}
+
+        {showSkeletons && (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[...Array(6)].map((_, idx) => (
+              <RideCardSkeleton key={idx} variant="dark" />
             ))}
           </div>
         )}
@@ -437,17 +508,17 @@ export function Results() {
           <ErrorBanner message={error} tone="error" onDismiss={() => setError(undefined)} />
         )}
 
-        {!isSearching && !error && hasResults && (
+        {!error && hasResults && (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {deferredResults.map((ride) => {
-                  const saved = Boolean(savedRides[ride.rideId]);
-                  return (
-                    <RideCard
-                      key={ride.rideId}
-                      {...ride}
-                      selectedSeats={lastSearch.seats ?? 1}
-                      onBook={() => nav(`/booking/${ride.rideId}`)}
-                      onDetails={() => nav(`/ride/${ride.rideId}`)}
+            {deferredResults.map((ride) => {
+              const saved = Boolean(savedRides[ride.rideId]);
+              return (
+                <RideCard
+                  key={ride.rideId}
+                  {...ride}
+                  selectedSeats={lastSearch.seats ?? 1}
+                  onBook={() => nav(`/booking/${ride.rideId}`)}
+                  onDetails={() => nav(`/ride/${ride.rideId}`)}
                   onContact={account?.id && ride.driverId ? () => contactDriver(ride) : undefined}
                   contactBusy={contactingRideId === ride.rideId}
                   variant="dark"

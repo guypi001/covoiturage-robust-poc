@@ -65,6 +65,28 @@ function AppShell({ requireAuth = false }: AppShellProps) {
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [mobileMenuOpen]);
+
   if (!authReady || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-500">
@@ -117,6 +139,7 @@ function AppShell({ requireAuth = false }: AppShellProps) {
                     className={`inline-flex items-center gap-1 transition hover:text-sky-600 ${
                       link.current ? 'text-sky-600 font-semibold' : ''
                     }`}
+                    aria-current={link.current ? 'page' : undefined}
                     aria-label={isCart ? 'Panier' : undefined}
                   >
                     {isCart ? (
@@ -246,6 +269,7 @@ function AppShell({ requireAuth = false }: AppShellProps) {
                             ? 'bg-sky-50 border-sky-200 text-sky-700 font-semibold'
                             : 'bg-white hover:border-sky-200 hover:text-sky-600'
                         }`}
+                        aria-current={link.current ? 'page' : undefined}
                       >
                         {isCart ? (
                           <>

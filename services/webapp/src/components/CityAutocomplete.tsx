@@ -1,5 +1,5 @@
 // src/components/CityAutocomplete.tsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   City,
   POPULAR_CITIES,
@@ -23,6 +23,9 @@ type Props = {
   onDisplayChange?: (value: string) => void; // libellé affiché
   onMetaChange?: (meta: LocationMeta | null) => void;
   className?: string;
+  inputId?: string;
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
   autoFocus?: boolean;
   allowCurrentLocation?: boolean;
   enablePlacesLookup?: boolean;
@@ -40,6 +43,9 @@ export default function CityAutocomplete({
   onDisplayChange,
   onMetaChange,
   className,
+  inputId,
+  ariaInvalid,
+  ariaDescribedBy,
   autoFocus,
   allowCurrentLocation = false,
   enablePlacesLookup = false,
@@ -57,6 +63,9 @@ export default function CityAutocomplete({
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listboxSeed = useId();
+  const listboxId = inputId ? `${inputId}-listbox` : `city-listbox-${listboxSeed}`;
+  const inputErrorClass = ariaInvalid ? 'border-red-300 focus:border-red-400 focus:ring-red-200' : '';
 
   useEffect(() => setQuery(value ?? ''), [value]);
 
@@ -232,6 +241,7 @@ export default function CityAutocomplete({
         />
         <input
           ref={inputRef}
+          id={inputId}
           autoFocus={autoFocus}
           value={query}
           onChange={(e) => {
@@ -247,10 +257,12 @@ export default function CityAutocomplete({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="input input-lg input-with-icon w-full pr-4"
+          className={`input input-lg input-with-icon w-full pr-4 ${inputErrorClass}`.trim()}
           aria-autocomplete="list"
           aria-expanded={open}
-          aria-controls="city-listbox"
+          aria-controls={listboxId}
+          aria-invalid={ariaInvalid || undefined}
+          aria-describedby={ariaDescribedBy}
         />
       </div>
 
@@ -258,7 +270,7 @@ export default function CityAutocomplete({
         <div
           className="absolute left-0 right-0 mt-2 rounded-2xl border border-slate-200 bg-white shadow-2xl z-[100]"
           role="listbox"
-          id="city-listbox"
+          id={listboxId}
         >
           <div className="max-h-80 overflow-auto">
             {allowCurrentLocation && (

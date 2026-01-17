@@ -18,6 +18,10 @@ export type HomePreferences = {
   showTips?: boolean;
 };
 
+export type PaymentPreferences = {
+  defaultPaymentMethodId?: string;
+};
+
 @Entity('accounts')
 export class Account {
   @PrimaryGeneratedColumn('uuid')
@@ -71,6 +75,9 @@ export class Account {
 
   @Column({ name: 'home_preferences', type: 'jsonb', nullable: true })
   homePreferences?: HomePreferences | null;
+
+  @Column({ name: 'payment_preferences', type: 'jsonb', nullable: true })
+  paymentPreferences?: PaymentPreferences | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

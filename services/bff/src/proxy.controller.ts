@@ -13,9 +13,12 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import { upstreamDurationHistogram, upstreamRequestCounter } from './metrics';
+import { buildReceiptPdfBuffer } from './receipt';
+import type { Response } from 'express';
 function normalizeRideUrl(value?: string | null) {
   if (!value) return undefined;
   try {
@@ -282,7 +285,17 @@ export class ProxyController {
   }
 
   @Post('payments/capture')
-  async capture(@Body() body: { bookingId: string; amount: number; holdId?: string }) {
+  async capture(
+    @Body()
+    body: {
+      bookingId: string;
+      amount: number;
+      holdId?: string;
+      paymentMethodType?: string;
+      paymentMethodId?: string;
+      paymentProvider?: string;
+    },
+  ) {
     return this.forward(() => axios.post(`${PAYMENT}/mock-capture`, body), 'payment');
   }
 
@@ -350,6 +363,65 @@ export class ProxyController {
         ride: rideMap.get(booking?.rideId ?? '') ?? null,
       })),
     };
+  }
+
+  @Get('me/bookings/:id/receipt')
+  async bookingReceipt(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+
+    let booking: any;
+    try {
+      const bookingRes = await axios.get(`${BOOKING}/admin/bookings/${id}`, {
+        headers: this.internalHeaders(),
+      });
+      booking = bookingRes.data;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        throw new NotFoundException('booking_not_found');
+      }
+      throw new InternalServerErrorException('booking_receipt_unavailable');
+    }
+
+    if (!booking || booking.passengerId !== account.id) {
+      throw new ForbiddenException('booking_forbidden');
+    }
+
+    let ride: any;
+    try {
+      ride = await axios.get(`${RIDE}/rides/${booking.rideId}`, {
+        headers: this.internalHeaders(),
+      }).then((response) => response.data);
+    } catch {
+      ride = null;
+    }
+
+    const paymentMethodLabel = booking.paymentMethod
+      ? booking.paymentMethod === 'CASH'
+        ? 'Especes'
+        : booking.paymentProvider
+        ? `${booking.paymentMethod} (${booking.paymentProvider})`
+        : booking.paymentMethod
+      : 'Paiement';
+    const pdfBuffer = buildReceiptPdfBuffer({
+      bookingId: booking.id,
+      passengerName: account.fullName || account.companyName || account.email,
+      passengerEmail: account.email,
+      originCity: ride?.originCity ?? undefined,
+      destinationCity: ride?.destinationCity ?? undefined,
+      departureAt: ride?.departureAt ?? undefined,
+      seats: booking.seats,
+      amount: booking.amount,
+      paymentMethod: paymentMethodLabel,
+      issuedAt: new Date().toISOString(),
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="recu-${booking.id}.pdf"`);
+    res.status(HttpStatus.OK).send(pdfBuffer);
   }
 
   @Get('me/rides')

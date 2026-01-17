@@ -101,28 +101,115 @@ export class FleetAdminController {
       string,
       { count: number; nextDeparture?: Date | null; samples: VehicleSchedule[] }
     >();
+    const now = new Date();
 
     if (vehicleIds.length > 0) {
-      const upcoming = await this.schedules.find({
-        where: {
-          vehicleId: In(vehicleIds),
-          status: 'PLANNED',
-          departureAt: MoreThan(new Date()),
-        },
-        order: { departureAt: 'ASC' },
-      });
-      for (const schedule of upcoming) {
-        const entry =
-          upcomingByVehicle.get(schedule.vehicleId) ??
-          { count: 0, nextDeparture: null, samples: [] };
-        entry.count += 1;
-        if (!entry.nextDeparture) {
-          entry.nextDeparture = schedule.departureAt;
-        }
-        if (entry.samples.length < 3) {
-          entry.samples.push(schedule);
-        }
-        upcomingByVehicle.set(schedule.vehicleId, entry);
+      const ensureEntry = (vehicleId: string) => {
+        const existing = upcomingByVehicle.get(vehicleId);
+        if (existing) return existing;
+        const entry = { count: 0, nextDeparture: null, samples: [] as VehicleSchedule[] };
+        upcomingByVehicle.set(vehicleId, entry);
+        return entry;
+      };
+
+      const upcomingStats = await this.schedules
+        .createQueryBuilder('schedule')
+        .select('schedule.vehicleId', 'vehicleId')
+        .addSelect('COUNT(*)::int', 'count')
+        .addSelect('MIN(schedule.departureAt)', 'nextDepartureAt')
+        .where('schedule.companyId = :companyId', { companyId })
+        .andWhere('schedule.vehicleId IN (:...vehicleIds)', { vehicleIds })
+        .andWhere('schedule.status = :status', { status: 'PLANNED' })
+        .andWhere('schedule.departureAt > :now', { now })
+        .groupBy('schedule.vehicleId')
+        .getRawMany<{ vehicleId: string; count: string; nextDepartureAt: string | Date }>();
+
+      for (const row of upcomingStats) {
+        const entry = ensureEntry(row.vehicleId);
+        entry.count = row.count ?? 0;
+        entry.nextDeparture = row.nextDepartureAt ? new Date(row.nextDepartureAt) : null;
+      }
+
+      const upcomingSamples = await this.schedules
+        .createQueryBuilder()
+        .select('*')
+        .from(
+          (subQb) =>
+            subQb
+              .select([
+                'schedule.id AS id',
+                'schedule.companyId AS company_id',
+                'schedule.vehicleId AS vehicle_id',
+                'schedule.originCity AS origin_city',
+                'schedule.destinationCity AS destination_city',
+                'schedule.departureAt AS departure_at',
+                'schedule.arrivalEstimate AS arrival_estimate',
+                'schedule.plannedSeats::int AS planned_seats',
+                'schedule.reservedSeats::int AS reserved_seats',
+                'schedule.pricePerSeat::int AS price_per_seat',
+                'schedule.recurrence AS recurrence',
+                'schedule.status AS status',
+                'schedule.notes AS notes',
+                'schedule.metadata AS metadata',
+                'schedule.createdAt AS created_at',
+                'schedule.updatedAt AS updated_at',
+              ])
+              .addSelect(
+                'ROW_NUMBER() OVER (PARTITION BY schedule.vehicleId ORDER BY schedule.departureAt ASC)',
+                'row_num',
+              )
+              .from(VehicleSchedule, 'schedule')
+              .where('schedule.companyId = :companyId', { companyId })
+              .andWhere('schedule.vehicleId IN (:...vehicleIds)', { vehicleIds })
+              .andWhere('schedule.status = :status', { status: 'PLANNED' })
+              .andWhere('schedule.departureAt > :now', { now }),
+          'ranked',
+        )
+        .where('row_num <= 3')
+        .orderBy('vehicle_id', 'ASC')
+        .addOrderBy('departure_at', 'ASC')
+        .getRawMany<{
+          id: string;
+          company_id: string;
+          vehicle_id: string;
+          origin_city: string;
+          destination_city: string;
+          departure_at: Date;
+          arrival_estimate: Date | null;
+          planned_seats: number;
+          reserved_seats: number;
+          price_per_seat: number;
+          recurrence: string;
+          status: string;
+          notes: string | null;
+          metadata: Record<string, any> | null;
+          created_at: Date;
+          updated_at: Date;
+          row_num: number;
+        }>();
+
+      for (const row of upcomingSamples) {
+        const entry = ensureEntry(row.vehicle_id);
+        entry.samples.push(
+          this.schedules.create({
+            id: row.id,
+            companyId: row.company_id,
+            vehicleId: row.vehicle_id,
+            originCity: row.origin_city,
+            destinationCity: row.destination_city,
+            departureAt: row.departure_at,
+            arrivalEstimate: row.arrival_estimate,
+            plannedSeats: row.planned_seats,
+            reservedSeats: row.reserved_seats,
+            pricePerSeat: row.price_per_seat,
+            recurrence: row.recurrence,
+            status: row.status,
+            notes: row.notes,
+            metadata: row.metadata,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          }),
+        );
       }
     }
 
@@ -138,7 +225,7 @@ export class FleetAdminController {
         where: {
           companyId,
           status: 'PLANNED',
-          departureAt: MoreThan(new Date()),
+          departureAt: MoreThan(now),
         },
       }),
     ]);
@@ -177,7 +264,9 @@ export class FleetAdminController {
     @Body() dto: CreateVehicleDto,
   ) {
     const plate = dto.plateNumber.trim().toUpperCase();
-    const existing = await this.vehicles.findOne({ where: { plateNumber: plate } });
+    const existing = await this.vehicles.findOne({
+      where: { plateNumber: plate, companyId },
+    });
     if (existing) {
       throw new BadRequestException('plate_already_registered');
     }
@@ -282,12 +371,24 @@ export class FleetAdminController {
 
     const [items, total] = await qb.getManyAndCount();
 
-    const summary = await this.schedules
+    const summaryQb = this.schedules
       .createQueryBuilder('schedule')
       .select('schedule.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .where('schedule.companyId = :companyId', { companyId })
-      .andWhere('schedule.vehicleId = :vehicleId', { vehicleId })
+      .andWhere('schedule.vehicleId = :vehicleId', { vehicleId });
+
+    if (query.status && query.status !== 'ALL') {
+      summaryQb.andWhere('schedule.status = :status', { status: query.status });
+    }
+
+    if (query.window === 'upcoming') {
+      summaryQb.andWhere('schedule.departureAt >= :now', { now });
+    } else if (query.window === 'past') {
+      summaryQb.andWhere('schedule.departureAt < :now', { now });
+    }
+
+    const summary = await summaryQb
       .groupBy('schedule.status')
       .getRawMany<{ status: string; count: string }>();
 

@@ -1,6 +1,7 @@
 // services/booking/src/entities/booking.entity.ts
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'PAID' | 'CANCELLED';
+export type PaymentMethodType = 'CARD' | 'MOBILE_MONEY' | 'CASH';
 
 @Entity('bookings')
 @Index(['rideId', 'createdAt'])
@@ -20,5 +21,15 @@ export class Booking {
   holdId!: string | null;
 
   @Column({ default: 'PENDING' }) status!: BookingStatus;
+
+  @Column({ name: 'payment_method', type: 'varchar', length: 32, nullable: true })
+  paymentMethod?: PaymentMethodType | null;
+
+  @Column({ name: 'payment_provider', type: 'varchar', length: 64, nullable: true })
+  paymentProvider?: string | null;
+
+  @Column({ name: 'payment_method_id', type: 'varchar', length: 64, nullable: true })
+  paymentMethodId?: string | null;
+
   @CreateDateColumn() createdAt!: Date;
 }

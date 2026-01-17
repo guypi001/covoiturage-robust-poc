@@ -3,6 +3,8 @@ import { EventBus } from './event-bus';
 import { MetricsController, MetricsMiddleware } from './metrics';
 import { MailerService } from './mailer.service';
 import { IdentityClient, AccountSummary } from './identity.client';
+import { BookingClient } from './booking.client';
+import { RideClient } from './ride.client';
 
 type MessageSentEvent = {
   messageId: string;
@@ -24,7 +26,19 @@ type BookingConfirmedEvent = {
   departureAt?: string | null;
 };
 
-@Module({ controllers: [MetricsController], providers: [EventBus, MailerService, IdentityClient] })
+type PaymentCapturedEvent = {
+  bookingId: string;
+  amount?: number;
+  provider?: string;
+  holdId?: string;
+  paymentMethodType?: string;
+  paymentMethodId?: string;
+};
+
+@Module({
+  controllers: [MetricsController],
+  providers: [EventBus, MailerService, IdentityClient, BookingClient, RideClient],
+})
 export class AppModule implements OnModuleInit {
   private readonly logger = new Logger(AppModule.name);
 
@@ -32,6 +46,8 @@ export class AppModule implements OnModuleInit {
     private readonly bus: EventBus,
     private readonly mailer: MailerService,
     private readonly identity: IdentityClient,
+    private readonly bookings: BookingClient,
+    private readonly rides: RideClient,
   ) {}
 
   configure(consumer: MiddlewareConsumer) {
@@ -40,7 +56,7 @@ export class AppModule implements OnModuleInit {
 
   async onModuleInit() {
     await this.bus.subscribe('notif-group', 'payment.captured', async (evt) => {
-      this.logger.log(`[payment] capture confirmee: ${JSON.stringify(evt)}`);
+      await this.handlePaymentCaptured(evt as PaymentCapturedEvent);
     });
 
     await this.bus.subscribe('notif-group', 'ride.published', async (evt) => {
@@ -112,6 +128,44 @@ export class AppModule implements OnModuleInit {
     });
     if (!sent) {
       this.logger.warn(`Echec de la confirmation email pour ${passenger.email}`);
+    }
+  }
+
+  private async handlePaymentCaptured(evt: PaymentCapturedEvent) {
+    if (!evt?.bookingId) return;
+    const booking = await this.bookings.getBooking(evt.bookingId);
+    if (!booking?.passengerId) {
+      this.logger.warn(`payment.captured missing passenger for booking ${evt.bookingId}`);
+      return;
+    }
+    const passenger = await this.identity.getAccountById(booking.passengerId);
+    if (!passenger?.email) {
+      this.logger.warn(`payment.captured email missing for passenger ${booking.passengerId}`);
+      return;
+    }
+    const ride = booking.rideId ? await this.rides.getRide(booking.rideId) : null;
+    const paymentMethod = evt.paymentMethodType
+      ? evt.paymentMethodType === 'CASH'
+        ? 'Especes'
+        : evt.provider
+        ? `${evt.paymentMethodType} (${evt.provider})`
+        : evt.paymentMethodType
+      : evt.provider || 'Paiement';
+    const sent = await this.mailer.sendPaymentReceiptEmail(passenger.email, {
+      bookingId: booking.id,
+      passengerName: this.resolveName(passenger),
+      passengerEmail: passenger.email,
+      originCity: ride?.originCity ?? undefined,
+      destinationCity: ride?.destinationCity ?? undefined,
+      departureAt: ride?.departureAt ?? undefined,
+      seats: booking.seats ?? 1,
+      amount: evt.amount ?? booking.amount ?? 0,
+      paymentMethod,
+      issuedAt: new Date().toISOString(),
+      rideId: booking.rideId,
+    });
+    if (!sent) {
+      this.logger.warn(`Echec de l'envoi du recu pour ${passenger.email}`);
     }
   }
 }

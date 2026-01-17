@@ -11,6 +11,7 @@ type SearchQuery = {
   departureAfter?: string;
   departureBefore?: string;
   sort?: 'soonest' | 'cheapest' | 'seats';
+  liveTracking?: string;
 };
 
 function normalizeDateRange(input: string): { start: string; end: string } | null {
@@ -42,6 +43,14 @@ function parseTimeOfDay(value?: string): number | undefined {
     return undefined;
   }
   return hour * 60 + minutes;
+}
+
+function parseBoolean(value?: string): boolean | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'oui', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'non', 'off'].includes(normalized)) return false;
+  return undefined;
 }
 
 @Controller('search')
@@ -88,6 +97,11 @@ export class SearchController {
       throw new BadRequestException('Fenêtre horaire incohérente');
     }
 
+    const liveTrackingOnly = parseBoolean(q.liveTracking);
+    if (q.liveTracking && liveTrackingOnly === undefined) {
+      throw new BadRequestException('liveTracking invalide');
+    }
+
     let sort = q.sort ?? 'soonest';
     if (!['soonest', 'cheapest', 'seats'].includes(sort)) {
       sort = 'soonest';
@@ -109,6 +123,7 @@ export class SearchController {
       dateRange,
       minSeats,
       maxPrice,
+      liveTrackingOnly === true,
     );
     if (!hits.length) return [];
 

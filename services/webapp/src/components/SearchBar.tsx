@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useId, useMemo, useRef, useState } from 'react';
 import { Calendar, Search, Users, RefreshCcw, Settings2 } from 'lucide-react';
 import CityAutocomplete from './CityAutocomplete';
 import type { LocationMeta } from '../types/location';
@@ -17,6 +17,14 @@ export type SearchPatch = Partial<{
   departureAfter: string | undefined;
   departureBefore: string | undefined;
   sort: 'soonest' | 'cheapest' | 'seats';
+  liveTracking: boolean | undefined;
+}>;
+
+export type SearchErrors = Partial<{
+  from: string;
+  to: string;
+  seats: string;
+  timeWindow: string;
 }>;
 
 type Props = {
@@ -32,7 +40,11 @@ type Props = {
   departureAfter?: string;
   departureBefore?: string;
   sort: 'soonest' | 'cheapest' | 'seats';
+  liveTracking?: boolean;
   loading?: boolean;
+  errors?: SearchErrors;
+  showErrors?: boolean;
+  submitDisabled?: boolean;
   onChange: (patch: SearchPatch) => void;
   onSubmit: () => void;
   theme?: HomeThemeId;
@@ -52,7 +64,11 @@ export default function SearchBar({
   departureAfter,
   departureBefore,
   sort,
+  liveTracking,
   loading,
+  errors,
+  showErrors = false,
+  submitDisabled = false,
   onChange,
   onSubmit,
   theme = 'default',
@@ -77,9 +93,27 @@ export default function SearchBar({
   }, [searchTheme]);
 
   const labelClass = theme === 'night' ? 'text-indigo-100' : 'text-slate-600';
+  const errorFieldClass = 'border-red-300 focus:border-red-400 focus:ring-red-200';
   const minDate = new Date().toISOString().slice(0, 10);
   const dateRef = useRef<HTMLInputElement>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const fieldBaseId = useId();
+  const fromId = `${fieldBaseId}-from`;
+  const toId = `${fieldBaseId}-to`;
+  const dateId = `${fieldBaseId}-date`;
+  const seatsId = `${fieldBaseId}-seats`;
+  const priceId = `${fieldBaseId}-price`;
+  const sortId = `${fieldBaseId}-sort`;
+  const departureAfterId = `${fieldBaseId}-after`;
+  const departureBeforeId = `${fieldBaseId}-before`;
+  const fromErrorId = `${fromId}-error`;
+  const toErrorId = `${toId}-error`;
+  const seatsErrorId = `${seatsId}-error`;
+  const timeErrorId = `${fieldBaseId}-time-error`;
+  const fromError = showErrors ? errors?.from : undefined;
+  const toError = showErrors ? errors?.to : undefined;
+  const seatsError = showErrors ? errors?.seats : undefined;
+  const timeError = showErrors ? errors?.timeWindow : undefined;
 
   const openNativePicker = () => {
     const el = dateRef.current;
@@ -116,19 +150,6 @@ export default function SearchBar({
       toMeta: null,
     });
   };
-
-  const parseTime = (value?: string) => {
-    if (!value) return null;
-    const [h, m] = value.split(':').map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return null;
-    return h * 60 + m;
-  };
-  const afterMinutes = parseTime(departureAfter);
-  const beforeMinutes = parseTime(departureBefore);
-  const hasTimeRangeError =
-    typeof afterMinutes === 'number' &&
-    typeof beforeMinutes === 'number' &&
-    afterMinutes > beforeMinutes;
 
   return (
     <form
@@ -174,7 +195,10 @@ export default function SearchBar({
 
         <div className="grid gap-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            <label
+              className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+              htmlFor={fromId}
+            >
               Départ
             </label>
             <CityAutocomplete
@@ -188,10 +212,21 @@ export default function SearchBar({
               allowCurrentLocation
               enablePlacesLookup
               className="mt-2 w-full text-base"
+              inputId={fromId}
+              ariaInvalid={Boolean(fromError)}
+              ariaDescribedBy={fromError ? fromErrorId : undefined}
             />
+            {fromError && (
+              <p id={fromErrorId} className="mt-2 text-xs text-red-600">
+                {fromError}
+              </p>
+            )}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            <label
+              className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+              htmlFor={toId}
+            >
               Arrivée
             </label>
             <CityAutocomplete
@@ -205,18 +240,29 @@ export default function SearchBar({
               allowCurrentLocation
               enablePlacesLookup
               className="mt-2 w-full text-base"
+              inputId={toId}
+              ariaInvalid={Boolean(toError)}
+              ariaDescribedBy={toError ? toErrorId : undefined}
             />
+            {toError && (
+              <p id={toErrorId} className="mt-2 text-xs text-red-600">
+                {toError}
+              </p>
+            )}
           </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1">
-              <label className={`text-xs font-semibold ${labelClass}`}>Date de départ</label>
+              <label className={`text-xs font-semibold ${labelClass}`} htmlFor={dateId}>
+                Date de départ
+              </label>
               <div className="relative">
                 <Calendar className={`absolute left-3 top-1/2 -translate-y-1/2 ${tokens.icon}`} size={18} />
                 <input
                   ref={dateRef}
+                  id={dateId}
                   type="date"
                   className={`input input-with-icon h-14 w-full pr-12 text-base ${tokens.fieldLg}`}
                   min={minDate}
@@ -235,7 +281,9 @@ export default function SearchBar({
               <p className="text-xs text-slate-400">Choisis une date ou laisse vide pour les prochains départs.</p>
             </div>
             <div className="space-y-1">
-              <label className={`text-xs font-semibold ${labelClass}`}>Nombre de sièges</label>
+              <label className={`text-xs font-semibold ${labelClass}`} htmlFor={seatsId}>
+                Nombre de sièges
+              </label>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -248,13 +296,18 @@ export default function SearchBar({
                 <div className="relative flex-1">
                   <Users className={`absolute left-3 top-1/2 -translate-y-1/2 ${tokens.icon}`} size={16} />
                   <input
+                    id={seatsId}
                     type="number"
                     min={1}
                     max={MAX_SEATS}
                     step={1}
-                    className={`input input-with-icon h-14 w-full text-base ${tokens.fieldLg}`}
+                    className={`input input-with-icon h-14 w-full text-base ${tokens.fieldLg} ${
+                      seatsError ? errorFieldClass : ''
+                    }`}
                     inputMode="numeric"
                     pattern="[0-9]*"
+                    aria-invalid={Boolean(seatsError)}
+                    aria-describedby={seatsError ? seatsErrorId : undefined}
                     value={seats}
                     onChange={(e) => {
                       const raw = Number(e.currentTarget.value);
@@ -272,11 +325,20 @@ export default function SearchBar({
                   +
                 </button>
               </div>
-              <p className="text-xs text-slate-400">Entre 1 et {MAX_SEATS} sièges par réservation.</p>
+              {seatsError ? (
+                <p id={seatsErrorId} className="text-xs text-red-600">
+                  {seatsError}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">Entre 1 et {MAX_SEATS} sièges par réservation.</p>
+              )}
             </div>
             <div className="space-y-1">
-              <label className={`text-xs font-semibold ${labelClass}`}>Budget maximum (F CFA)</label>
+              <label className={`text-xs font-semibold ${labelClass}`} htmlFor={priceId}>
+                Budget maximum (F CFA)
+              </label>
               <input
+                id={priceId}
                 type="number"
                 min={0}
                 step={500}
@@ -313,8 +375,11 @@ export default function SearchBar({
             <div className="mt-3 space-y-3 text-sm text-slate-600">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),minmax(0,0.6fr)]">
                 <div>
-                  <label className={`text-xs font-semibold ${labelClass}`}>Trier par</label>
+                  <label className={`text-xs font-semibold ${labelClass}`} htmlFor={sortId}>
+                    Trier par
+                  </label>
                   <select
+                    id={sortId}
                     className={`input mt-1 h-12 w-full text-sm ${tokens.fieldSm}`}
                     value={sort}
                     onChange={(e) => onChange({ sort: e.currentTarget.value as typeof sort })}
@@ -324,28 +389,51 @@ export default function SearchBar({
                     <option value="seats">Plus de places</option>
                   </select>
                 </div>
+                <div className="flex items-end">
+                  <label className={`flex items-center gap-2 text-xs font-semibold ${labelClass}`}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(liveTracking)}
+                      onChange={(e) => onChange({ liveTracking: e.currentTarget.checked })}
+                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+                    />
+                    Suivi en direct activé
+                  </label>
+                </div>
               </div>
               <div>
-                <label className={`text-xs font-semibold ${labelClass}`}>Départ entre</label>
+                <label className={`text-xs font-semibold ${labelClass}`} htmlFor={departureAfterId}>
+                  Départ entre
+                </label>
                 <div className="mt-1 grid grid-cols-2 gap-2">
                   <input
                     type="time"
-                    className={`input h-12 w-full text-sm ${tokens.fieldLg}`}
+                    id={departureAfterId}
+                    className={`input h-12 w-full text-sm ${tokens.fieldLg} ${
+                      timeError ? errorFieldClass : ''
+                    }`}
                     value={departureAfter ?? ''}
                     onChange={(e) => onChange({ departureAfter: e.currentTarget.value || undefined })}
                     placeholder="08:00"
+                    aria-invalid={Boolean(timeError)}
+                    aria-describedby={timeError ? timeErrorId : undefined}
                   />
                   <input
                     type="time"
-                    className={`input h-12 w-full text-sm ${tokens.fieldLg}`}
+                    id={departureBeforeId}
+                    className={`input h-12 w-full text-sm ${tokens.fieldLg} ${
+                      timeError ? errorFieldClass : ''
+                    }`}
                     value={departureBefore ?? ''}
                     onChange={(e) => onChange({ departureBefore: e.currentTarget.value || undefined })}
                     placeholder="18:00"
+                    aria-invalid={Boolean(timeError)}
+                    aria-describedby={timeError ? timeErrorId : undefined}
                   />
                 </div>
-                {hasTimeRangeError ? (
-                  <p className="mt-1 text-xs text-red-600">
-                    L’heure de fin doit être postérieure à l’heure de début.
+                {timeError ? (
+                  <p id={timeErrorId} className="mt-1 text-xs text-red-600">
+                    {timeError}
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-slate-400">
@@ -361,7 +449,7 @@ export default function SearchBar({
       <div className="pt-2">
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || submitDisabled}
           className="inline-flex w-full items-center justify-center gap-3 rounded-[24px] bg-sky-600 px-6 py-4 text-lg font-semibold text-white shadow-lg shadow-sky-200/80 transition hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-200 disabled:opacity-60"
         >
           <Search size={22} />

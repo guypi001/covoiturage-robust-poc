@@ -161,6 +161,8 @@ export type Ride = {
   driverId: string;
   status: 'PUBLISHED'|'CLOSED';
   driverPhotoUrl?: string | null;
+  liveTrackingEnabled?: boolean;
+  liveTrackingMode?: 'FULL' | 'CITY_ALERTS';
 };
 
 export type ConversationSummary = {
@@ -217,6 +219,7 @@ export type SearchRequest = {
   departureAfter?: string;
   departureBefore?: string;
   sort?: 'soonest' | 'cheapest' | 'seats';
+  liveTracking?: boolean;
   fromMeta?: LocationMeta;
   toMeta?: LocationMeta;
 };
@@ -236,6 +239,9 @@ export async function searchRides(
   if (departureAfter) search.set('departureAfter', departureAfter);
   if (departureBefore) search.set('departureBefore', departureBefore);
   if (sort) search.set('sort', sort);
+  if (typeof params.liveTracking === 'boolean') {
+    search.set('liveTracking', params.liveTracking ? 'true' : 'false');
+  }
   const url = `${SEARCH_URL}/search?${search.toString()}`;
   let cancelSource: ReturnType<typeof axios.CancelToken.source> | undefined;
   let abortListener: (() => void) | undefined;
@@ -319,9 +325,24 @@ export async function createBooking(payload: { rideId: string; passengerId: stri
   return data; // { id, holdId?, amount, status, ... }
 }
 
-export async function captureBookingPayment(payload: { bookingId: string; amount: number; holdId?: string }) {
+export async function captureBookingPayment(payload: {
+  bookingId: string;
+  amount: number;
+  holdId?: string;
+  paymentMethodType?: string;
+  paymentMethodId?: string;
+  paymentProvider?: string;
+}) {
   const { data } = await api.post(`${BFF_URL}/payments/capture`, payload);
   return data;
+}
+
+export async function getBookingReceipt(token: string, bookingId: string): Promise<Blob> {
+  const { data } = await api.get(`${BFF_URL}/me/bookings/${bookingId}/receipt`, {
+    headers: { Authorization: `Bearer ${token}` },
+    responseType: 'blob',
+  });
+  return data as Blob;
 }
 
 export async function fetchMyFleet(params?: {
@@ -434,6 +455,10 @@ export type HomePreferences = {
   showTips?: boolean;
 };
 
+export type PaymentPreferences = {
+  defaultPaymentMethodId?: string;
+};
+
 export type Account = {
   id: string;
   email: string;
@@ -451,6 +476,7 @@ export type Account = {
   loginCount: number;
   profilePhotoUrl?: string | null;
   homePreferences?: HomePreferences | null;
+  paymentPreferences?: PaymentPreferences | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -586,6 +612,9 @@ export type BookingAdminItem = {
   amount: number;
   holdId: string | null;
   status: string;
+  paymentMethod?: string | null;
+  paymentProvider?: string | null;
+  paymentMethodId?: string | null;
   createdAt: string;
   ride?: RideAdminItem | null;
 };
@@ -1003,6 +1032,7 @@ export async function updateIndividualProfile(
     profilePhotoUrl?: string;
     removeProfilePhoto?: boolean;
     homePreferences?: HomePreferencesPayload;
+    paymentPreferences?: PaymentPreferences;
     fullName?: string;
   },
 ): Promise<Account> {
@@ -1024,12 +1054,24 @@ export async function updateCompanyProfile(
     profilePhotoUrl?: string;
     removeProfilePhoto?: boolean;
     homePreferences?: HomePreferencesPayload;
+    paymentPreferences?: PaymentPreferences;
   },
 ): Promise<Account> {
   const { data } = await api.patch<Account>(`${IDENTITY_URL}/profiles/me/company`, payload, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
+}
+
+export async function updatePaymentPreferences(
+  token: string,
+  accountType: AccountType,
+  paymentPreferences: PaymentPreferences,
+): Promise<Account> {
+  if (accountType === 'COMPANY') {
+    return updateCompanyProfile(token, { paymentPreferences });
+  }
+  return updateIndividualProfile(token, { paymentPreferences });
 }
 
 // --- Types pour la création d’un trajet ---
@@ -1043,6 +1085,8 @@ export type CreateRidePayload = {
   driverId?: string;
   driverLabel?: string | null;
   driverPhotoUrl?: string | null;
+  liveTrackingEnabled?: boolean;
+  liveTrackingMode?: 'FULL' | 'CITY_ALERTS';
 };
 
 // --- Appel au service ride ---

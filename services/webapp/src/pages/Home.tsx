@@ -1,10 +1,10 @@
 // src/pages/Home.tsx
-import { useDeferredValue, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Sparkles, ShieldCheck, Clock, Star, Wand2, ArrowRight, AlertCircle } from 'lucide-react';
-import SearchBar, { SearchPatch } from '../components/SearchBar';
-import RideCard from '../components/RideCard';
-import { useApp } from '../store';
+import SearchBar, { SearchErrors, SearchPatch } from '../components/SearchBar';
+import RideCard, { RideCardSkeleton } from '../components/RideCard';
+import { buildSearchKey, useApp } from '../store';
 import { type FavoriteRoute, type Ride } from '../api';
 import { GmailLogo } from '../components/icons/GmailLogo';
 import { findCityByName, isKnownCiCity } from '../data/cities-ci';
@@ -30,7 +30,10 @@ type SearchFormState = {
   departureAfter?: string;
   departureBefore?: string;
   sort: 'soonest' | 'cheapest' | 'seats';
+  liveTracking?: boolean;
 };
+
+const MAX_SEATS = 10;
 
 const DEFAULT_ROUTES: FavoriteRoute[] = [
   { from: 'Abidjan', to: 'Yamoussoukro' },
@@ -99,6 +102,7 @@ export default function Home() {
   const insightLabelClass = nightMode ? 'text-slate-400' : 'text-slate-500';
   const insightValueClass = nightMode ? 'text-white' : 'text-slate-900';
   const insightHintClass = nightMode ? 'text-slate-400' : 'text-slate-500';
+  const validationErrorMessage = 'Corrige les champs en surbrillance.';
 
   // État local du formulaire (prérempli depuis la dernière recherche)
   const [form, setForm] = useState<SearchFormState>({
@@ -114,7 +118,9 @@ export default function Home() {
     departureAfter: lastSearch?.departureAfter,
     departureBefore: lastSearch?.departureBefore,
     sort: lastSearch?.sort ?? 'soonest',
+    liveTracking: lastSearch?.liveTracking ?? false,
   });
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Patch partiel (vient de SearchBar)
   function onChange(patch: SearchPatch) {
@@ -148,36 +154,64 @@ export default function Home() {
     };
   };
 
-const normalizeCityInput = (value: string) => value.split(',')[0].trim();
+  const normalizeCityInput = (value: string) => value.split(',')[0].trim();
 
-// Lance la recherche et affiche les résultats sur la même page
-async function onSubmit() {
-    const rawFrom = form.from.trim();
-    const rawTo = form.to.trim();
-    const fromCity = normalizeCityInput(rawFrom);
-    const toCity = normalizeCityInput(rawTo);
-    if (!fromCity || !toCity) {
-      setError('Renseigne départ et arrivée');
-      return;
+  const parseTime = (value?: string) => {
+    if (!value) return null;
+    const [h, m] = value.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const validation = useMemo(() => {
+    const errors: SearchErrors = {};
+    const fromCity = normalizeCityInput(form.from.trim());
+    const toCity = normalizeCityInput(form.to.trim());
+    const fromKnown = fromCity ? isKnownCiCity(fromCity) : false;
+    const toKnown = toCity ? isKnownCiCity(toCity) : false;
+    if (!fromCity) {
+      errors.from = 'Renseigne un point de départ.';
+    } else if (!fromKnown && !form.fromMeta?.lat) {
+      errors.from = 'Sélectionne un point de départ valide.';
     }
-    const fromKnown = isKnownCiCity(fromCity);
-    const toKnown = isKnownCiCity(toCity);
-    if (!fromKnown && !form.fromMeta?.lat) {
-      setError('Sélectionne un point de départ valide.');
-      return;
-    }
-    if (!toKnown && !form.toMeta?.lat) {
-      setError('Sélectionne une arrivée valide.');
-      return;
+    if (!toCity) {
+      errors.to = 'Renseigne une destination.';
+    } else if (!toKnown && !form.toMeta?.lat) {
+      errors.to = 'Sélectionne une arrivée valide.';
     }
     if (!form.seats || form.seats <= 0) {
-      setError('Nombre de sièges invalide');
+      errors.seats = 'Nombre de sièges invalide.';
+    } else if (form.seats > MAX_SEATS) {
+      errors.seats = `Maximum ${MAX_SEATS} sièges.`;
+    }
+    const afterMinutes = parseTime(form.departureAfter);
+    const beforeMinutes = parseTime(form.departureBefore);
+    if (typeof afterMinutes === 'number' && typeof beforeMinutes === 'number' && afterMinutes > beforeMinutes) {
+      errors.timeWindow = 'Plage horaire incohérente. “Après” doit précéder “avant”.';
+    }
+    return {
+      errors,
+      fromCity,
+      toCity,
+      isValid: Object.keys(errors).length === 0,
+    };
+  }, [form]);
+
+  useEffect(() => {
+    if (submitAttempted && validation.isValid && error === validationErrorMessage) {
+      setError(undefined);
+    }
+  }, [error, setError, submitAttempted, validation.isValid, validationErrorMessage]);
+
+  // Lance la recherche et affiche les résultats sur la même page
+  async function onSubmit() {
+    setSubmitAttempted(true);
+    if (!validation.isValid) {
+      setError(validationErrorMessage);
       return;
     }
-    if (form.departureAfter && form.departureBefore && form.departureAfter > form.departureBefore) {
-      setError('Plage horaire incohérente. “Après” doit précéder “avant”.');
-      return;
-    }
+    const fromCity = validation.fromCity;
+    const toCity = validation.toCity;
     const nextSearch = {
       from: fromCity,
       to: toCity,
@@ -187,9 +221,11 @@ async function onSubmit() {
       departureAfter: form.departureAfter || undefined,
       departureBefore: form.departureBefore || undefined,
       sort: form.sort || 'soonest',
+      liveTracking: form.liveTracking ?? false,
       fromMeta: ensureMeta(form.fromMeta, fromCity),
       toMeta: ensureMeta(form.toMeta, toCity),
     };
+    const queryKey = buildSearchKey(nextSearch);
     setSearch(nextSearch);
     setLoading(true);
     setError(undefined);
@@ -203,9 +239,10 @@ async function onSubmit() {
         departureAfter: nextSearch.departureAfter,
         departureBefore: nextSearch.departureBefore,
         sort: nextSearch.sort,
+        liveTracking: nextSearch.liveTracking,
       },
       {
-        onSuccess: (rides) => setResults(rides),
+        onSuccess: (rides) => setResults(rides, queryKey),
         onError: (message) => setError(message),
       },
     );
@@ -218,6 +255,7 @@ async function onSubmit() {
   const displayLastTo = lastSearch?.toMeta?.label ?? lastSearch?.to ?? '';
   const totalResults = deferredResults.length;
   const isSearching = loading || ridePending;
+  const showSkeletons = isSearching && totalResults === 0;
   const lastSearchDateLabel = lastSearch?.date
     ? new Date(lastSearch.date).toLocaleDateString('fr-FR', {
         weekday: 'short',
@@ -267,6 +305,7 @@ async function onSubmit() {
       departureAfter: lastSearch.departureAfter,
       departureBefore: lastSearch.departureBefore,
       sort: lastSearch.sort ?? prev.sort,
+      liveTracking: lastSearch.liveTracking ?? false,
     }));
     setError(undefined);
     scrollToSearchCard();
@@ -328,7 +367,11 @@ async function onSubmit() {
                   departureAfter={form.departureAfter}
                   departureBefore={form.departureBefore}
                   sort={form.sort}
+                  liveTracking={form.liveTracking}
                   loading={loading}
+                  errors={validation.errors}
+                  showErrors={submitAttempted || Boolean(validation.errors.timeWindow)}
+                  submitDisabled={Boolean(validation.errors.timeWindow)}
                   onChange={onChange}
                   onSubmit={onSubmit}
                   theme={theme}
@@ -416,8 +459,16 @@ async function onSubmit() {
               />
             )}
 
-            {isSearching && (
-              <div className={`${panelMutedClass} animate-pulse`}>Recherche en cours…</div>
+            {isSearching && totalResults > 0 && (
+              <div className={`${panelBaseClass}`}>Actualisation des résultats en cours…</div>
+            )}
+
+            {showSkeletons && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {[...Array(4)].map((_, idx) => (
+                  <RideCardSkeleton key={idx} variant="dark" />
+                ))}
+              </div>
             )}
 
             {!isSearching && totalResults > 0 && (

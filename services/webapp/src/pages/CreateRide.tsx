@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, MapPin, Clock, Users, Sparkles } from 'lucide-react';
 import CityAutocomplete from '../components/CityAutocomplete';
@@ -12,6 +12,7 @@ type FormState = {
   time: string;
   pricePerSeat: number;
   seatsTotal: number;
+  liveTrackingEnabled: boolean;
 };
 
 type Feedback = { type: 'error' | 'success'; message: string } | null;
@@ -38,6 +39,7 @@ export default function CreateRide() {
     time: '',
     pricePerSeat: 2000,
     seatsTotal: 3,
+    liveTrackingEnabled: false,
   });
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -47,6 +49,14 @@ export default function CreateRide() {
   const updateForm = (patch: Partial<FormState>) => {
     setForm((prev) => ({ ...prev, ...patch }));
   };
+
+  const isCompany = account?.type === 'COMPANY';
+
+  useEffect(() => {
+    if (isCompany) {
+      setForm((prev) => ({ ...prev, liveTrackingEnabled: true }));
+    }
+  }, [isCompany]);
 
   const validate = (state: FormState): string | null => {
     if (!state.originCity.trim() || !state.destinationCity.trim()) {
@@ -84,6 +94,7 @@ export default function CreateRide() {
 
     const departureAt = toIsoUtc(form.date, form.time);
     const seatsTotal = Math.round(form.seatsTotal);
+    const liveTrackingEnabled = isCompany ? true : Boolean(form.liveTrackingEnabled);
     const payload = {
       originCity: form.originCity.trim(),
       destinationCity: form.destinationCity.trim(),
@@ -94,6 +105,8 @@ export default function CreateRide() {
       driverId: account.id,
       driverLabel: previewDriver,
       driverPhotoUrl: account.profilePhotoUrl ?? undefined,
+      liveTrackingEnabled,
+      liveTrackingMode: liveTrackingEnabled ? (isCompany ? 'CITY_ALERTS' : 'FULL') : undefined,
     };
 
     try {
@@ -277,6 +290,29 @@ export default function CreateRide() {
 
             <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-slate-900">Suivi en direct</h2>
+                <span className="text-xs text-slate-500">Disponible 15 min avant le départ</span>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                {isCompany
+                  ? 'Mode entreprise : le suivi s’active automatiquement 15 min avant le départ, puis bascule en notifications de passage des grandes villes.'
+                  : 'Active le suivi pour permettre au passager de voir ta position exacte jusqu’à l’arrivée.'}
+              </div>
+              {!isCompany && (
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.liveTrackingEnabled}
+                    onChange={(e) => updateForm({ liveTrackingEnabled: e.currentTarget.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
+                  />
+                  Activer le suivi en direct pour ce trajet
+                </label>
+              )}
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-slate-900">3. Publier et partager</h2>
                 <span className="text-xs text-slate-500">Résumé automatique envoyé aux admins</span>
               </div>
@@ -342,6 +378,12 @@ export default function CreateRide() {
                 </div>
                 <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500">
                   Chauffeur associé : <span className="font-semibold text-slate-900">{previewDriver}</span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                  Suivi en direct :{' '}
+                  <span className="font-semibold text-slate-900">
+                    {isCompany || form.liveTrackingEnabled ? 'Activé' : 'Désactivé'}
+                  </span>
                 </div>
               </div>
             </div>

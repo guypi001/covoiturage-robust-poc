@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
@@ -13,7 +14,12 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
-import type { ScheduleRecurrence, ScheduleStatus, VehicleStatus } from './entities';
+import type {
+  LiveTrackingMode,
+  ScheduleRecurrence,
+  ScheduleStatus,
+  VehicleStatus,
+} from './entities';
 
 export class CreateRideDto {
   @IsOptional()
@@ -46,6 +52,14 @@ export class CreateRideDto {
   @IsInt()
   @Min(0)
   pricePerSeat!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  liveTrackingEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(['FULL', 'CITY_ALERTS'] satisfies LiveTrackingMode[])
+  liveTrackingMode?: LiveTrackingMode;
 }
 
 export class AdminUpdateRideDto {
@@ -81,6 +95,14 @@ export class AdminUpdateRideDto {
   @IsOptional()
   @IsIn(['PUBLISHED', 'CLOSED'] as const)
   status?: 'PUBLISHED' | 'CLOSED';
+
+  @IsOptional()
+  @IsBoolean()
+  liveTrackingEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(['FULL', 'CITY_ALERTS'] satisfies LiveTrackingMode[])
+  liveTrackingMode?: LiveTrackingMode;
 }
 
 export class CreateVehicleDto {

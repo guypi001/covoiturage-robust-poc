@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Info, Heart, Link2 } from 'lucide-react';
 import { useApp } from '../store';
 import { useRideAvailability } from '../hooks/useRideAvailability';
@@ -16,6 +16,8 @@ type Props = {
   driverId?: string;
   driverLabel?: string | null;
   driverPhotoUrl?: string | null;
+  liveTrackingEnabled?: boolean;
+  liveTrackingMode?: 'FULL' | 'CITY_ALERTS';
   showPublisher?: boolean;
   onBook?: () => void;
   onDetails?: () => void;
@@ -38,6 +40,8 @@ export default function RideCard({
   driverId,
   driverLabel,
   driverPhotoUrl,
+  liveTrackingEnabled,
+  liveTrackingMode,
   onBook,
   onDetails,
   onContact,
@@ -69,6 +73,7 @@ export default function RideCard({
   const totalPrice = pricePerSeat * seatsCount;
   const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied' | 'error'>('idle');
   const [photoError, setPhotoError] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
   const shareUrl = rideId
     ? typeof window !== 'undefined'
       ? `${window.location.origin}/ride/${rideId}`
@@ -76,12 +81,19 @@ export default function RideCard({
     : undefined;
   const baseActionClass =
     'inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition';
+  const scheduleFeedbackReset = () => {
+    if (resetTimerRef.current) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+    resetTimerRef.current = window.setTimeout(() => setShareFeedback('idle'), 2000);
+  };
   const handleCopyLink = async () => {
     if (!shareUrl) return;
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
         setShareFeedback('copied');
+        scheduleFeedbackReset();
       } else if (typeof document !== 'undefined') {
         const textarea = document.createElement('textarea');
         textarea.value = shareUrl;
@@ -93,13 +105,21 @@ export default function RideCard({
         document.execCommand('copy');
         document.body.removeChild(textarea);
         setShareFeedback('copied');
+        scheduleFeedbackReset();
       }
     } catch {
       setShareFeedback('error');
-    } finally {
-      setTimeout(() => setShareFeedback('idle'), 2000);
+      scheduleFeedbackReset();
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
 
   const palette = variant === 'dark'
     ? {
@@ -135,6 +155,12 @@ export default function RideCard({
     'Conducteur KariGo';
   const authorInitial = authorName.charAt(0).toUpperCase();
   const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
+  const trackingEnabled = Boolean(liveTrackingEnabled);
+  const trackingLabel = trackingEnabled
+    ? liveTrackingMode === 'CITY_ALERTS'
+      ? 'Suivi entreprise'
+      : 'Suivi en direct'
+    : undefined;
   return (
     <article
       className={`${palette.container} ${
@@ -151,11 +177,16 @@ export default function RideCard({
       )}
       <div className="flex flex-col gap-4">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-slate-500 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide">Départ</p>
             <p className="text-sm font-semibold text-slate-800">
               {dateLabel} · {timeLabel}
             </p>
+            {trackingLabel && (
+              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                {trackingLabel}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4 text-right">
             <div className="text-sm">
@@ -296,5 +327,44 @@ export default function RideCard({
         </div>
       </div>
     </article>
+  );
+}
+
+export function RideCardSkeleton({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
+  const palette =
+    variant === 'dark'
+      ? {
+          container: 'rounded-2xl border border-white/10 bg-slate-900/70 p-5',
+          block: 'bg-slate-700/40',
+        }
+      : {
+          container: 'rounded-2xl border border-slate-200 bg-white p-5',
+          block: 'bg-slate-200/80',
+        };
+  return (
+    <div className={`${palette.container} animate-pulse`}>
+      <div className="flex items-center justify-between">
+        <div className={`h-4 w-28 rounded-full ${palette.block}`} />
+        <div className="flex items-center gap-3">
+          <div className={`h-12 w-20 rounded-2xl ${palette.block}`} />
+          <div className={`h-10 w-10 rounded-full ${palette.block}`} />
+        </div>
+      </div>
+      <div className="mt-4">
+        <div className={`h-16 w-full rounded-2xl ${palette.block}`} />
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <div className={`h-9 w-9 rounded-full ${palette.block}`} />
+        <div className="flex-1">
+          <div className={`h-3 w-32 rounded-full ${palette.block}`} />
+          <div className={`mt-2 h-3 w-20 rounded-full ${palette.block}`} />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <div className={`h-9 w-24 rounded-2xl ${palette.block}`} />
+        <div className={`h-9 w-20 rounded-2xl ${palette.block}`} />
+        <div className={`h-9 w-24 rounded-2xl ${palette.block}`} />
+      </div>
+    </div>
   );
 }

@@ -1,29 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;600;700&family=Manrope:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============ Thème clair : dominance blanche ============ */
 :root{
-  --bg-0: #f8fafc;        /* fond page (slate-50) */
+  --bg-0: #f6f3ee;        /* fond page */
   --bg-1: #ffffff;        /* panneaux / cartes */
-  --bg-2: #f1f5f9;        /* hover doux (slate-100) */
-  --text-1: #0f172a;      /* texte principal (slate-900) */
-  --muted: #475569;       /* texte secondaire (slate-600) */
+  --bg-2: #f3efe9;        /* hover doux */
+  --text-1: #12151c;      /* texte principal */
+  --muted: #5a6473;       /* texte secondaire */
 
-  --brand: #0ea5e9;       /* cyan-500 */
-  --brand-600: #0284c7;   /* cyan-600 */
-  --brand-soft: rgba(14,165,233,.12);
-  --ring: 14 165 233;     /* rgb du brand pour les focus-rings */
+  --brand: #e26a2c;       /* tangerine */
+  --brand-600: #c44b1f;
+  --brand-soft: rgba(226,106,44,.16);
+  --ring: 226 106 44;     /* rgb du brand pour les focus-rings */
 
-  --font-base: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-base: 'Manrope', 'Noto Sans', 'Helvetica Neue', sans-serif;
+  --font-display: 'Fraunces', 'Times New Roman', serif;
   --font-size-base: clamp(15px, 0.45vw + 14px, 17px);
   --font-size-sm: clamp(13px, 0.35vw + 12px, 15px);
   --font-size-xs: clamp(12px, 0.25vw + 11.5px, 14px);
   --font-size-lg: clamp(18px, 0.6vw + 16px, 22px);
   --font-size-xl: clamp(24px, 1vw + 20px, 32px);
   --line-height-base: 1.6;
-  --radius-card: 1.5rem;
-  --shadow-soft: 0 1px 2px rgba(15,23,42,.08), 0 8px 24px -16px rgba(14,165,233,.25);
+  --radius-card: 1.6rem;
+  --shadow-soft: 0 1px 2px rgba(18,21,28,.08), 0 18px 34px -24px rgba(226,106,44,.35);
 }
 
 html, body, #root{ height: 100%; }
@@ -34,7 +37,31 @@ body{
   font-size: var(--font-size-base);
   line-height: var(--line-height-base);
   color: var(--text-1);
-  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 55%, #e2f1fa 120%);
+  background:
+    radial-gradient(900px 600px at 85% -10%, rgba(226,106,44,.22), transparent 65%),
+    radial-gradient(700px 560px at -10% 20%, rgba(51,136,255,.18), transparent 55%),
+    linear-gradient(180deg, #fdf9f5 0%, #f4efe8 60%, #eae2da 120%);
+  position: relative;
+  isolation: isolate;
+}
+body::before,
+body::after{
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+body::before{
+  background:
+    radial-gradient(260px 260px at 15% 22%, rgba(18,21,28,.08), transparent 70%),
+    radial-gradient(200px 200px at 70% 18%, rgba(226,106,44,.12), transparent 70%),
+    radial-gradient(220px 220px at 80% 80%, rgba(51,136,255,.12), transparent 70%);
+}
+body::after{
+  background-image: linear-gradient(rgba(18,21,28,.04) 1px, transparent 1px);
+  background-size: 1px 28px;
+  opacity: .35;
 }
 
 :is(h1, h2, h3, h4){
@@ -42,6 +69,8 @@ body{
   font-weight: 700;
   line-height: 1.2;
   margin-bottom: clamp(.35rem, 1vw, .75rem);
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 h1{ font-size: clamp(2rem, 3.5vw, 3.2rem); }
 h2{ font-size: clamp(1.6rem, 2.6vw, 2.4rem); }
@@ -51,6 +80,9 @@ p, ul, ol{ margin: 0; }
 /* ============ Primitives réutilisables ============ */
 .container-wide{ @apply mx-auto px-4; max-width: min(1180px, 100%); }
 .app-main{ min-height: calc(100vh - 3.5rem); }
+.app-main{
+  animation: page-fade .7s ease both;
+}
 .section-block{
   padding-block: clamp(2rem, 4vw, 3.5rem);
 }
@@ -88,21 +120,26 @@ p, ul, ol{ margin: 0; }
 /* Carte claire */
 .card{
   background: var(--bg-1);
-  border: 1px solid rgba(226,232,240,.75);
+  border: 1px solid rgba(208,198,188,.65);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-soft);
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
 }
 .card.highlight{
   border-color: rgba(var(--ring) / .35);
   box-shadow:
-    0 10px 30px -14px rgba(2,132,199,.35),
-    0 1px 0 rgba(255,255,255,.8) inset;
+    0 16px 35px -18px rgba(226,106,44,.45),
+    0 1px 0 rgba(255,255,255,.85) inset;
+}
+.card:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 22px 42px -28px rgba(18,21,28,.35), 0 10px 18px -14px rgba(226,106,44,.25);
 }
 .glass{
-  background: rgba(255,255,255,.82);
+  background: rgba(255,255,255,.86);
   border-radius: var(--radius-card);
-  border: 1px solid rgba(148,163,184,.25);
-  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(90,100,115,.2);
+  box-shadow: 0 20px 45px -30px rgba(18,21,28,.35);
   backdrop-filter: blur(18px);
 }
 
@@ -116,18 +153,18 @@ p, ul, ol{ margin: 0; }
 .btn-primary{
   background: linear-gradient(135deg, var(--brand), var(--brand-600));
   color:#fff; padding:.75rem 1rem;
-  box-shadow: 0 10px 26px -12px rgba(14,165,233,.35);
+  box-shadow: 0 16px 30px -18px rgba(226,106,44,.55);
 }
 .btn-primary:hover{ filter:brightness(1.05); transform: translateY(-1px); }
 .btn-primary:active{ transform: translateY(0); }
 
-.btn-ghost{ @apply text-slate-600 hover:text-slate-800; }
+.btn-ghost{ @apply text-slate-600 hover:text-slate-900; }
 
 /* Inputs clairs */
 .input{
   height: 46px;
   background: #ffffff;
-  border: 1px solid #e2e8f0;       /* slate-200 */
+  border: 1px solid rgba(208,198,188,.7);
   color: var(--text-1);
   border-radius: .875rem;
   transition: box-shadow .16s, border-color .16s, background-color .16s;
@@ -145,8 +182,8 @@ p, ul, ol{ margin: 0; }
 .input:hover{ background:#fff; }
 .input:focus{
   outline: none;
-  border-color: rgba(var(--ring) / .55);
-  box-shadow: 0 0 0 3px rgba(var(--ring) / .28);
+  border-color: rgba(var(--ring) / .6);
+  box-shadow: 0 0 0 3px rgba(var(--ring) / .25);
 }
 
 /* Icône dans le champ (gauche) */
@@ -185,8 +222,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   padding: .35rem .6rem;
   border-radius: 999px;
   background: var(--bg-2);
-  border: 1px solid #e2e8f0;
-  color: #334155; /* slate-700 */
+  border: 1px solid rgba(208,198,188,.7);
+  color: #3a4351;
 }
 
 /* Barre sticky (search) */
@@ -194,9 +231,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 
 /* Header clair */
 .header{
-  background: var(--bg-1);
+  background: rgba(255,255,255,.82);
   @apply sticky top-0 z-40 border-b border-slate-200;
-  box-shadow: 0 4px 18px -14px rgba(2,132,199,.25);
+  box-shadow: 0 8px 24px -18px rgba(18,21,28,.25);
+  backdrop-filter: blur(14px);
 }
 
 /* Layout authentification */
@@ -212,19 +250,19 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr);
   grid-template-areas: "content hero";
-  background: rgba(255,255,255,.96);
-  border-radius: 2rem;
-  border: 1px solid rgba(148,163,184,.25);
+  background: rgba(255,255,255,.92);
+  border-radius: 2.1rem;
+  border: 1px solid rgba(90,100,115,.2);
   box-shadow:
-    0 24px 60px -28px rgba(14,165,233,.45),
-    0 10px 35px -20px rgba(15,23,42,.28);
+    0 24px 60px -28px rgba(226,106,44,.45),
+    0 10px 35px -20px rgba(18,21,28,.28);
   overflow: hidden;
 }
 .auth-panel__hero{
   grid-area: hero;
   background:
     radial-gradient(280px 240px at 20% 15%, rgba(255,255,255,.35), transparent 70%),
-    linear-gradient(150deg, rgba(14,165,233,.85), rgba(56,189,248,.95));
+    linear-gradient(150deg, rgba(226,106,44,.92), rgba(255,153,84,.95));
   color: white;
   padding: clamp(2rem, 6vw, 3.5rem);
   display: flex;
@@ -294,7 +332,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   height: 36px;
   width: 36px;
   border-radius: 1rem;
-  background: rgba(15, 23, 42, .15);
+  background: rgba(18, 21, 28, .18);
 }
 
 @media (max-width: 1024px){
@@ -344,8 +382,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   .auth-panel{
     border-radius: 1.65rem;
     box-shadow:
-      0 22px 45px -30px rgba(15,23,42,.35),
-      0 12px 30px -25px rgba(14,165,233,.35);
+      0 22px 45px -30px rgba(18,21,28,.35),
+      0 12px 30px -25px rgba(226,106,44,.35);
   }
   .auth-panel__hero{
     padding: clamp(1.75rem, 9vw, 2.35rem);
@@ -375,8 +413,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   .card{
     border-radius: 1.25rem;
     box-shadow:
-      0 12px 30px -22px rgba(15,23,42,.25),
-      0 6px 18px -12px rgba(14,165,233,.18);
+      0 12px 30px -22px rgba(18,21,28,.25),
+      0 6px 18px -12px rgba(226,106,44,.18);
   }
   .btn{
     width: 100%;
@@ -419,4 +457,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+@keyframes page-fade{
+  from{ opacity: 0; transform: translateY(8px); }
+  to{ opacity: 1; transform: translateY(0); }
 }

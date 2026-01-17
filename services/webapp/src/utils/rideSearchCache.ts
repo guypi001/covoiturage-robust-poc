@@ -12,6 +12,7 @@ export function buildRideSearchKey(params: SearchRequest) {
     departureAfter: params.departureAfter ?? null,
     departureBefore: params.departureBefore ?? null,
     sort: params.sort ?? 'soonest',
+    liveTracking: params.liveTracking ?? null,
   });
 }
 

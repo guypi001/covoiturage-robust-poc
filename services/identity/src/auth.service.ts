@@ -11,7 +11,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Not, Repository } from 'typeorm';
-import { Account, AccountRole, AccountStatus, HomePreferences, PasswordResetToken } from './entities';
+import {
+  Account,
+  AccountRole,
+  AccountStatus,
+  HomePreferences,
+  PasswordResetToken,
+  PaymentPreferences,
+} from './entities';
 import {
   RegisterCompanyDto,
   RegisterIndividualDto,
@@ -22,6 +29,7 @@ import {
   VerifyGmailOtpDto,
   ListAccountsQueryDto,
   HomePreferencesDto,
+  PaymentPreferencesDto,
   UpdateAccountProfileDto,
   HOME_THEME_OPTIONS,
   HOME_QUICK_ACTION_OPTIONS,
@@ -281,6 +289,15 @@ export class AuthService implements OnModuleInit {
     }
 
     return Object.keys(result).length > 0 ? result : null;
+  }
+
+  private sanitizePaymentPreferencesInput(
+    input?: PaymentPreferencesDto | null,
+  ): PaymentPreferences | null {
+    if (!input) return null;
+    const defaultPaymentMethodId = input.defaultPaymentMethodId?.trim();
+    if (!defaultPaymentMethodId) return null;
+    return { defaultPaymentMethodId };
   }
 
   private async refreshAccountMetrics() {
@@ -865,6 +882,9 @@ export class AuthService implements OnModuleInit {
     if (dto.homePreferences !== undefined) {
       account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
     }
+    if (dto.paymentPreferences !== undefined) {
+      account.paymentPreferences = this.sanitizePaymentPreferencesInput(dto.paymentPreferences) ?? null;
+    }
     const saved = await this.accounts.save(account);
     accountProfileUpdateCounter.inc({ actor: 'self', type: 'INDIVIDUAL' });
     return this.sanitize(saved);
@@ -900,6 +920,9 @@ export class AuthService implements OnModuleInit {
     }
     if (dto.homePreferences !== undefined) {
       account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
+    }
+    if (dto.paymentPreferences !== undefined) {
+      account.paymentPreferences = this.sanitizePaymentPreferencesInput(dto.paymentPreferences) ?? null;
     }
     const saved = await this.accounts.save(account);
     accountProfileUpdateCounter.inc({ actor: 'self', type: 'COMPANY' });
@@ -960,6 +983,9 @@ export class AuthService implements OnModuleInit {
 
     if (dto.homePreferences !== undefined) {
       account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
+    }
+    if (dto.paymentPreferences !== undefined) {
+      account.paymentPreferences = this.sanitizePaymentPreferencesInput(dto.paymentPreferences) ?? null;
     }
 
     const saved = await this.accounts.save(account);

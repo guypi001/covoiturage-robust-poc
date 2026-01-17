@@ -28,8 +28,25 @@ type LastSearch = {
   departureAfter?: string;
   departureBefore?: string;
   sort?: 'soonest' | 'cheapest' | 'seats';
+  liveTracking?: boolean;
   fromMeta?: LocationMeta;
   toMeta?: LocationMeta;
+};
+
+export const buildSearchKey = (q?: LastSearch) => {
+  if (!q) return undefined;
+  const normalize = (value?: string) => value?.trim().toLowerCase() ?? '';
+  return [
+    normalize(q.from),
+    normalize(q.to),
+    q.date ?? '',
+    q.seats ?? '',
+    q.priceMax ?? '',
+    q.departureAfter ?? '',
+    q.departureBefore ?? '',
+    q.sort ?? '',
+    q.liveTracking ?? '',
+  ].join('|');
 };
 
 type RideAvailability = {
@@ -40,7 +57,10 @@ type RideAvailability = {
 
 type State = {
   lastSearch?: LastSearch;
+  lastSearchKey?: string;
   results: Ride[];
+  resultsQueryKey?: string;
+  resultsUpdatedAt?: number;
   loading: boolean;
   error?: string;
   passengerId: string;
@@ -57,7 +77,7 @@ type State = {
 type Actions = {
   setPassenger: (id: string) => void;
   setSearch: (q: LastSearch | undefined) => void;
-  setResults: (r: Ride[]) => void;
+  setResults: (r: Ride[], queryKey?: string) => void;
   setLoading: (v: boolean) => void;
   setError: (e?: string) => void;
   setSession: (token: string, account: Account) => void;
@@ -113,8 +133,13 @@ export const useApp = create<State & Actions>((set, get) => ({
   savedRides: loadSavedRides(),
   rideAvailability: {},
   setPassenger: (id) => set({ passengerId: id }),
-  setSearch: (q) => set({ lastSearch: q }),
-  setResults: (r) => set({ results: r }),
+  setSearch: (q) => set({ lastSearch: q, lastSearchKey: buildSearchKey(q) }),
+  setResults: (r, queryKey) =>
+    set({
+      results: r,
+      resultsUpdatedAt: queryKey ? Date.now() : undefined,
+      resultsQueryKey: queryKey,
+    }),
   setLoading: (v) => set({ loading: v }),
   setError: (e) => set({ error: e }),
   setSession: (token, account) => {
@@ -140,7 +165,10 @@ export const useApp = create<State & Actions>((set, get) => ({
       authLoading: false,
       authError: undefined,
       lastSearch: undefined,
+      lastSearchKey: undefined,
       results: [],
+      resultsQueryKey: undefined,
+      resultsUpdatedAt: undefined,
       passengerId: 'usr-demo',
       messageBadge: 0,
     });

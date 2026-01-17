@@ -13,6 +13,8 @@ export type RideDoc = {
   driverLabel?: string | null;
   driverPhotoUrl?: string | null;
   status: string;
+  liveTrackingEnabled?: boolean;
+  liveTrackingMode?: string;
 };
 
 @Injectable()
@@ -47,6 +49,8 @@ export class MeiliService {
           'departureAt',
           'pricePerSeat',
           'seatsAvailable',
+          'liveTrackingEnabled',
+          'liveTrackingMode',
         ],
       });
       if (task?.taskUid) await this.client.waitForTask(task.taskUid);
@@ -69,6 +73,8 @@ export class MeiliService {
       driverLabel: evt.driverLabel ?? null,
       driverPhotoUrl: evt.driverPhotoUrl ?? null,
       status: evt.status,
+      liveTrackingEnabled: Boolean(evt.liveTrackingEnabled),
+      liveTrackingMode: evt.liveTrackingMode ?? 'FULL',
     };
   }
 
@@ -87,6 +93,7 @@ export class MeiliService {
     dateRange?: { start: string; end: string },
     minSeats?: number,
     maxPrice?: number,
+    liveTrackingOnly?: boolean,
   ): Promise<RideDoc[]> {
     const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
     const filters: string[] = [];
@@ -105,6 +112,9 @@ export class MeiliService {
     }
     if (typeof maxPrice === 'number') {
       filters.push(`pricePerSeat <= ${Math.max(0, Math.floor(maxPrice))}`);
+    }
+    if (liveTrackingOnly) {
+      filters.push('liveTrackingEnabled = true');
     }
     const opts: any = { limit };
     if (filters.length) opts.filter = filters.join(' AND ');

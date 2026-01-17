@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 
 export type RideStatus = 'PUBLISHED' | 'CLOSED';
+export type LiveTrackingMode = 'FULL' | 'CITY_ALERTS';
 export type VehicleStatus = 'ACTIVE' | 'INACTIVE';
 export type ScheduleStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 export type ScheduleRecurrence = 'NONE' | 'DAILY' | 'WEEKLY';
@@ -50,6 +51,12 @@ export class Ride {
   @Index()
   @Column({ default: 'PUBLISHED' })
   status!: RideStatus;
+
+  @Column({ type: 'boolean', default: false, name: 'live_tracking_enabled' })
+  liveTrackingEnabled!: boolean;
+
+  @Column({ type: 'varchar', length: 32, default: 'FULL', name: 'live_tracking_mode' })
+  liveTrackingMode!: LiveTrackingMode;
 
   @CreateDateColumn()
   createdAt!: Date;
@@ -103,6 +110,11 @@ export class FleetVehicle {
 }
 
 @Entity('vehicle_schedules')
+@Index('idx_vehicle_schedules_vehicle_status_departure', [
+  'vehicleId',
+  'status',
+  'departureAt',
+])
 export class VehicleSchedule {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

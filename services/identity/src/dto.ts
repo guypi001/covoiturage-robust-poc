@@ -70,6 +70,13 @@ export class HomePreferencesDto {
   showTips?: boolean;
 }
 
+export class PaymentPreferencesDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  defaultPaymentMethodId?: string;
+}
+
 export class RegisterIndividualDto {
   @IsEmail()
   email!: string;
@@ -170,6 +177,11 @@ export class UpdateIndividualProfileDto {
   @ValidateNested()
   @Type(() => HomePreferencesDto)
   homePreferences?: HomePreferencesDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentPreferencesDto)
+  paymentPreferences?: PaymentPreferencesDto;
 }
 
 export class UpdateCompanyProfileDto {
@@ -212,6 +224,11 @@ export class UpdateCompanyProfileDto {
   @ValidateNested()
   @Type(() => HomePreferencesDto)
   homePreferences?: HomePreferencesDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentPreferencesDto)
+  paymentPreferences?: PaymentPreferencesDto;
 }
 
 export class AdminSendRideDigestDto {
@@ -385,4 +402,9 @@ export class UpdateAccountProfileDto {
   @ValidateNested()
   @Type(() => HomePreferencesDto)
   homePreferences?: HomePreferencesDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentPreferencesDto)
+  paymentPreferences?: PaymentPreferencesDto;
 }

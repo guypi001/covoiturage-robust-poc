@@ -72,6 +72,8 @@ export class RideController {
       if (!driverId) {
         return res.status(HttpStatus.BAD_REQUEST).json({ error: 'driver_required' });
       }
+      const liveTrackingEnabled = Boolean(dto.liveTrackingEnabled);
+      const liveTrackingMode = dto.liveTrackingMode === 'CITY_ALERTS' ? 'CITY_ALERTS' : 'FULL';
       const ride = this.rides.create({
         driverId,
         driverLabel,
@@ -83,6 +85,8 @@ export class RideController {
         seatsAvailable: dto.seatsAvailable ?? dto.seatsTotal!,
         pricePerSeat: dto.pricePerSeat!,
         status: 'PUBLISHED',
+        liveTrackingEnabled,
+        liveTrackingMode,
       });
       const saved = await this.rides.save(ride);
 
@@ -98,6 +102,8 @@ export class RideController {
         pricePerSeat: saved.pricePerSeat,
         seatsTotal: saved.seatsTotal,
         seatsAvailable: saved.seatsAvailable,
+        liveTrackingEnabled: saved.liveTrackingEnabled,
+        liveTrackingMode: saved.liveTrackingMode,
       };
 
       // Kafka

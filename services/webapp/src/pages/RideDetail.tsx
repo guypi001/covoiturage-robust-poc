@@ -58,6 +58,8 @@ export function RideDetail() {
           seatsAvailable: data.seatsAvailable,
           driverId: data.driverId,
           status: data.status,
+          liveTrackingEnabled: data.liveTrackingEnabled,
+          liveTrackingMode: data.liveTrackingMode,
         };
         if (!cancelled) setRide(normalized);
       } catch (e: any) {
@@ -226,6 +228,22 @@ export function RideDetail() {
       ? lastSearch.toMeta ?? undefined
       : undefined;
 
+  const trackingEnabled = Boolean(ride.liveTrackingEnabled);
+  const trackingMode = ride.liveTrackingMode ?? 'FULL';
+  const departureTimestamp = Date.parse(ride.departureAt);
+  const trackingStartLabel = Number.isFinite(departureTimestamp)
+    ? new Date(departureTimestamp - 15 * 60 * 1000).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : undefined;
+  const trackingDetails =
+    !trackingEnabled
+      ? 'Le chauffeur doit activer le suivi pour que la position exacte soit visible.'
+      : trackingMode === 'CITY_ALERTS'
+        ? 'Mode entreprise : suivi 15 min avant départ puis notifications des grandes villes.'
+        : 'Suivi en direct disponible 15 min avant le départ et jusqu’à l’arrivée.';
+
   return (
     <div className="glass p-6 rounded-2xl space-y-6">
       <header className="space-y-2">
@@ -242,6 +260,11 @@ export function RideDetail() {
           <span className="inline-flex items-center gap-2 text-xs text-slate-900/60 capitalize">
             <Shield size={14} /> {ride.status.toLowerCase()}
           </span>
+          {trackingEnabled && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              Suivi en direct
+            </span>
+          )}
         </div>
         <h1 className="flex flex-wrap items-center gap-2 text-3xl font-semibold text-slate-900">
           <CityBadge name={ride.originCity} className="text-lg" />
@@ -381,6 +404,16 @@ export function RideDetail() {
             <div className="flex items-center gap-3 text-sm text-slate-900/70">
               <Shield size={16} className="text-emerald-300" />
               <span>{ride.seatsAvailable}/{ride.seatsTotal} sièges disponibles</span>
+            </div>
+            <div className="flex items-start gap-3 text-sm text-slate-900/70">
+              <Shield size={16} className={trackingEnabled ? 'text-emerald-300' : 'text-slate-300'} />
+              <div>
+                <p className="font-semibold">
+                  Suivi en direct {trackingEnabled ? 'activé' : 'non activé'}
+                  {trackingStartLabel ? ` à partir de ${trackingStartLabel}` : ''}
+                </p>
+                <p className="text-xs text-slate-900/60">{trackingDetails}</p>
+              </div>
             </div>
             <div className="flex items-center gap-3 text-emerald-300 text-2xl font-bold">
               {ride.pricePerSeat.toLocaleString()} XOF

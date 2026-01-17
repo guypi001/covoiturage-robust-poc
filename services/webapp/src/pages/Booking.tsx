@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   captureBookingPayment,
   createBooking,
+  getBookingReceipt,
   getRide,
   getMyPaymentMethods,
   addPaymentMethod,
   deletePaymentMethod,
+  updatePaymentPreferences,
   type Ride,
   type PaymentMethod,
 } from '../api';
@@ -16,15 +18,16 @@ import {
   type PaymentSimulationHandle,
   type PaymentSimulationStep,
 } from '../utils/paymentSimulation';
-import { CreditCard, Smartphone, Wallet as WalletIcon, Trash2 } from 'lucide-react';
+import { CheckCircle2, Copy, CreditCard, ShieldCheck, Smartphone, Wallet as WalletIcon, Trash2 } from 'lucide-react';
 
 export function Booking() {
   const { rideId } = useParams<{ rideId: string }>();
   const nav = useNavigate();
-  const { results, passengerId, token, setRideAvailability } = useApp((state) => ({
+  const { results, passengerId, token, account, setRideAvailability } = useApp((state) => ({
     results: state.results,
     passengerId: state.passengerId,
     token: state.token,
+    account: state.account,
     setRideAvailability: state.setRideAvailability,
   }));
   const memoRide = useMemo(() => results.find((x) => x.rideId === rideId), [rideId, results]);
@@ -55,6 +58,8 @@ export function Booking() {
           seatsAvailable: data.seatsAvailable,
           driverId: data.driverId,
           status: data.status,
+          liveTrackingEnabled: data.liveTrackingEnabled,
+          liveTrackingMode: data.liveTrackingMode,
         };
         if (!cancelled) {
           setRide(normalized);
@@ -89,16 +94,23 @@ export function Booking() {
   const [paymentError, setPaymentError] = useState<string>();
   const [paymentSteps, setPaymentSteps] = useState<PaymentSimulationStep[]>([]);
   const paymentSimulationRef = useRef<PaymentSimulationHandle | null>(null);
+  const copyRefTimerRef = useRef<number | null>(null);
+  const [receiptIssuedAt, setReceiptIssuedAt] = useState<string>();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [methodsLoading, setMethodsLoading] = useState(false);
   const [methodsError, setMethodsError] = useState<string>();
   const [selectedMethodId, setSelectedMethodId] = useState<string>('cash');
+  const [defaultMethodId, setDefaultMethodId] = useState<string | undefined>(
+    account?.paymentPreferences?.defaultPaymentMethodId,
+  );
   const [showMethodForm, setShowMethodForm] = useState(false);
   const [savingMethod, setSavingMethod] = useState(false);
   const [newMethodType, setNewMethodType] = useState<'CARD' | 'MOBILE_MONEY'>('CARD');
   const [newCardForm, setNewCardForm] = useState({ holder: '', number: '', expiry: '' });
   const [newMobileForm, setNewMobileForm] = useState({ provider: 'MTN Money', phone: '' });
   const [instantMobileForm, setInstantMobileForm] = useState({ provider: 'MTN Money', phone: '' });
+  const [instantPhoneTouched, setInstantPhoneTouched] = useState(false);
+  const [copyRefFeedback, setCopyRefFeedback] = useState<'idle' | 'copied'>('idle');
   const [cashCommitmentOpen, setCashCommitmentOpen] = useState(false);
   const selectedMethod =
     selectedMethodId === 'cash'
@@ -117,8 +129,15 @@ export function Booking() {
     return () => {
       paymentSimulationRef.current?.cancel();
       paymentSimulationRef.current = null;
+      if (copyRefTimerRef.current) {
+        window.clearTimeout(copyRefTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    setDefaultMethodId(account?.paymentPreferences?.defaultPaymentMethodId);
+  }, [account?.paymentPreferences?.defaultPaymentMethodId]);
 
   const syncRideAvailability = useCallback(async () => {
     if (!rideId) return;
@@ -135,6 +154,8 @@ export function Booking() {
         seatsAvailable: latest.seatsAvailable,
         driverId: latest.driverId,
         status: latest.status,
+        liveTrackingEnabled: latest.liveTrackingEnabled,
+        liveTrackingMode: latest.liveTrackingMode,
       };
       setRide(normalized);
       setRideAvailability(normalized.rideId, normalized.seatsAvailable, normalized.seatsTotal);
@@ -158,16 +179,24 @@ export function Booking() {
       setMethodsLoading(true);
       setMethodsError(undefined);
       const data = await getMyPaymentMethods(token);
-      setPaymentMethods(Array.isArray(data) ? data : []);
-      if (Array.isArray(data) && data.length > 0) {
-        setSelectedMethodId((prev) => (prev === 'cash' ? data[0].id : prev));
+      const normalized = Array.isArray(data) ? data : [];
+      setPaymentMethods(normalized);
+      const storedDefault = account?.paymentPreferences?.defaultPaymentMethodId;
+      const isDefaultAvailable =
+        storedDefault === 'cash' ||
+        storedDefault === 'mobile-instant' ||
+        normalized.some((item) => item.id === storedDefault);
+      if (storedDefault && isDefaultAvailable) {
+        setSelectedMethodId(storedDefault);
+      } else if (normalized.length > 0) {
+        setSelectedMethodId((prev) => (prev === 'cash' ? normalized[0].id : prev));
       }
     } catch (err: any) {
       setMethodsError(err?.response?.data?.message || err?.message || 'Impossible de charger tes moyens de paiement.');
     } finally {
       setMethodsLoading(false);
     }
-  }, [token]);
+  }, [account?.paymentPreferences?.defaultPaymentMethodId, token]);
 
   useEffect(() => {
     void refreshPaymentMethods();
@@ -192,6 +221,21 @@ export function Booking() {
   const reservationStepStatus = bookingResult ? 'done' : loading ? 'active' : 'pending';
   const paymentStepStatus = paymentMessage ? 'done' : paying ? 'active' : bookingResult ? 'ready' : 'pending';
   const confirmationStepStatus = paymentMessage ? 'done' : 'pending';
+  const instantPhoneDigits = instantMobileForm.phone.replace(/\D/g, '');
+  const mobileInstantValid = selectedMethodId !== 'mobile-instant' || instantPhoneDigits.length >= 8;
+  const paymentBlockedReason =
+    selectedMethodId === 'mobile-instant' && !mobileInstantValid
+      ? 'Renseigne un numéro mobile money valide.'
+      : undefined;
+  const defaultMethodLabel = useMemo(() => {
+    if (!defaultMethodId) return 'Aucun';
+    if (defaultMethodId === 'cash') return 'Espèces à bord';
+    if (defaultMethodId === 'mobile-instant') {
+      return instantMobileForm.provider || 'Mobile money instantané';
+    }
+    const method = paymentMethods.find((item) => item.id === defaultMethodId);
+    return method?.label || method?.provider || method?.type || 'Moyen enregistré';
+  }, [defaultMethodId, instantMobileForm.provider, paymentMethods]);
   const timelineSteps = [
     {
       id: 'reservation',
@@ -212,6 +256,57 @@ export function Booking() {
       description: paymentMessage || 'Recevras ton reçu automatiquement.',
     },
   ];
+
+  const buildPaymentSteps = (methodType?: string) => {
+    if (methodType === 'MOBILE_MONEY') {
+      return [
+        { id: 'init', label: 'Connexion à l’opérateur mobile money…', duration: 700 },
+        { id: 'otp', label: 'Validation sur ton téléphone (OTP)…', duration: 1200 },
+        { id: 'confirm', label: 'Confirmation du paiement…', duration: 900 },
+      ];
+    }
+    if (methodType === 'CARD') {
+      return [
+        { id: 'init', label: 'Connexion au réseau bancaire…', duration: 700 },
+        { id: '3ds', label: 'Validation 3D Secure…', duration: 1200 },
+        { id: 'confirm', label: 'Confirmation du paiement…', duration: 900 },
+      ];
+    }
+    return [
+      { id: 'init', label: 'Traitement du paiement…', duration: 700 },
+      { id: 'confirm', label: 'Confirmation…', duration: 900 },
+    ];
+  };
+
+  const receiptData = useMemo(() => {
+    if (!paymentMessage || !bookingResult) return null;
+    return {
+      bookingId: bookingResult.id,
+      passengerName: account?.fullName || account?.companyName || account?.email || 'Client KariGo',
+      passengerEmail: account?.email || '',
+      originCity: ride.originCity,
+      destinationCity: ride.destinationCity,
+      departureAt: ride.departureAt,
+      seats,
+      amount: bookingResult.amount ?? amount,
+      paymentMethod: selectedMethod?.label || selectedMethod?.type || 'Paiement',
+      issuedAt: receiptIssuedAt || new Date().toISOString(),
+    };
+  }, [
+    account?.companyName,
+    account?.email,
+    account?.fullName,
+    amount,
+    bookingResult,
+    paymentMessage,
+    receiptIssuedAt,
+    ride.departureAt,
+    ride.destinationCity,
+    ride.originCity,
+    seats,
+    selectedMethod?.label,
+    selectedMethod?.type,
+  ]);
 
   async function submit() {
     setBookingError(undefined);
@@ -260,6 +355,11 @@ export function Booking() {
 
   async function pay() {
     if (!bookingResult) return;
+    if (!mobileInstantValid) {
+      setInstantPhoneTouched(true);
+      setPaymentError('Renseigne un numéro mobile money valide.');
+      return;
+    }
     const method =
       selectedMethodId === 'cash'
         ? { type: 'CASH' as const, label: 'Paiement en espèces' }
@@ -279,6 +379,7 @@ export function Booking() {
     setPaymentMessage(undefined);
     paymentSimulationRef.current?.cancel();
     const simulation = startPaymentSimulation({
+      steps: buildPaymentSteps(method?.type),
       onUpdate: ({ steps }) => setPaymentSteps(steps),
     });
     paymentSimulationRef.current = simulation;
@@ -290,6 +391,8 @@ export function Booking() {
         holdId: bookingResult.holdId ?? undefined,
         paymentMethodId: method?.id,
         paymentMethodType: method?.type ?? 'CASH',
+        paymentProvider:
+          method?.type === 'CASH' ? 'CASH' : method?.provider,
       });
       await simulation.promise;
       setPaymentMessage(
@@ -297,6 +400,7 @@ export function Booking() {
           ? 'Paiement en espèces confirmé 🥳'
           : `Paiement confirmé via ${method.label || method.provider || method.type} 🥳`,
       );
+      setReceiptIssuedAt(new Date().toISOString());
     } catch (e: any) {
       simulation.cancel();
       await simulation.promise.catch(() => undefined);
@@ -374,10 +478,67 @@ export function Booking() {
       if (selectedMethodId === methodId) {
         setSelectedMethodId('cash');
       }
+      if (account?.id && defaultMethodId === methodId) {
+        const updated = await updatePaymentPreferences(token, account.type, {
+          defaultPaymentMethodId: 'cash',
+        });
+        useApp.setState({ account: updated });
+        setDefaultMethodId(updated.paymentPreferences?.defaultPaymentMethodId);
+      }
       await refreshPaymentMethods();
     } catch (err: any) {
       setMethodsError(err?.response?.data?.message || err?.message || 'Suppression impossible.');
     }
+  };
+
+  const handleSetDefaultMethod = async () => {
+    if (!token || !account) {
+      setMethodsError('Connecte-toi pour memoriser ton moyen par defaut.');
+      return;
+    }
+    try {
+      setMethodsError(undefined);
+      const updated = await updatePaymentPreferences(token, account.type, {
+        defaultPaymentMethodId: selectedMethodId,
+      });
+      useApp.setState({ account: updated });
+      setDefaultMethodId(updated.paymentPreferences?.defaultPaymentMethodId);
+    } catch (err: any) {
+      setMethodsError(err?.response?.data?.message || err?.message || 'Impossible de definir le moyen par defaut.');
+    }
+  };
+
+  const handleDownloadReceipt = () => {
+    if (!receiptData || !token) return;
+    getBookingReceipt(token, receiptData.bookingId)
+      .then((blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `recu-${receiptData.bookingId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(() => {
+        setPaymentError("Impossible de telecharger le recu pour l'instant.");
+      });
+  };
+
+  const handlePrintReceipt = () => {
+    if (!receiptData || !token) return;
+    getBookingReceipt(token, receiptData.bookingId)
+      .then((blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const win = window.open(url, '_blank');
+        if (!win) return;
+        win.focus();
+        win.print();
+      })
+      .catch(() => {
+        setPaymentError("Impossible d'imprimer le recu pour l'instant.");
+      });
   };
 
   return (
@@ -402,6 +563,34 @@ export function Booking() {
 
       <div className="grid gap-6 lg:grid-cols-[1.7fr,1fr]">
         <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paiement sécurisé</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">
+                  Validation instantanée et reçu automatique
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                <ShieldCheck size={14} />
+                Sécurisé
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <CheckCircle2 size={14} className="text-emerald-600" />
+                Confirmation rapide
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <CheckCircle2 size={14} className="text-emerald-600" />
+                Reçu dans ton espace
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <CheckCircle2 size={14} className="text-emerald-600" />
+                Support 7j/7
+              </div>
+            </div>
+          </section>
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
             <div className="flex flex-wrap items-center gap-6">
               <div className="flex flex-col">
@@ -505,10 +694,34 @@ export function Booking() {
                       void pay();
                     }
                   }}
-                  disabled={paying || !!paymentMessage}
+                  disabled={paying || !!paymentMessage || !mobileInstantValid}
                 >
                   {paying ? 'Paiement…' : 'Payer maintenant'}
                 </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!bookingResult?.id) return;
+                    await navigator.clipboard?.writeText?.(bookingResult.id);
+                    setCopyRefFeedback('copied');
+                    if (copyRefTimerRef.current) {
+                      window.clearTimeout(copyRefTimerRef.current);
+                    }
+                    copyRefTimerRef.current = window.setTimeout(
+                      () => setCopyRefFeedback('idle'),
+                      2000,
+                    );
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-slate-400"
+                >
+                  <Copy size={12} />
+                  {copyRefFeedback === 'copied' ? 'Réf copiée' : 'Copier la référence'}
+                </button>
+                {paymentBlockedReason && (
+                  <span className="text-amber-600">{paymentBlockedReason}</span>
+                )}
               </div>
               <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
                 <div>
@@ -544,11 +757,53 @@ export function Booking() {
                   {paymentError}
                 </div>
               )}
+              {receiptData && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Recu disponible
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        Un recu PDF est envoye par email {receiptData.passengerEmail ? `a ${receiptData.passengerEmail}` : ''}.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadReceipt}
+                        className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                      >
+                        Telecharger PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePrintReceipt}
+                        className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-slate-500"
+                      >
+                        Imprimer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {paymentSteps.length > 0 && (
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Simulation du paiement
                   </p>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-emerald-400 transition-all"
+                      style={{
+                        width: `${Math.round(
+                          (paymentSteps.filter((step) => step.status === 'done').length /
+                            Math.max(paymentSteps.length, 1)) *
+                            100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
                   <div className="space-y-2">
                     {paymentSteps.map((step) => (
                       <div key={step.id} className="flex items-center gap-3 text-sm">
@@ -649,6 +904,9 @@ export function Booking() {
                         Saisis ton numéro (MTN, Orange, Moov) et confirme depuis ton téléphone.
                       </p>
                     </div>
+                    <span className="ml-auto rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase text-emerald-700">
+                      Instantané
+                    </span>
                   </div>
                   {selectedMethodId === 'mobile-instant' && (
                     <div className="space-y-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm">
@@ -671,10 +929,21 @@ export function Booking() {
                       <input
                         type="tel"
                         value={instantMobileForm.phone}
-                        onChange={(e) => setInstantMobileForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        onChange={(e) => {
+                          setInstantPhoneTouched(true);
+                          setInstantMobileForm((prev) => ({ ...prev, phone: e.target.value }));
+                        }}
+                        onBlur={() => setInstantPhoneTouched(true)}
                         placeholder="+225 07 07 07 07"
-                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 placeholder:text-slate-400"
+                        className={`h-11 w-full rounded-xl border bg-white px-3 text-slate-900 placeholder:text-slate-400 ${
+                          instantPhoneTouched && !mobileInstantValid
+                            ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-200'
+                            : 'border-slate-300'
+                        }`}
                       />
+                      {instantPhoneTouched && !mobileInstantValid && (
+                        <p className="text-xs text-rose-600">Numéro mobile money invalide.</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -722,6 +991,21 @@ export function Booking() {
                   </button>
                 ))}
             </div>
+            {account?.id && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <span>
+                  Moyen par défaut: <span className="font-semibold text-slate-900">{defaultMethodLabel}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSetDefaultMethod}
+                  disabled={selectedMethodId === defaultMethodId}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-400 disabled:opacity-60"
+                >
+                  {selectedMethodId === defaultMethodId ? 'Déjà par défaut' : 'Définir par défaut'}
+                </button>
+              </div>
+            )}
             {showMethodForm && token && (
               <form className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4" onSubmit={handleAddPaymentMethod}>
                 <div className="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -843,6 +1127,11 @@ export function Booking() {
                   {selectedMethod?.label || (selectedMethod?.type === 'CASH' ? 'Espèces' : 'À choisir')}
                 </span>
               </div>
+              {paymentBlockedReason && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  {paymentBlockedReason}
+                </div>
+              )}
               <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-900">
                 <span>Total</span>
                 <span>{amount.toLocaleString()} XOF</span>

@@ -7,6 +7,11 @@ import { MetricsController, MetricsMiddleware } from './metrics';
 import { DataSource } from 'typeorm';
 
 const dbUrl = process.env.DATABASE_URL || '';
+const isProd = process.env.NODE_ENV === 'production';
+const migrationsRun =
+  process.env.MIGRATIONS_RUN !== undefined
+    ? ['1', 'true', 'yes', 'on'].includes(process.env.MIGRATIONS_RUN.toLowerCase())
+    : isProd;
 
 @Module({
   imports: [
@@ -14,7 +19,9 @@ const dbUrl = process.env.DATABASE_URL || '';
       type: 'postgres',
       url: dbUrl,
       entities: [Wallet, Hold, PaymentMethod],
-      synchronize: true,
+      synchronize: false,
+      migrationsRun,
+      migrations: [__dirname + '/migrations/*{.ts,.js}'],
     }),
     TypeOrmModule.forFeature([Wallet, Hold, PaymentMethod]),
   ],

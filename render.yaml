@@ -131,6 +131,8 @@ services:
     envVars:
       - fromGroup: shared-config
       - fromGroup: shared-infra
+      - key: MIGRATIONS_RUN
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
@@ -158,6 +160,8 @@ services:
     dockerfilePath: Dockerfile
     envVars:
       - fromGroup: shared-infra
+      - key: MIGRATIONS_RUN
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
@@ -186,6 +190,8 @@ services:
     envVars:
       - fromGroup: shared-infra
       - fromGroup: service-urls
+      - key: MIGRATIONS_RUN
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
@@ -212,6 +218,8 @@ services:
     dockerfilePath: Dockerfile
     envVars:
       - fromGroup: shared-infra
+      - key: MIGRATIONS_RUN
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
@@ -258,6 +266,8 @@ services:
     dockerfilePath: Dockerfile
     envVars:
       - fromGroup: shared-infra
+      - key: MIGRATIONS_RUN
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: covoiturage-postgres
