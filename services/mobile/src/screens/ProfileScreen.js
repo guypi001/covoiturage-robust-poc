@@ -8,9 +8,11 @@ import { InputField } from '../components/InputField';
 import { registerPushToken, sendTestNotification } from '../api/notifications';
 import { getMyBookings, getMyPaymentMethods } from '../api/bff';
 import { useAuth } from '../auth';
+import { useToast } from '../ui/ToastContext';
 
 export function ProfileScreen({ navigation }) {
-  const { token, account, login, logout, refreshProfile } = useAuth();
+  const { token, account, guest, login, logout, refreshProfile } = useAuth();
+  const { showToast } = useToast();
   const [pushStatus, setPushStatus] = useState('Notifications desactivees');
   const [pushBusy, setPushBusy] = useState(false);
   const [email, setEmail] = useState('');
@@ -51,6 +53,10 @@ export function ProfileScreen({ navigation }) {
 
   const handleEnablePush = async () => {
     try {
+      if (Platform.OS === 'android' && Constants.appOwnership === 'expo') {
+        setPushStatus('Indisponible sur Expo Go (Android)');
+        return;
+      }
       setPushBusy(true);
       const settings = await Notifications.getPermissionsAsync();
       let status = settings.status;
@@ -71,8 +77,10 @@ export function ProfileScreen({ navigation }) {
         platform: Platform.OS,
       });
       setPushStatus('Notifications actives');
+      showToast('Notifications actives.', 'success');
     } catch (err) {
       setPushStatus('Erreur activation');
+      showToast('Erreur activation.', 'error');
     } finally {
       setPushBusy(false);
     }
@@ -83,8 +91,10 @@ export function ProfileScreen({ navigation }) {
       setPushBusy(true);
       await sendTestNotification({ ownerId, title: 'KariGo', body: 'Test notification mobile.' });
       setPushStatus('Notification test envoyee');
+      showToast('Notification test envoyee.', 'success');
     } catch (err) {
       setPushStatus('Echec notification test');
+      showToast('Echec notification test.', 'error');
     } finally {
       setPushBusy(false);
     }
@@ -97,7 +107,17 @@ export function ProfileScreen({ navigation }) {
         <Text style={text.subtitle}>Gere tes informations et preferences.</Text>
       </View>
 
-      {!token && (
+      {guest && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Mode visiteur</Text>
+          <Text style={styles.helperText}>
+            Tu peux consulter les trajets sans compte. Pour reserver et discuter, connecte-toi.
+          </Text>
+          <PrimaryButton label="Se connecter / s'inscrire" onPress={logout} />
+        </View>
+      )}
+
+      {!token && !guest && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Connexion</Text>
           <InputField
@@ -106,6 +126,9 @@ export function ProfileScreen({ navigation }) {
             onChangeText={setEmail}
             placeholder="email@exemple.com"
             autoCapitalize="none"
+            autoComplete="email"
+            textContentType="emailAddress"
+            autoCorrect={false}
           />
           <InputField
             label="Mot de passe"
@@ -113,6 +136,8 @@ export function ProfileScreen({ navigation }) {
             onChangeText={setPassword}
             placeholder="********"
             secureTextEntry
+            textContentType="password"
+            autoComplete="password"
           />
           {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
           <PrimaryButton
@@ -121,8 +146,10 @@ export function ProfileScreen({ navigation }) {
               setAuthError('');
               try {
                 await login(email, password);
+                showToast('Connexion reussie.', 'success');
               } catch (err) {
                 setAuthError('Connexion impossible.');
+                showToast('Connexion impossible.', 'error');
               }
             }}
           />
@@ -183,6 +210,8 @@ export function ProfileScreen({ navigation }) {
             <PrimaryButton label="Messagerie" variant="ghost" onPress={() => navigation.navigate('Messages')} />
             <PrimaryButton label="Se deconnecter" onPress={logout} />
           </>
+        ) : guest ? (
+          <PrimaryButton label="Quitter le mode visiteur" onPress={logout} />
         ) : null}
       </View>
     </ScrollView>
@@ -309,6 +338,10 @@ const styles = StyleSheet.create({
     color: '#991b1b',
     fontSize: 13,
     fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 13,
+    color: colors.slate600,
   },
   loadingText: {
     fontSize: 12,

@@ -4,14 +4,16 @@ import { colors, radius, spacing, text } from '../theme';
 import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { CitySelect } from '../components/CitySelect';
+import { DateTimeField } from '../components/DateTimeField';
 
 export function SearchScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
   const [toCity, setToCity] = useState('Yamoussoukro');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(null);
   const [seats, setSeats] = useState('1');
   const [budget, setBudget] = useState('');
-  const [timeWindow, setTimeWindow] = useState('');
+  const [afterTime, setAfterTime] = useState(null);
+  const [beforeTime, setBeforeTime] = useState(null);
   const [liveTracking, setLiveTracking] = useState(true);
   const [sort, setSort] = useState('soonest');
 
@@ -24,13 +26,20 @@ export function SearchScreen({ navigation }) {
         <CitySelect label="Depart" placeholder="Abidjan" value={fromCity} onChange={setFromCity} />
         <CitySelect label="Arrivee" placeholder="Yamoussoukro" value={toCity} onChange={setToCity} />
         <View style={styles.row}>
-          <InputField label="Date" placeholder="2026-01-17" value={date} onChangeText={setDate} />
+          <DateTimeField
+            label="Date"
+            mode="date"
+            value={date}
+            onChange={setDate}
+            hint="Choisis une date ou laisse vide."
+          />
           <InputField
             label="Places"
             placeholder="1"
             value={seats}
             onChangeText={setSeats}
             keyboardType="number-pad"
+            hint="1 a 7 places."
           />
         </View>
         <View style={styles.row}>
@@ -40,8 +49,12 @@ export function SearchScreen({ navigation }) {
             value={budget}
             onChangeText={setBudget}
             keyboardType="number-pad"
+            hint="Optionnel."
           />
-          <InputField label="Heure" placeholder="08:00 - 12:00" value={timeWindow} onChangeText={setTimeWindow} />
+          <View style={styles.timeColumn}>
+            <DateTimeField label="Apres" mode="time" value={afterTime} onChange={setAfterTime} />
+            <DateTimeField label="Avant" mode="time" value={beforeTime} onChange={setBeforeTime} />
+          </View>
         </View>
 
         <View style={styles.sortRow}>
@@ -77,10 +90,15 @@ export function SearchScreen({ navigation }) {
             navigation.navigate('Results', {
               from: fromCity,
               to: toCity,
-              date: date || undefined,
+              date: date ? date.toISOString().slice(0, 10) : undefined,
               seats,
               priceMax: budget || undefined,
-              timeWindow,
+              departureAfter: afterTime
+                ? afterTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                : undefined,
+              departureBefore: beforeTime
+                ? beforeTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                : undefined,
               liveTracking,
               sort,
             })
@@ -111,6 +129,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.md,
+    alignItems: 'flex-start',
+  },
+  timeColumn: {
+    flex: 1,
+    gap: spacing.sm,
   },
   sortRow: {
     flexDirection: 'row',

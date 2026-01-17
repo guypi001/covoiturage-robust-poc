@@ -5,9 +5,13 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { getRide } from '../api/ride';
 import { createBooking } from '../api/bff';
 import { useAuth } from '../auth';
+import { useToast } from '../ui/ToastContext';
+import { useModal } from '../ui/ModalContext';
 
 export function RideDetailScreen({ route }) {
   const { token } = useAuth();
+  const { showToast } = useToast();
+  const { showModal } = useModal();
   const [ride, setRide] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -110,22 +114,27 @@ export function RideDetailScreen({ route }) {
           label="Reserver"
           onPress={async () => {
             if (!token) {
-              setBookingStatus('Connecte-toi pour reserver.');
+              showToast('Connecte-toi pour reserver.', 'error');
               return;
             }
             if (!rideId) return;
-            setBookingStatus('');
-            try {
-              await createBooking(token, { rideId, seats: 1 });
-              setBookingStatus('Reservation enregistree.');
-            } catch (err) {
-              setBookingStatus('Impossible de reserver.');
-            }
+            showModal({
+              title: 'Confirmer la reservation',
+              message: 'Tu confirmes la reservation pour ce trajet ?',
+              confirmLabel: 'Reserver',
+              onConfirm: async () => {
+                try {
+                  await createBooking(token, { rideId, seats: 1 });
+                  showToast('Reservation enregistree.', 'success');
+                } catch (err) {
+                  showToast('Impossible de reserver.', 'error');
+                }
+              },
+            });
           }}
         />
         <PrimaryButton label="Contacter" variant="ghost" />
       </View>
-      {bookingStatus ? <Text style={styles.bookingStatus}>{bookingStatus}</Text> : null}
     </ScrollView>
   );
 }
@@ -273,9 +282,5 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
-  },
-  bookingStatus: {
-    fontSize: 12,
-    color: colors.slate600,
   },
 });

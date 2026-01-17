@@ -16,15 +16,6 @@ const normalizeRide = (ride) => ({
   liveTracking: Boolean(ride.liveTrackingEnabled),
 });
 
-const parseTimeWindow = (value) => {
-  if (!value) return {};
-  const parts = value.split('-').map((item) => item.trim());
-  return {
-    departureAfter: parts[0] || undefined,
-    departureBefore: parts[1] || undefined,
-  };
-};
-
 export function ResultsScreen({ navigation, route }) {
   const params = route?.params || {};
   const [rides, setRides] = useState([]);
@@ -38,7 +29,6 @@ export function ResultsScreen({ navigation, route }) {
       setLoading(true);
       setError('');
       try {
-        const timeWindow = parseTimeWindow(params.timeWindow);
         const data = await searchRides({
           from: params.from,
           to: params.to,
@@ -47,7 +37,8 @@ export function ResultsScreen({ navigation, route }) {
           priceMax: params.priceMax ? Number(String(params.priceMax).replace(/[^\d]/g, '')) : undefined,
           sort: params.sort,
           liveTracking: params.liveTracking,
-          ...timeWindow,
+          departureAfter: params.departureAfter,
+          departureBefore: params.departureBefore,
         });
         if (active) {
           setRides(Array.isArray(data) ? data.map(normalizeRide) : []);

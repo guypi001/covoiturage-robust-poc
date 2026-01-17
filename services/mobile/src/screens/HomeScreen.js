@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
-import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { CitySelect } from '../components/CitySelect';
+import { DateTimeField } from '../components/DateTimeField';
+import { InputField } from '../components/InputField';
 
 export function HomeScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
   const [toCity, setToCity] = useState('Yamoussoukro');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(null);
+  const [time, setTime] = useState(null);
   const [seats, setSeats] = useState('1');
 
   return (
@@ -25,16 +27,25 @@ export function HomeScreen({ navigation }) {
         <CitySelect label="Depart" placeholder="Abidjan" value={fromCity} onChange={setFromCity} />
         <CitySelect label="Arrivee" placeholder="Yamoussoukro" value={toCity} onChange={setToCity} />
         <View style={styles.row}>
-          <InputField label="Date" placeholder="Aujourd'hui" value={date} onChangeText={setDate} />
-          <InputField label="Places" placeholder="1" value={seats} onChangeText={setSeats} />
+          <DateTimeField label="Date" mode="date" value={date} onChange={setDate} hint="Optionnel" />
+          <DateTimeField label="Heure" mode="time" value={time} onChange={setTime} hint="Optionnel" />
         </View>
+        <InputField
+          label="Places"
+          placeholder="1"
+          value={seats}
+          onChangeText={setSeats}
+          keyboardType="number-pad"
+          hint="1 a 7 places."
+        />
         <PrimaryButton
           label="Lancer la recherche"
           onPress={() =>
             navigation.navigate('Results', {
               from: fromCity,
               to: toCity,
-              date: date || undefined,
+              date: date ? date.toISOString().slice(0, 10) : undefined,
+              time: time ? time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : undefined,
               seats,
             })
           }
