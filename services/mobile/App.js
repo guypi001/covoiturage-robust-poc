@@ -8,7 +8,9 @@ import { SearchScreen } from './src/screens/SearchScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 import { RideDetailScreen } from './src/screens/RideDetailScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { MessagesScreen } from './src/screens/MessagesScreen';
 import { colors } from './src/theme';
+import { AuthProvider } from './src/auth';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -42,13 +44,16 @@ export default function App() {
   return (
     <>
       <StatusBar style="dark" />
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="Results" component={ResultsScreen} options={{ title: 'Resultats' }} />
-          <Stack.Screen name="RideDetail" component={RideDetailScreen} options={{ title: 'Trajet' }} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <AuthProvider>
+        <NavigationContainer>
+          <Stack.Navigator>
+            <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
+            <Stack.Screen name="Results" component={ResultsScreen} options={{ title: 'Resultats' }} />
+            <Stack.Screen name="RideDetail" component={RideDetailScreen} options={{ title: 'Trajet' }} />
+            <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </AuthProvider>
     </>
   );
 }

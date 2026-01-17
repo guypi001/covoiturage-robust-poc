@@ -1,17 +1,71 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { getRide } from '../api/ride';
+import { createBooking } from '../api/bff';
+import { useAuth } from '../auth';
 
-export function RideDetailScreen() {
+export function RideDetailScreen({ route }) {
+  const { token } = useAuth();
+  const [ride, setRide] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [bookingStatus, setBookingStatus] = useState('');
+  const rideId = route?.params?.rideId;
+
+  useEffect(() => {
+    let active = true;
+    const fetchRide = async () => {
+      if (!rideId) return;
+      setLoading(true);
+      setError('');
+      try {
+        const data = await getRide(rideId);
+        if (active) setRide(data);
+      } catch (err) {
+        if (active) setError('Impossible de charger le trajet.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchRide();
+    return () => {
+      active = false;
+    };
+  }, [rideId]);
+
+  const title = ride ? `${ride.originCity} → ${ride.destinationCity}` : 'Trajet';
+  const departureLabel = ride?.departureAt
+    ? new Date(ride.departureAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' })
+    : '--';
+  const priceLabel = ride?.pricePerSeat ? `${Number(ride.pricePerSeat).toLocaleString('fr-FR')} XOF` : '--';
+  const seatsLabel = ride ? `${ride.seatsAvailable}/${ride.seatsTotal}` : '--';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.titleRow}>
-        <Text style={text.title}>Abidjan → Yamoussoukro</Text>
-        <View style={styles.liveBadge}>
-          <Text style={styles.liveBadgeText}>Suivi en direct</Text>
-        </View>
+        <Text style={text.title}>{title}</Text>
+        {ride?.liveTrackingEnabled ? (
+          <View style={styles.liveBadge}>
+            <Text style={styles.liveBadgeText}>Suivi en direct</Text>
+          </View>
+        ) : null}
       </View>
-      <Text style={text.subtitle}>Depart aujourd'hui a 08:30 · 2 places disponibles</Text>
+      <Text style={text.subtitle}>Depart {departureLabel} · {seatsLabel} places</Text>
+
+      {loading && (
+        <View style={styles.loadingCard}>
+          <ActivityIndicator color={colors.sky600} />
+          <Text style={styles.loadingText}>Chargement du trajet...</Text>
+        </View>
+      )}
+
+      {error ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.mapPlaceholder}>
         <Text style={styles.mapText}>Carte du trajet</Text>
@@ -20,12 +74,12 @@ export function RideDetailScreen() {
       <View style={styles.cardRow}>
         <View style={styles.statCard}>
           <Text style={styles.statLabel}>Prix</Text>
-          <Text style={styles.statValue}>2 000 XOF</Text>
+          <Text style={styles.statValue}>{priceLabel}</Text>
           <Text style={styles.statMeta}>par siege</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statLabel}>Places</Text>
-          <Text style={styles.statValue}>2</Text>
+          <Text style={styles.statValue}>{ride?.seatsAvailable ?? '--'}</Text>
           <Text style={styles.statMeta}>disponibles</Text>
         </View>
       </View>
@@ -34,25 +88,44 @@ export function RideDetailScreen() {
         <Text style={styles.sectionTitle}>Conducteur</Text>
         <View style={styles.driverRow}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>K</Text>
+            <Text style={styles.avatarText}>{ride?.driverLabel?.charAt?.(0) || 'K'}</Text>
           </View>
           <View>
-            <Text style={styles.driverName}>Kouadio</Text>
-            <Text style={styles.driverMeta}>Profil verifie · 4.8/5</Text>
+            <Text style={styles.driverName}>{ride?.driverLabel || 'Conducteur KariGo'}</Text>
+            <Text style={styles.driverMeta}>Profil verifie · Support KariGo</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Suivi en direct</Text>
-        <Text style={styles.infoValue}>Actif 15 min avant le depart</Text>
+        <Text style={styles.infoValue}>
+          {ride?.liveTrackingEnabled ? 'Actif 15 min avant le depart' : 'Non active par le chauffeur'}
+        </Text>
         <Text style={styles.infoHint}>Disponible jusqu'a l'arrivee. Notification des grandes villes.</Text>
       </View>
 
       <View style={styles.actions}>
-        <PrimaryButton label="Reserver" />
+        <PrimaryButton
+          label="Reserver"
+          onPress={async () => {
+            if (!token) {
+              setBookingStatus('Connecte-toi pour reserver.');
+              return;
+            }
+            if (!rideId) return;
+            setBookingStatus('');
+            try {
+              await createBooking(token, { rideId, seats: 1 });
+              setBookingStatus('Reservation enregistree.');
+            } catch (err) {
+              setBookingStatus('Impossible de reserver.');
+            }
+          }}
+        />
         <PrimaryButton label="Contacter" variant="ghost" />
       </View>
+      {bookingStatus ? <Text style={styles.bookingStatus}>{bookingStatus}</Text> : null}
     </ScrollView>
   );
 }
@@ -93,6 +166,30 @@ const styles = StyleSheet.create({
   },
   mapText: {
     color: colors.slate600,
+    fontWeight: '600',
+  },
+  loadingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: colors.slate600,
+  },
+  errorCard: {
+    backgroundColor: '#fee2e2',
+    padding: spacing.md,
+    borderRadius: radius.md,
+  },
+  errorText: {
+    color: '#991b1b',
+    fontSize: 13,
     fontWeight: '600',
   },
   cardRow: {
@@ -176,5 +273,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  bookingStatus: {
+    fontSize: 12,
+    color: colors.slate600,
   },
 });

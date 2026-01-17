@@ -8,7 +8,7 @@ import { CitySelect } from '../components/CitySelect';
 export function HomeScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
   const [toCity, setToCity] = useState('Yamoussoukro');
-  const [date, setDate] = useState('Aujourd\'hui');
+  const [date, setDate] = useState('');
   const [seats, setSeats] = useState('1');
 
   return (
@@ -28,7 +28,17 @@ export function HomeScreen({ navigation }) {
           <InputField label="Date" placeholder="Aujourd'hui" value={date} onChangeText={setDate} />
           <InputField label="Places" placeholder="1" value={seats} onChangeText={setSeats} />
         </View>
-        <PrimaryButton label="Lancer la recherche" onPress={() => navigation.navigate('Results')} />
+        <PrimaryButton
+          label="Lancer la recherche"
+          onPress={() =>
+            navigation.navigate('Results', {
+              from: fromCity,
+              to: toCity,
+              date: date || undefined,
+              seats,
+            })
+          }
+        />
       </View>
 
       <View style={styles.highlights}>

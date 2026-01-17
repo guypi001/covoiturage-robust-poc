@@ -1,7 +1,15 @@
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, radius, text } from '../theme';
 
-export function InputField({ label, value, onChangeText, placeholder, keyboardType }) {
+export function InputField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  secureTextEntry,
+  autoCapitalize,
+}) {
   return (
     <View style={styles.wrapper}>
       {label ? <Text style={text.label}>{label}</Text> : null}
@@ -12,6 +20,8 @@ export function InputField({ label, value, onChangeText, placeholder, keyboardTy
         placeholderTextColor={colors.slate500}
         style={styles.input}
         keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={autoCapitalize}
       />
     </View>
   );

@@ -1,15 +1,53 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { InputField } from '../components/InputField';
 import { registerPushToken, sendTestNotification } from '../api/notifications';
+import { getMyBookings, getMyPaymentMethods } from '../api/bff';
+import { useAuth } from '../auth';
 
-export function ProfileScreen() {
+export function ProfileScreen({ navigation }) {
+  const { token, account, login, logout, refreshProfile } = useAuth();
   const [pushStatus, setPushStatus] = useState('Notifications desactivees');
   const [pushBusy, setPushBusy] = useState(false);
-  const [ownerId] = useState('demo-user');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [bookings, setBookings] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [loadingData, setLoadingData] = useState(false);
+
+  const ownerId = account?.id || 'demo-user';
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!token) return;
+      setLoadingData(true);
+      try {
+        await refreshProfile();
+        const [bookingRes, paymentRes] = await Promise.all([
+          getMyBookings(token),
+          getMyPaymentMethods(token),
+        ]);
+        if (active) {
+          setBookings(bookingRes?.data || bookingRes?.items || []);
+          setPaymentMethods(Array.isArray(paymentRes) ? paymentRes : []);
+        }
+      } catch (err) {
+        if (active) setAuthError('Impossible de charger les donnees.');
+      } finally {
+        if (active) setLoadingData(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [token, refreshProfile]);
 
   const handleEnablePush = async () => {
     try {
@@ -59,30 +97,66 @@ export function ProfileScreen() {
         <Text style={text.subtitle}>Gere tes informations et preferences.</Text>
       </View>
 
-      <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>K</Text>
+      {!token && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Connexion</Text>
+          <InputField
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="email@exemple.com"
+            autoCapitalize="none"
+          />
+          <InputField
+            label="Mot de passe"
+            value={password}
+            onChangeText={setPassword}
+            placeholder="********"
+            secureTextEntry
+          />
+          {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
+          <PrimaryButton
+            label="Se connecter"
+            onPress={async () => {
+              setAuthError('');
+              try {
+                await login(email, password);
+              } catch (err) {
+                setAuthError('Connexion impossible.');
+              }
+            }}
+          />
         </View>
-        <View style={styles.profileInfo}>
-          <Text style={styles.name}>KariGo User</Text>
-          <Text style={styles.meta}>Compte individuel · Abidjan</Text>
-          <View style={styles.tagRow}>
-            <Text style={styles.tag}>Verification OK</Text>
-            <Text style={styles.tag}>Suivi actif</Text>
+      )}
+
+      {token && (
+        <View style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{account?.fullName?.charAt?.(0) || 'K'}</Text>
+          </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.name}>{account?.fullName || account?.companyName || 'KariGo User'}</Text>
+            <Text style={styles.meta}>{account?.type === 'COMPANY' ? 'Compte entreprise' : 'Compte individuel'}</Text>
+            <View style={styles.tagRow}>
+              <Text style={styles.tag}>Verification OK</Text>
+              <Text style={styles.tag}>Suivi actif</Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>4</Text>
-          <Text style={styles.statLabel}>Trajets effectues</Text>
+      {token && (
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{bookings.length}</Text>
+            <Text style={styles.statLabel}>Reservations</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{paymentMethods.length}</Text>
+            <Text style={styles.statLabel}>Moyens de paiement</Text>
+          </View>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>2</Text>
-          <Text style={styles.statLabel}>Reservations</Text>
-        </View>
-      </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Preferences</Text>
@@ -98,12 +172,18 @@ export function ProfileScreen() {
           <Text style={styles.preferenceLabel}>Mode trajet</Text>
           <Text style={styles.preferenceValue}>Passager</Text>
         </View>
+        {loadingData && token ? <Text style={styles.loadingText}>Chargement des donnees...</Text> : null}
       </View>
 
       <View style={styles.actions}>
         <PrimaryButton label="Activer les notifications" onPress={handleEnablePush} disabled={pushBusy} />
         <PrimaryButton label="Envoyer un test" variant="ghost" onPress={handleTestPush} disabled={pushBusy} />
-        <PrimaryButton label="Se deconnecter" />
+        {token ? (
+          <>
+            <PrimaryButton label="Messagerie" variant="ghost" onPress={() => navigation.navigate('Messages')} />
+            <PrimaryButton label="Se deconnecter" onPress={logout} />
+          </>
+        ) : null}
       </View>
     </ScrollView>
   );
@@ -224,5 +304,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.slate900,
+  },
+  errorText: {
+    color: '#991b1b',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  loadingText: {
+    fontSize: 12,
+    color: colors.slate500,
   },
 });

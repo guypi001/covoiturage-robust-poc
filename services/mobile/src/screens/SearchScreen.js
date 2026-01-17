@@ -8,10 +8,10 @@ import { CitySelect } from '../components/CitySelect';
 export function SearchScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
   const [toCity, setToCity] = useState('Yamoussoukro');
-  const [date, setDate] = useState('2026-01-17');
+  const [date, setDate] = useState('');
   const [seats, setSeats] = useState('1');
-  const [budget, setBudget] = useState('5000');
-  const [timeWindow, setTimeWindow] = useState('08:00 - 12:00');
+  const [budget, setBudget] = useState('');
+  const [timeWindow, setTimeWindow] = useState('');
   const [liveTracking, setLiveTracking] = useState(true);
   const [sort, setSort] = useState('soonest');
 
@@ -71,7 +71,21 @@ export function SearchScreen({ navigation }) {
           <Switch value={liveTracking} onValueChange={setLiveTracking} trackColor={{ true: colors.sky500 }} />
         </View>
 
-        <PrimaryButton label="Afficher les resultats" onPress={() => navigation.navigate('Results')} />
+        <PrimaryButton
+          label="Afficher les resultats"
+          onPress={() =>
+            navigation.navigate('Results', {
+              from: fromCity,
+              to: toCity,
+              date: date || undefined,
+              seats,
+              priceMax: budget || undefined,
+              timeWindow,
+              liveTracking,
+              sort,
+            })
+          }
+        />
       </View>
     </ScrollView>
   );
