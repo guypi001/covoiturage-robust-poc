@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Booking } from './entities';
+import { Booking, PaymentMethodType } from './entities';
 import { EventBus } from './event-bus';
 
 type PaymentCapturedEvent = {
@@ -14,7 +14,7 @@ type PaymentCapturedEvent = {
 
 const CARD_PROVIDERS = new Set(['VISA', 'MASTERCARD', 'CARTE']);
 const MOBILE_PROVIDERS = new Set(['MTN Money', 'Orange Money', 'Moov Money']);
-const METHOD_TYPES = new Set(['CARD', 'MOBILE_MONEY', 'CASH']);
+const METHOD_TYPES = new Set<PaymentMethodType>(['CARD', 'MOBILE_MONEY', 'CASH']);
 
 @Injectable()
 export class PaymentListener implements OnModuleInit {
@@ -38,7 +38,7 @@ export class PaymentListener implements OnModuleInit {
       this.logger.warn(`payment.captured ignored: booking ${evt.bookingId} not found`);
       return;
     }
-    if (evt.paymentMethodType && !METHOD_TYPES.has(evt.paymentMethodType)) {
+    if (evt.paymentMethodType && !METHOD_TYPES.has(evt.paymentMethodType as PaymentMethodType)) {
       this.logger.warn(`payment.captured invalid paymentMethodType ${evt.paymentMethodType}`);
       return;
     }
@@ -57,7 +57,9 @@ export class PaymentListener implements OnModuleInit {
       }
     }
     booking.status = 'PAID';
-    if (evt.paymentMethodType) booking.paymentMethod = evt.paymentMethodType;
+    if (evt.paymentMethodType) {
+      booking.paymentMethod = evt.paymentMethodType as PaymentMethodType;
+    }
     if (evt.provider) booking.paymentProvider = evt.provider;
     if (evt.paymentMethodId) booking.paymentMethodId = evt.paymentMethodId;
     await this.bookings.save(booking);

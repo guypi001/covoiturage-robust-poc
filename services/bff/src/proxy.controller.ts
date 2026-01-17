@@ -406,9 +406,11 @@ export class ProxyController {
         ? `${booking.paymentMethod} (${booking.paymentProvider})`
         : booking.paymentMethod
       : 'Paiement';
+    const passengerName =
+      account.fullName || account.companyName || account.email || 'Client KariGo';
     const pdfBuffer = buildReceiptPdfBuffer({
       bookingId: booking.id,
-      passengerName: account.fullName || account.companyName || account.email,
+      passengerName,
       passengerEmail: account.email,
       originCity: ride?.originCity ?? undefined,
       destinationCity: ride?.destinationCity ?? undefined,

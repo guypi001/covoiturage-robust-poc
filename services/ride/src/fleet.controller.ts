@@ -126,7 +126,7 @@ export class FleetAdminController {
 
       for (const row of upcomingStats) {
         const entry = ensureEntry(row.vehicleId);
-        entry.count = row.count ?? 0;
+        entry.count = Number(row.count ?? 0);
         entry.nextDeparture = row.nextDepartureAt ? new Date(row.nextDepartureAt) : null;
       }
 
@@ -208,7 +208,7 @@ export class FleetAdminController {
             metadata: row.metadata,
             createdAt: row.created_at,
             updatedAt: row.updated_at,
-          }),
+          } as Partial<VehicleSchedule>),
         );
       }
     }
