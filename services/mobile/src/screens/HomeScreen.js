@@ -5,6 +5,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { CitySelect } from '../components/CitySelect';
 import { DateTimeField } from '../components/DateTimeField';
 import { InputField } from '../components/InputField';
+import { BrandMark } from '../components/BrandMark';
 
 export function HomeScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
@@ -16,6 +17,7 @@ export function HomeScreen({ navigation }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
+        <BrandMark size="lg" />
         <Text style={text.title}>Voyage sereinement avec KariGo</Text>
         <Text style={text.subtitle}>
           Trouve un trajet fiable, avec suivi en direct, en quelques secondes.

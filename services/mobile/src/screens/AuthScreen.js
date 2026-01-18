@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { BrandMark } from '../components/BrandMark';
 import { useAuth } from '../auth';
 import { useToast } from '../ui/ToastContext';
 
@@ -35,7 +36,7 @@ export function AuthScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
-        <Text style={styles.brand}>KariGo</Text>
+        <BrandMark size="lg" />
         <Text style={styles.title}>Bienvenue</Text>
         <Text style={styles.subtitle}>
           Connecte-toi pour reserver, ou continue en visiteur.
@@ -118,13 +119,6 @@ const styles = StyleSheet.create({
   hero: {
     gap: spacing.sm,
   },
-  brand: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.sky600,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
   title: {
     fontSize: 28,
     fontWeight: '700',
@@ -148,7 +142,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   switchButtonActive: {
-    borderColor: colors.sky500,
+    borderColor: colors.brandPrimary,
     backgroundColor: colors.sky100,
   },
   switchText: {
@@ -157,7 +151,7 @@ const styles = StyleSheet.create({
     color: colors.slate600,
   },
   switchTextActive: {
-    color: colors.sky600,
+    color: colors.brandPrimary,
   },
   card: {
     backgroundColor: colors.white,

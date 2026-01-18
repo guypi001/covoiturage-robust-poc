@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -36,7 +37,7 @@ function MainTabs() {
         headerStyle: { backgroundColor: colors.white },
         headerTitleStyle: { color: colors.slate900 },
         tabBarStyle: { backgroundColor: colors.white },
-        tabBarActiveTintColor: colors.sky600,
+        tabBarActiveTintColor: colors.brandPrimary,
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Accueil' }} />
@@ -51,7 +52,15 @@ function MainTabs() {
 }
 
 function RootNavigator() {
-  const { token, guest } = useAuth();
+  const { token, guest, hydrated } = useAuth();
+
+  if (!hydrated) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white }}>
+        <ActivityIndicator size="large" color={colors.brandPrimary} />
+      </View>
+    );
+  }
 
   if (!token && !guest) {
     return (

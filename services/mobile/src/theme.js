@@ -1,4 +1,7 @@
 export const colors = {
+  brandPrimary: '#0ea5e9',
+  brandDark: '#0f172a',
+  brandAccent: '#10b981',
   slate900: '#0f172a',
   slate800: '#1e293b',
   slate700: '#334155',

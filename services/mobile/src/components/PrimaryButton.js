@@ -26,7 +26,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonPrimary: {
-    backgroundColor: colors.slate900,
+    backgroundColor: colors.brandPrimary,
   },
   buttonGhost: {
     borderWidth: 1,
