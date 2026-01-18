@@ -43,11 +43,11 @@ const ensureUploadDir = () => {
 };
 
 const profileStorage = diskStorage({
-  destination: (_req, _file, cb) => {
+  destination: (_req: Request, _file: Express.Multer.File, cb: (error: any, destination: string) => void) => {
     ensureUploadDir();
     cb(null, PROFILE_UPLOAD_DIR);
   },
-  filename: (_req, file, cb) => {
+  filename: (_req: Request, file: Express.Multer.File, cb: (error: any, filename: string) => void) => {
     const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
     cb(null, `${Date.now()}-${randomUUID()}${ext}`);
   },
@@ -91,7 +91,7 @@ export class ProfileController {
     FileInterceptor('file', {
       storage: profileStorage,
       limits: { fileSize: 2 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
+      fileFilter: (_req: Request, file: Express.Multer.File, cb: (error: any, acceptFile: boolean) => void) => {
         if (!ALLOWED_MIME.has(file.mimetype)) {
           cb(new BadRequestException('invalid_file_type'), false);
           return;

@@ -126,7 +126,7 @@ export class FleetAdminController {
 
       for (const row of upcomingStats) {
         const entry = ensureEntry(row.vehicleId);
-        entry.count = Number(row.count ?? 0);
+        entry.count = Number.parseInt(String(row.count ?? 0), 10);
         entry.nextDeparture = row.nextDepartureAt ? new Date(row.nextDepartureAt) : null;
       }
 
@@ -190,26 +190,26 @@ export class FleetAdminController {
 
       for (const row of upcomingSamples) {
         const entry = ensureEntry(row.vehicle_id);
-        entry.samples.push(
-          this.schedules.create({
-            id: row.id,
-            companyId: row.company_id,
-            vehicleId: row.vehicle_id,
-            originCity: row.origin_city,
-            destinationCity: row.destination_city,
-            departureAt: row.departure_at,
-            arrivalEstimate: row.arrival_estimate,
-            plannedSeats: row.planned_seats,
-            reservedSeats: row.reserved_seats,
-            pricePerSeat: row.price_per_seat,
-            recurrence: row.recurrence,
-            status: row.status,
-            notes: row.notes,
-            metadata: row.metadata,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at,
-          } as Partial<VehicleSchedule>),
-        );
+        const schedule = this.schedules.create();
+        Object.assign(schedule, {
+          id: row.id,
+          companyId: row.company_id,
+          vehicleId: row.vehicle_id,
+          originCity: row.origin_city,
+          destinationCity: row.destination_city,
+          departureAt: row.departure_at,
+          arrivalEstimate: row.arrival_estimate,
+          plannedSeats: row.planned_seats,
+          reservedSeats: row.reserved_seats,
+          pricePerSeat: row.price_per_seat,
+          recurrence: row.recurrence,
+          status: row.status,
+          notes: row.notes,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        });
+        entry.samples.push(schedule);
       }
     }
 

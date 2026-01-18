@@ -407,13 +407,17 @@ export class ProxyController {
       throw new ForbiddenException('booking_forbidden');
     }
 
-    let ride: any;
-    try {
-      ride = await axios.get(`${RIDE}/rides/${booking.rideId}`, {
-        headers: this.internalHeaders(),
-      }).then((response) => response.data);
-    } catch {
-      ride = null;
+    let ride: any = null;
+    if (booking?.rideId) {
+      try {
+        ride = await axios
+          .get(`${RIDE}/rides/${booking.rideId}`, {
+            headers: this.internalHeaders(),
+          })
+          .then((response) => response.data);
+      } catch {
+        ride = null;
+      }
     }
 
     const paymentMethodLabel = booking.paymentMethod

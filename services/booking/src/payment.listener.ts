@@ -8,7 +8,7 @@ type PaymentCapturedEvent = {
   bookingId: string;
   amount?: number;
   provider?: string;
-  paymentMethodType?: string;
+  paymentMethodType?: PaymentMethodType;
   paymentMethodId?: string;
 };
 
@@ -38,7 +38,7 @@ export class PaymentListener implements OnModuleInit {
       this.logger.warn(`payment.captured ignored: booking ${evt.bookingId} not found`);
       return;
     }
-    if (evt.paymentMethodType && !METHOD_TYPES.has(evt.paymentMethodType as PaymentMethodType)) {
+    if (evt.paymentMethodType && !METHOD_TYPES.has(evt.paymentMethodType)) {
       this.logger.warn(`payment.captured invalid paymentMethodType ${evt.paymentMethodType}`);
       return;
     }

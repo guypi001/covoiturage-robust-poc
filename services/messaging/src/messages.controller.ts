@@ -30,6 +30,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { wsSendToUsers } from './ws';
+import type { Request } from 'express';
 
 @Controller()
 export class MessagesController {
@@ -113,18 +114,18 @@ export class MessagesController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: (_req, _file, cb) => {
+        destination: (_req: Request, _file: Express.Multer.File, cb: (error: any, destination: string) => void) => {
           const uploadDir = path.join(process.cwd(), 'uploads', 'messages');
           fs.mkdirSync(uploadDir, { recursive: true });
           cb(null, uploadDir);
         },
-        filename: (_req, file, cb) => {
+        filename: (_req: Request, file: Express.Multer.File, cb: (error: any, filename: string) => void) => {
           const ext = path.extname(file.originalname || '').toLowerCase() || '.dat';
           cb(null, `${Date.now()}-${randomUUID()}${ext}`);
         },
       }),
       limits: { fileSize: 5 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
+      fileFilter: (_req: Request, file: Express.Multer.File, cb: (error: any, acceptFile: boolean) => void) => {
         const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
         if (!allowed.includes(file.mimetype)) {
           cb(new BadRequestException('invalid_file_type'), false);

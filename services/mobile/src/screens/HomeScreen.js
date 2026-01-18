@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { CitySelect } from '../components/CitySelect';
-import { DateTimeField } from '../components/DateTimeField';
-import { InputField } from '../components/InputField';
 import { BrandMark } from '../components/BrandMark';
 import { loadPreferences, savePreferences } from '../preferences';
+import { useAuth } from '../auth';
+import { getMyBookings, getMyRides } from '../api/bff';
+import { useToast } from '../ui/ToastContext';
 
 export function HomeScreen({ navigation }) {
-  const [fromCity, setFromCity] = useState('Abidjan');
-  const [toCity, setToCity] = useState('Yamoussoukro');
-  const [date, setDate] = useState(null);
-  const [time, setTime] = useState(null);
-  const [seats, setSeats] = useState('1');
+  const { token } = useAuth();
+  const { showToast } = useToast();
   const [prefs, setPrefs] = useState(null);
-  const [errors, setErrors] = useState({});
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [tripItems, setTripItems] = useState([]);
+  const [tripError, setTripError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -23,10 +22,6 @@ export function HomeScreen({ navigation }) {
       const stored = await loadPreferences();
       if (!active) return;
       setPrefs(stored);
-      const defaults = stored.homeDefaults || {};
-      setFromCity(defaults.fromCity || 'Abidjan');
-      setToCity(defaults.toCity || 'Yamoussoukro');
-      setSeats(defaults.seats || '1');
     };
     hydrate();
     return () => {
@@ -36,29 +31,96 @@ export function HomeScreen({ navigation }) {
 
   useEffect(() => {
     if (!prefs) return;
-    const next = {
-      ...prefs,
-      homeDefaults: {
-        ...(prefs.homeDefaults || {}),
-        fromCity,
-        toCity,
-        seats,
-      },
-    };
-    setPrefs(next);
-    savePreferences(next);
-  }, [fromCity, toCity, seats]);
+    savePreferences(prefs);
+  }, [prefs]);
 
-  const validation = useMemo(() => {
-    const next = {};
-    if (!fromCity.trim()) next.fromCity = 'Ville requise.';
-    if (!toCity.trim()) next.toCity = 'Ville requise.';
-    const seatCount = Number.parseInt(seats, 10);
-    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 7) {
-      next.seats = 'Entre 1 et 7 places.';
-    }
-    return next;
-  }, [fromCity, toCity, seats]);
+  useEffect(() => {
+    let active = true;
+    const loadTrips = async () => {
+      if (!token) {
+        setTripItems([]);
+        return;
+      }
+      setLoadingTrips(true);
+      setTripError('');
+      try {
+        const [bookingRes, rideRes] = await Promise.all([getMyBookings(token), getMyRides(token)]);
+        if (!active) return;
+        const bookings = Array.isArray(bookingRes?.data) ? bookingRes.data : bookingRes?.items || [];
+        const rides = Array.isArray(rideRes?.data) ? rideRes.data : rideRes?.items || [];
+        const combined = [
+          ...bookings.map((booking) => ({
+            kind: 'booking',
+            id: booking.id,
+            item: booking,
+            ride: booking.ride || booking,
+          })),
+          ...rides.map((ride) => ({
+            kind: 'ride',
+            id: ride.id,
+            item: ride,
+            ride,
+          })),
+        ];
+        setTripItems(combined);
+      } catch (err) {
+        if (active) {
+          setTripError('Impossible de charger tes trajets.');
+          showToast('Impossible de charger tes trajets.', 'error');
+        }
+      } finally {
+        if (active) setLoadingTrips(false);
+      }
+    };
+    loadTrips();
+    return () => {
+      active = false;
+    };
+  }, [token, showToast]);
+
+  const classifyTrip = (departureAt) => {
+    if (!departureAt) return 'upcoming';
+    const ts = Date.parse(departureAt);
+    if (!Number.isFinite(ts)) return 'upcoming';
+    const now = Date.now();
+    if (ts > now + 5 * 60 * 1000) return 'upcoming';
+    if (now - ts <= 3 * 60 * 60 * 1000) return 'upcoming';
+    return 'past';
+  };
+
+  const formatDate = (value) => {
+    if (!value) return 'Date inconnue';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString('fr-FR', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const upcomingTrips = useMemo(() => {
+    return tripItems
+      .filter((trip) => classifyTrip(trip.ride?.departureAt || trip.item?.departureAt) === 'upcoming')
+      .sort((a, b) => {
+        const aTime = Date.parse(a.ride?.departureAt || '') || 0;
+        const bTime = Date.parse(b.ride?.departureAt || '') || 0;
+        return aTime - bTime;
+      })
+      .slice(0, 4);
+  }, [tripItems]);
+
+  const pastTrips = useMemo(() => {
+    return tripItems
+      .filter((trip) => classifyTrip(trip.ride?.departureAt || trip.item?.departureAt) === 'past')
+      .sort((a, b) => {
+        const aTime = Date.parse(a.ride?.departureAt || '') || 0;
+        const bTime = Date.parse(b.ride?.departureAt || '') || 0;
+        return bTime - aTime;
+      })
+      .slice(0, 3);
+  }, [tripItems]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -71,49 +133,81 @@ export function HomeScreen({ navigation }) {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Rechercher un trajet</Text>
-        <CitySelect
-          label="Depart"
-          placeholder="Abidjan"
-          value={fromCity}
-          onChange={setFromCity}
-          error={errors.fromCity}
-        />
-        <CitySelect
-          label="Arrivee"
-          placeholder="Yamoussoukro"
-          value={toCity}
-          onChange={setToCity}
-          error={errors.toCity}
-        />
-        <View style={styles.row}>
-          <DateTimeField label="Date" mode="date" value={date} onChange={setDate} hint="Optionnel" />
-          <DateTimeField label="Heure" mode="time" value={time} onChange={setTime} hint="Optionnel" />
+        <Text style={styles.sectionTitle}>Actions rapides</Text>
+        <View style={styles.quickRow}>
+          <Pressable style={styles.actionTile} onPress={() => navigation.navigate('Search')}>
+            <Text style={styles.actionTitle}>Rechercher un trajet</Text>
+            <Text style={styles.actionMeta}>Accede aux filtres avances</Text>
+          </Pressable>
+          <Pressable style={styles.actionTileAlt} onPress={() => navigation.navigate('Trips')}>
+            <Text style={styles.actionTitle}>Mes trajets</Text>
+            <Text style={styles.actionMeta}>Gere tes reservations</Text>
+          </Pressable>
         </View>
-        <InputField
-          label="Places"
-          placeholder="1"
-          value={seats}
-          onChangeText={setSeats}
-          keyboardType="number-pad"
-          hint="1 a 7 places."
-          error={errors.seats}
-        />
-        <PrimaryButton
-          label="Lancer la recherche"
-          onPress={() => {
-            setErrors(validation);
-            if (Object.keys(validation).length) return;
-            navigation.navigate('Results', {
-              from: fromCity,
-              to: toCity,
-              date: date ? date.toISOString().slice(0, 10) : undefined,
-              time: time ? time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : undefined,
-              seats,
-            });
-          }}
-        />
       </View>
+
+      {token ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Mes trajets a venir</Text>
+          {loadingTrips ? <Text style={styles.helperText}>Chargement...</Text> : null}
+          {tripError ? <Text style={styles.helperError}>{tripError}</Text> : null}
+          {!loadingTrips && upcomingTrips.length === 0 && !tripError ? (
+            <Text style={styles.helperText}>Aucun trajet a venir pour le moment.</Text>
+          ) : null}
+          {upcomingTrips.map((trip) => {
+            const ride = trip.ride || {};
+            return (
+              <Pressable
+                key={`${trip.kind}-${trip.id}`}
+                style={styles.tripCard}
+                onPress={() => navigation.navigate('TripDetail', { type: trip.kind, item: trip.item })}
+              >
+                <Text style={styles.tripRoute}>
+                  {ride.originCity || ride.origin || 'Depart'} → {ride.destinationCity || ride.destination || 'Arrivee'}
+                </Text>
+                <Text style={styles.tripMeta}>{formatDate(ride.departureAt || trip.item?.departureAt)}</Text>
+                <Text style={styles.tripMeta}>
+                  {trip.kind === 'booking' ? 'Passager' : 'Conducteur'} · {ride.seatsAvailable != null ? `${ride.seatsAvailable} places` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Mes trajets</Text>
+          <Text style={styles.helperText}>Connecte-toi pour retrouver tes trajets a venir et passes.</Text>
+          <PrimaryButton label="Se connecter" onPress={() => navigation.navigate('Profile')} />
+        </View>
+      )}
+
+      {token ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Mes trajets passes</Text>
+          {loadingTrips ? <Text style={styles.helperText}>Chargement...</Text> : null}
+          {!loadingTrips && pastTrips.length === 0 && !tripError ? (
+            <Text style={styles.helperText}>Aucun trajet termine pour le moment.</Text>
+          ) : null}
+          {pastTrips.map((trip) => {
+            const ride = trip.ride || {};
+            return (
+              <Pressable
+                key={`${trip.kind}-${trip.id}`}
+                style={styles.tripCard}
+                onPress={() => navigation.navigate('TripDetail', { type: trip.kind, item: trip.item })}
+              >
+                <Text style={styles.tripRoute}>
+                  {ride.originCity || ride.origin || 'Depart'} → {ride.destinationCity || ride.destination || 'Arrivee'}
+                </Text>
+                <Text style={styles.tripMeta}>{formatDate(ride.departureAt || trip.item?.departureAt)}</Text>
+                <Text style={styles.tripMeta}>
+                  {trip.kind === 'booking' ? 'Passager' : 'Conducteur'} · {ride.pricePerSeat ? `${ride.pricePerSeat} FCFA` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
       <View style={styles.highlights}>
         <View style={styles.highlightCard}>
@@ -154,26 +248,60 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.slate900,
   },
-  row: {
+  quickRow: {
     flexDirection: 'row',
     gap: spacing.md,
   },
-  highlights: {
-    gap: spacing.md,
-  },
-  highlightCard: {
-    backgroundColor: colors.sky100,
-    padding: spacing.md,
+  actionTile: {
+    flex: 1,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    padding: spacing.md,
+    backgroundColor: colors.slate50,
   },
-  highlightTitle: {
+  actionTileAlt: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.sky200,
+    padding: spacing.md,
+    backgroundColor: colors.sky50,
+  },
+  actionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.slate900,
   },
-  highlightText: {
+  actionMeta: {
     marginTop: 6,
+    fontSize: 12,
+    color: colors.slate500,
+  },
+  tripCard: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate50,
+    gap: 6,
+  },
+  tripRoute: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  tripMeta: {
+    fontSize: 12,
+    color: colors.slate600,
+  },
+  helperText: {
     fontSize: 13,
-    color: colors.slate700,
+    color: colors.slate600,
+  },
+  helperError: {
+    fontSize: 13,
+    color: '#991b1b',
+    fontWeight: '600',
   },
 });

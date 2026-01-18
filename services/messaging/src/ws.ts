@@ -45,7 +45,7 @@ export function attachWebSocketServer(server: any) {
   wss.on('connection', (socket: WebSocket) => {
     const meta: ClientMeta = { socket };
 
-    socket.on('message', (raw) => {
+    socket.on('message', (raw: any) => {
       try {
         const msg = JSON.parse(raw.toString());
         if (msg?.type === 'subscribe' && typeof msg?.userId === 'string') {
