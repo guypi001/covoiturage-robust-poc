@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   },
   arrow: {
     fontSize: 20,
-    color: colors.sky500,
+    color: colors.brandPrimary,
   },
   footerRow: {
     flexDirection: 'row',
