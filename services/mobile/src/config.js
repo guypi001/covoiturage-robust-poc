@@ -14,3 +14,11 @@ export const CONFIG = {
   walletUrl: (process.env.EXPO_PUBLIC_WALLET_URL || `${apiBase}/wallet`).replace(/\/$/, ''),
   notificationUrl: (process.env.EXPO_PUBLIC_NOTIFICATION_URL || `${apiBase}/notification`).replace(/\/$/, ''),
 };
+
+export function resolveAssetUrl(value) {
+  if (!value) return value;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  if (value.startsWith('file://') || value.startsWith('content://')) return value;
+  if (value.startsWith('/')) return `${baseUrl}${value}`;
+  return `${baseUrl}/${value}`;
+}

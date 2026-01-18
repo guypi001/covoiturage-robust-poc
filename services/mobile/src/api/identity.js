@@ -43,3 +43,34 @@ export async function verifyGmailOtp(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function uploadProfilePhoto(token, file) {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch(`${ENDPOINTS.identity}/profiles/me/photo`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.message || 'photo_upload_failed');
+  }
+  return response.json();
+}
+
+export async function deleteProfilePhoto(token) {
+  const response = await fetch(`${ENDPOINTS.identity}/profiles/me/photo`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.message || 'photo_delete_failed');
+  }
+  return response.json();
+}

@@ -34,13 +34,20 @@ const classifyTrip = (departureAt) => {
   return 'past';
 };
 
-export function TripsScreen() {
+const formatTripLabel = (status) => {
+  if (status === 'current') return 'En cours';
+  if (status === 'past') return 'Passe';
+  return 'A venir';
+};
+
+export function TripsScreen({ navigation }) {
   const { token } = useAuth();
   const { showToast } = useToast();
   const [tab, setTab] = useState('upcoming');
   const [bookings, setBookings] = useState([]);
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     let active = true;
@@ -64,17 +71,22 @@ export function TripsScreen() {
     };
   }, [token, showToast]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   const filteredBookings = useMemo(() => {
     return bookings.filter((booking) => {
       const ride = booking?.ride;
       const departureAt = ride?.departureAt || booking?.departureAt || booking?.createdAt;
       return classifyTrip(departureAt) === tab;
     });
-  }, [bookings, tab]);
+  }, [bookings, tab, nowTick]);
 
   const filteredRides = useMemo(() => {
     return rides.filter((ride) => classifyTrip(ride?.departureAt) === tab);
-  }, [rides, tab]);
+  }, [rides, tab, nowTick]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -107,7 +119,11 @@ export function TripsScreen() {
         {filteredBookings.map((booking) => {
           const ride = booking?.ride || {};
           return (
-            <View key={booking.id || ride.id} style={styles.card}>
+            <Pressable
+              key={booking.id || ride.id}
+              style={styles.card}
+              onPress={() => navigation.navigate('TripDetail', { type: 'booking', item: booking })}
+            >
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>
                   {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
@@ -116,7 +132,10 @@ export function TripsScreen() {
               </View>
               <Text style={styles.cardMeta}>{formatDate(ride.departureAt || booking.departureAt)}</Text>
               <Text style={styles.cardMeta}>{ride.pricePerSeat ? `${ride.pricePerSeat} FCFA` : ''}</Text>
-            </View>
+              <Text style={styles.cardMeta}>
+                {formatTripLabel(classifyTrip(ride.departureAt || booking.departureAt))}
+              </Text>
+            </Pressable>
           );
         })}
       </View>
@@ -128,7 +147,11 @@ export function TripsScreen() {
           <Text style={styles.helper}>Aucun trajet publie pour cette periode.</Text>
         ) : null}
         {filteredRides.map((ride) => (
-          <View key={ride.id} style={styles.card}>
+          <Pressable
+            key={ride.id}
+            style={styles.card}
+            onPress={() => navigation.navigate('TripDetail', { type: 'ride', item: ride })}
+          >
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>
                 {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
@@ -139,7 +162,8 @@ export function TripsScreen() {
             <Text style={styles.cardMeta}>
               {ride.seatsAvailable != null ? `${ride.seatsAvailable} places dispo` : ''}
             </Text>
-          </View>
+            <Text style={styles.cardMeta}>{formatTripLabel(classifyTrip(ride.departureAt))}</Text>
+          </Pressable>
         ))}
       </View>
     </ScrollView>

@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export type ParticipantType = 'INDIVIDUAL' | 'COMPANY';
 
@@ -17,10 +17,22 @@ export class SendMessageDto {
   @IsIn(['INDIVIDUAL', 'COMPANY'])
   recipientType!: ParticipantType;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(2000)
-  body!: string;
+  body?: string;
+
+  @IsOptional()
+  @IsString()
+  attachmentUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  attachmentName?: string;
+
+  @IsOptional()
+  @IsString()
+  attachmentType?: string;
 
   @IsOptional()
   @IsString()
@@ -51,6 +63,15 @@ export class MarkConversationReadDto {
   @IsString()
   @IsNotEmpty()
   userId!: string;
+}
+
+export class MessageReadDto {
+  @IsString()
+  @IsNotEmpty()
+  userId!: string;
+
+  @IsArray()
+  messageIds!: string[];
 }
 
 export class NotificationsQueryDto {

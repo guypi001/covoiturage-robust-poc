@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { InputField } from '../components/InputField';
@@ -11,23 +11,50 @@ export function AuthScreen() {
   const { login, register, continueAsGuest } = useAuth();
   const { showToast } = useToast();
   const [mode, setMode] = useState('login');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const validation = useMemo(() => {
+    const next = {};
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed || !/^\S+@\S+\.\S+$/.test(emailTrimmed)) {
+      next.email = 'Email invalide.';
+    }
+    if (!password || password.length < 8) {
+      next.password = '8 caracteres minimum.';
+    }
+    if (mode === 'register') {
+      if (!firstName.trim() || firstName.trim().length < 2) {
+        next.firstName = 'Prenom requis.';
+      }
+      if (!lastName.trim() || lastName.trim().length < 2) {
+        next.lastName = 'Nom requis.';
+      }
+    }
+    return next;
+  }, [email, password, firstName, lastName, mode]);
 
   const handleSubmit = async () => {
+    setErrors(validation);
+    if (Object.keys(validation).length) return;
     try {
       setBusy(true);
+      const emailTrimmed = email.trim();
       if (mode === 'register') {
-        await register({ fullName, email, password });
+        const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+        await register({ fullName, email: emailTrimmed, password });
         showToast('Compte cree.', 'success');
       } else {
-        await login(email, password);
+        await login(emailTrimmed, password);
         showToast('Connexion reussie.', 'success');
       }
-    } catch {
-      showToast('Impossible de continuer.', 'error');
+    } catch (err) {
+      const message = String(err?.message || 'Impossible de continuer.');
+      showToast(message, 'error');
     } finally {
       setBusy(false);
     }
@@ -63,12 +90,22 @@ export function AuthScreen() {
 
       <View style={styles.card}>
         {mode === 'register' && (
-          <InputField
-            label="Nom complet"
-            value={fullName}
-            onChangeText={setFullName}
-            placeholder="Kouadio Aya"
-          />
+          <>
+            <InputField
+              label="Prenom"
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder="Aya"
+              error={errors.firstName}
+            />
+            <InputField
+              label="Nom"
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="Kouadio"
+              error={errors.lastName}
+            />
+          </>
         )}
         <InputField
           label="Email"
@@ -79,6 +116,7 @@ export function AuthScreen() {
           autoComplete="email"
           textContentType="emailAddress"
           autoCorrect={false}
+          error={errors.email}
         />
         <InputField
           label="Mot de passe"
@@ -88,6 +126,7 @@ export function AuthScreen() {
           secureTextEntry
           textContentType="password"
           autoComplete="password"
+          error={errors.password}
         />
         <PrimaryButton
           label={mode === 'register' ? 'Creer mon compte' : 'Se connecter'}

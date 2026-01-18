@@ -7,6 +7,7 @@ import { createBooking } from '../api/bff';
 import { useAuth } from '../auth';
 import { useToast } from '../ui/ToastContext';
 import { useModal } from '../ui/ModalContext';
+import { getFirstName } from '../utils/name';
 
 export function RideDetailScreen({ route }) {
   const { token } = useAuth();
@@ -45,6 +46,7 @@ export function RideDetailScreen({ route }) {
     : '--';
   const priceLabel = ride?.pricePerSeat ? `${Number(ride.pricePerSeat).toLocaleString('fr-FR')} XOF` : '--';
   const seatsLabel = ride ? `${ride.seatsAvailable}/${ride.seatsTotal}` : '--';
+  const driverLabel = getFirstName(ride?.driverLabel) || ride?.driverLabel || 'Conducteur KariGo';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -92,10 +94,10 @@ export function RideDetailScreen({ route }) {
         <Text style={styles.sectionTitle}>Conducteur</Text>
         <View style={styles.driverRow}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{ride?.driverLabel?.charAt?.(0) || 'K'}</Text>
+            <Text style={styles.avatarText}>{driverLabel.charAt(0) || 'K'}</Text>
           </View>
           <View>
-            <Text style={styles.driverName}>{ride?.driverLabel || 'Conducteur KariGo'}</Text>
+            <Text style={styles.driverName}>{driverLabel}</Text>
             <Text style={styles.driverMeta}>Profil verifie · Support KariGo</Text>
           </View>
         </View>

@@ -12,6 +12,13 @@ export async function getMyBookings(token) {
   });
 }
 
+export async function cancelBooking(token, bookingId) {
+  return apiFetch(`${ENDPOINTS.bff}/me/bookings/${bookingId}/cancel`, {
+    method: 'POST',
+    headers: withAuth(token),
+  });
+}
+
 export async function getMyRides(token) {
   return apiFetch(`${ENDPOINTS.bff}/me/rides`, {
     headers: withAuth(token),

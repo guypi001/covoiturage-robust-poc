@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { InputField } from '../components/InputField';
@@ -12,9 +14,13 @@ import {
   requestGmailOtp,
   updateCompanyProfile,
   updateIndividualProfile,
+  deleteProfilePhoto,
+  uploadProfilePhoto,
   verifyGmailOtp,
 } from '../api/identity';
 import { useToast } from '../ui/ToastContext';
+import { resolveAssetUrl } from '../config';
+import { getDisplayName } from '../utils/name';
 
 export function ProfileScreen({ navigation }) {
   const { token, account, guest, login, logout, refreshProfile, applyAuth } = useAuth();
@@ -29,24 +35,37 @@ export function ProfileScreen({ navigation }) {
   const [loadingData, setLoadingData] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState('');
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoAsset, setPhotoAsset] = useState(null);
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
   const [tagline, setTagline] = useState('');
+  const [comfortText, setComfortText] = useState('');
+  const [profileErrors, setProfileErrors] = useState({});
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpCode, setOtpCode] = useState('');
 
   const isCompany = account?.type === 'COMPANY';
+  const typeLabel = isCompany ? 'Entreprise' : 'Particulier';
+  const statusLabel =
+    account?.status === 'ACTIVE' ? 'Actif' : account?.status === 'SUSPENDED' ? 'Suspendu' : 'Inconnu';
+  const roleLabel = account?.role === 'ADMIN' ? 'Administrateur' : 'Utilisateur';
 
   useEffect(() => {
     if (!account) return;
     setPhotoUrl(account.profilePhotoUrl || '');
+    setPhotoPreview('');
+    setPhotoAsset(null);
     setFullName(account.fullName || '');
     setCompanyName(account.companyName || '');
+    setRegistrationNumber(account.registrationNumber || '');
     setContactName(account.contactName || '');
     setContactPhone(account.contactPhone || '');
     setTagline(account.tagline || '');
+    setComfortText((account.comfortPreferences || []).join(', '));
   }, [account]);
 
   const ownerId = account?.id || 'demo-user';
@@ -55,10 +74,73 @@ export function ProfileScreen({ navigation }) {
     Constants.expoConfig?.extra?.eas?.projectId ||
     process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 
-  const profileLabel = useMemo(() => {
-    if (!account) return 'KariGo User';
-    return account.fullName || account.companyName || account.email || 'KariGo User';
-  }, [account]);
+  const profileLabel = useMemo(() => getDisplayName(account), [account]);
+
+  const validateProfile = () => {
+    const next = {};
+    if (isCompany) {
+      if (!companyName.trim()) next.companyName = 'Nom requis.';
+    } else {
+      if (!fullName.trim() || fullName.trim().length < 2) next.fullName = 'Nom requis.';
+    }
+    if (registrationNumber && registrationNumber.trim().length < 4) {
+      next.registrationNumber = 'Immatriculation invalide.';
+    }
+    if (contactPhone && !/^[+0-9\s-]{8,20}$/.test(contactPhone.trim())) {
+      next.contactPhone = 'Numero invalide.';
+    }
+    if (tagline && tagline.length > 80) {
+      next.tagline = '80 caracteres maximum.';
+    }
+    return next;
+  };
+
+  const handlePickPhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showToast('Autorisation photo requise.', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    const fileName = asset.fileName || `profile-${Date.now()}.jpg`;
+    const fileType = asset.mimeType || 'image/jpeg';
+    setPhotoPreview(asset.uri);
+    setPhotoAsset({
+      uri: asset.uri,
+      name: fileName,
+      type: fileType,
+    });
+  };
+
+  const handleCapturePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      showToast('Autorisation camera requise.', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    const fileName = asset.fileName || `profile-${Date.now()}.jpg`;
+    const fileType = asset.mimeType || 'image/jpeg';
+    setPhotoPreview(asset.uri);
+    setPhotoAsset({
+      uri: asset.uri,
+      name: fileName,
+      type: fileType,
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -146,16 +228,35 @@ export function ProfileScreen({ navigation }) {
     }
   };
 
+  const statsLabel = `${bookings.length} reservations · ${paymentMethods.length} moyens de paiement`;
+
+  const comfortPreferences = comfortText
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const SectionHeader = ({ icon, title, meta }) => (
+    <View style={styles.sectionHeaderRow}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name={icon} size={16} color={colors.slate600} />
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {meta ? <Text style={styles.sectionMeta}>{meta}</Text> : null}
+    </View>
+  );
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={text.title}>Mon profil</Text>
-        <Text style={text.subtitle}>Gere tes informations et preferences.</Text>
+        <Text style={text.title}>Personnalisation du profil</Text>
+        <Text style={text.subtitle}>
+          Mets a jour ta photo, tes preferences de confort et l experience affichee sur ton profil.
+        </Text>
       </View>
 
       {guest && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Mode visiteur</Text>
+          <SectionHeader icon="person-outline" title="Mode visiteur" />
           <Text style={styles.helperText}>
             Tu peux consulter les trajets sans compte. Pour reserver et discuter, connecte-toi.
           </Text>
@@ -165,7 +266,7 @@ export function ProfileScreen({ navigation }) {
 
       {!token && !guest && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Connexion</Text>
+          <SectionHeader icon="log-in-outline" title="Connexion" />
           <InputField
             label="Email"
             value={email}
@@ -205,18 +306,20 @@ export function ProfileScreen({ navigation }) {
       {token && (
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatarImage} />
+            {photoPreview || photoUrl ? (
+              <Image source={{ uri: resolveAssetUrl(photoPreview || photoUrl) }} style={styles.avatarImage} />
             ) : (
               <Text style={styles.avatarText}>{profileLabel.charAt(0)}</Text>
             )}
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.name}>{profileLabel}</Text>
-            <Text style={styles.meta}>{account?.type === 'COMPANY' ? 'Compte entreprise' : 'Compte individuel'}</Text>
+            <Text style={styles.meta}>{typeLabel}</Text>
+            <Text style={styles.meta}>{account?.email || ''}</Text>
             <View style={styles.tagRow}>
-              <Text style={styles.tag}>Verification OK</Text>
-              <Text style={styles.tag}>Suivi actif</Text>
+              <Text style={styles.tag}>{statusLabel}</Text>
+              <Text style={styles.tag}>{roleLabel}</Text>
+              <Text style={styles.tag}>{isCompany ? 'Entreprise verifiee' : 'Conducteur verifie'}</Text>
             </View>
           </View>
         </View>
@@ -235,8 +338,22 @@ export function ProfileScreen({ navigation }) {
         </View>
       )}
 
+      {token && (
+        <View style={styles.quickActions}>
+          <Pressable style={styles.actionPill} onPress={() => navigation.navigate('Messages')}>
+            <Text style={styles.actionText}>Messagerie</Text>
+          </Pressable>
+          <Pressable style={styles.actionPill} onPress={() => navigation.navigate('Trips')}>
+            <Text style={styles.actionText}>Mes trajets</Text>
+          </Pressable>
+          <Pressable style={styles.actionPill} onPress={handleEnablePush} disabled={pushBusy}>
+            <Text style={styles.actionText}>Notifications</Text>
+          </Pressable>
+        </View>
+      )}
+
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Preferences</Text>
+        <SectionHeader icon="pulse-outline" title="Apercu du compte" meta={statsLabel} />
         <View style={styles.preferenceRow}>
           <Text style={styles.preferenceLabel}>Notifications</Text>
           <Text style={styles.preferenceValue}>{pushStatus}</Text>
@@ -254,16 +371,33 @@ export function ProfileScreen({ navigation }) {
 
       {token && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Edition du profil</Text>
-          <InputField
-            label="Photo (URL)"
-            value={photoUrl}
-            onChangeText={setPhotoUrl}
-            placeholder="https://"
-            autoCapitalize="none"
-            autoCorrect={false}
-            hint="Colle l'URL de ta photo."
-          />
+          <SectionHeader icon="create-outline" title="Edition du profil" meta="Informations publiques" />
+          <View style={styles.photoRow}>
+            <PrimaryButton label="Prendre une photo" variant="ghost" onPress={handleCapturePhoto} />
+            <PrimaryButton label="Galerie" variant="ghost" onPress={handlePickPhoto} />
+            {photoPreview || photoUrl ? (
+              <PrimaryButton
+                label="Supprimer"
+                variant="ghost"
+                onPress={async () => {
+                  if (!token) return;
+                  setProfileBusy(true);
+                  try {
+                    const updated = await deleteProfilePhoto(token);
+                    applyAuth({ token, account: updated });
+                    setPhotoPreview('');
+                    setPhotoAsset(null);
+                    setPhotoUrl('');
+                    showToast('Photo supprimee.', 'success');
+                  } catch (err) {
+                    showToast('Impossible de supprimer.', 'error');
+                  } finally {
+                    setProfileBusy(false);
+                  }
+                }}
+              />
+            ) : null}
+          </View>
           {isCompany ? (
             <>
               <InputField
@@ -271,6 +405,14 @@ export function ProfileScreen({ navigation }) {
                 value={companyName}
                 onChangeText={setCompanyName}
                 placeholder="KariGo Transport"
+                error={profileErrors.companyName}
+              />
+              <InputField
+                label="Immatriculation"
+                value={registrationNumber}
+                onChangeText={setRegistrationNumber}
+                placeholder="RC-123456"
+                error={profileErrors.registrationNumber}
               />
               <InputField
                 label="Contact principal"
@@ -284,39 +426,64 @@ export function ProfileScreen({ navigation }) {
                 onChangeText={setContactPhone}
                 placeholder="+225 01 23 45 67 89"
                 keyboardType="phone-pad"
+                error={profileErrors.contactPhone}
               />
             </>
           ) : (
-            <InputField
-              label="Nom complet"
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Kouadio Aya"
-            />
+            <>
+              <InputField
+                label="Nom complet"
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Kouadio Aya"
+                error={profileErrors.fullName}
+              />
+              <InputField
+                label="Preferences de confort (separees par une virgule)"
+                value={comfortText}
+                onChangeText={setComfortText}
+                placeholder="Musique douce, Pause cafe, Climatisation legere"
+                hint="Jusqu a 10 preferences."
+              />
+            </>
           )}
           <InputField
-            label="Signature"
+            label="Accroche affichee sur ton profil"
             value={tagline}
             onChangeText={setTagline}
-            placeholder="Conducteur fiable et ponctuel."
-            hint="Affiche un court message sur tes trajets."
+            placeholder="Exemple: Conducteur attentif - Climatisation et playlist sur-mesure."
+            hint="Affichee sur ta fiche publique et dans les conversations."
+            error={profileErrors.tagline}
           />
           <PrimaryButton
-            label="Mettre a jour"
+            label="Sauvegarder"
             disabled={profileBusy}
             onPress={async () => {
               if (!token) return;
+              const nextErrors = validateProfile();
+              setProfileErrors(nextErrors);
+              if (Object.keys(nextErrors).length) return;
               setProfileBusy(true);
               try {
+                let currentAccount = account;
+                if (photoAsset) {
+                  const uploaded = await uploadProfilePhoto(token, photoAsset);
+                  currentAccount = uploaded;
+                  setPhotoUrl(uploaded.profilePhotoUrl || '');
+                  setPhotoPreview('');
+                  setPhotoAsset(null);
+                }
                 const payload = {
                   tagline: tagline || undefined,
                   profilePhotoUrl: photoUrl || undefined,
+                  removeProfilePhoto: !photoUrl,
                 };
                 let updated;
                 if (isCompany) {
                   updated = await updateCompanyProfile(token, {
                     ...payload,
                     companyName: companyName || undefined,
+                    registrationNumber: registrationNumber || undefined,
                     contactName: contactName || undefined,
                     contactPhone: contactPhone || undefined,
                   });
@@ -324,9 +491,11 @@ export function ProfileScreen({ navigation }) {
                   updated = await updateIndividualProfile(token, {
                     ...payload,
                     fullName: fullName || undefined,
+                    comfortPreferences: comfortPreferences.length ? comfortPreferences : undefined,
                   });
                 }
-                applyAuth({ token, account: updated });
+                applyAuth({ token, account: updated || currentAccount });
+                setProfileErrors({});
                 showToast('Profil mis a jour.', 'success');
               } catch (err) {
                 showToast('Impossible de mettre a jour.', 'error');
@@ -340,7 +509,7 @@ export function ProfileScreen({ navigation }) {
 
       {token && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Verification email</Text>
+          <SectionHeader icon="mail-outline" title="Verification email" />
           <Text style={styles.helperText}>
             Un code sera envoye a {account?.email || 'ton email'}. Entre-le pour verifier ton compte.
           </Text>
@@ -365,7 +534,7 @@ export function ProfileScreen({ navigation }) {
             }}
           />
           <InputField
-            label="Code"
+            label="Code de verification"
             value={otpCode}
             onChangeText={setOtpCode}
             placeholder="123456"
@@ -404,7 +573,6 @@ export function ProfileScreen({ navigation }) {
         <PrimaryButton label="Envoyer un test" variant="ghost" onPress={handleTestPush} disabled={pushBusy} />
         {token ? (
           <>
-            <PrimaryButton label="Messagerie" variant="ghost" onPress={() => navigation.navigate('Messages')} />
             <PrimaryButton label="Se deconnecter" onPress={logout} />
           </>
         ) : guest ? (
@@ -487,6 +655,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
+  quickActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  actionPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: colors.slate100,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+  },
+  actionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate700,
+  },
   statCard: {
     flex: 1,
     backgroundColor: colors.white,
@@ -513,6 +699,26 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.slate200,
+    gap: spacing.sm,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  sectionMeta: {
+    fontSize: 12,
+    color: colors.slate500,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   actions: {

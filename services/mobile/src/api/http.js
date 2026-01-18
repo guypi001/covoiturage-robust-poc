@@ -29,4 +29,5 @@ export const ENDPOINTS = {
   booking: CONFIG.bookingUrl,
   payment: CONFIG.paymentUrl,
   wallet: CONFIG.walletUrl,
+  notification: CONFIG.notificationUrl,
 };

@@ -7,6 +7,8 @@ import {
   Param,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -15,12 +17,19 @@ import {
   ConversationMessagesQueryDto,
   ConversationQueryDto,
   MarkConversationReadDto,
+  MessageReadDto,
   NotificationsQueryDto,
   ParticipantType,
   SendMessageDto,
 } from './dto';
 import { EventBus } from './event-bus';
 import { messageReadCounter, messageSentCounter } from './metrics';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import fs from 'fs';
+import path from 'path';
+import { randomUUID } from 'crypto';
+import { wsSendToUsers } from './ws';
 
 @Controller()
 export class MessagesController {
@@ -90,10 +99,50 @@ export class MessagesController {
       recipientType: message.recipientType,
       recipientLabel: message.recipientLabel,
       body: message.body,
+      attachmentUrl: message.attachmentUrl,
+      attachmentName: message.attachmentName,
+      attachmentType: message.attachmentType,
       status: message.status,
       readAt: message.readAt,
       deliveredAt: message.deliveredAt,
       createdAt: message.createdAt,
+    };
+  }
+
+  @Post('attachments')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const uploadDir = path.join(process.cwd(), 'uploads', 'messages');
+          fs.mkdirSync(uploadDir, { recursive: true });
+          cb(null, uploadDir);
+        },
+        filename: (_req, file, cb) => {
+          const ext = path.extname(file.originalname || '').toLowerCase() || '.dat';
+          cb(null, `${Date.now()}-${randomUUID()}${ext}`);
+        },
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        if (!allowed.includes(file.mimetype)) {
+          cb(new BadRequestException('invalid_file_type'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadAttachment(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('file_required');
+    }
+    return {
+      url: `/uploads/messages/${file.filename}`,
+      name: file.originalname,
+      type: file.mimetype,
+      size: file.size,
     };
   }
 
@@ -146,8 +195,9 @@ export class MessagesController {
       throw new BadRequestException('cannot_message_self');
     }
 
-    const body = dto.body?.trim();
-    if (!body) {
+    const body = dto.body?.trim() || '';
+    const attachmentUrl = dto.attachmentUrl?.trim();
+    if (!body && !attachmentUrl) {
       throw new BadRequestException('empty_message');
     }
 
@@ -169,12 +219,23 @@ export class MessagesController {
           ? conversation.participantAName
           : conversation.participantBName,
       body,
-      status: 'DELIVERED',
+      attachmentUrl: attachmentUrl ?? null,
+      attachmentName: dto.attachmentName?.trim() || null,
+      attachmentType: dto.attachmentType?.trim() || null,
+      status: 'SENT',
     });
 
     const saved = await this.messages.save(message);
+    saved.status = 'DELIVERED';
+    saved.deliveredAt = new Date();
+    await this.messages.save(saved);
 
-    conversation.lastMessagePreview = body.slice(0, 280);
+    const preview = body
+      ? body.slice(0, 280)
+      : dto.attachmentName
+        ? `Piece jointe: ${dto.attachmentName}`
+        : 'Piece jointe';
+    conversation.lastMessagePreview = preview;
     conversation.lastMessageAt = saved.createdAt;
     conversation = await this.conversations.save(conversation);
 
@@ -195,6 +256,19 @@ export class MessagesController {
       recipientId: dto.recipientId,
       body: body.slice(0, 280),
       createdAt: saved.createdAt,
+    });
+
+    wsSendToUsers([dto.senderId, dto.recipientId], {
+      type: 'message.new',
+      data: {
+        message: this.serializeMessage(saved),
+        conversation: this.buildConversationSummary(conversation, dto.senderId),
+      },
+    });
+
+    wsSendToUsers([dto.senderId], {
+      type: 'message.delivered',
+      data: { messageId: saved.id, deliveredAt: saved.deliveredAt?.toISOString() },
     });
 
     return {
@@ -257,25 +331,32 @@ export class MessagesController {
 
     const now = new Date();
 
-    const updateResult = await this.messages
-      .createQueryBuilder()
-      .update(Message)
-      .set({ status: 'READ', readAt: now })
-      .where('conversationId = :conversationId', { conversationId })
-      .andWhere('recipientId = :userId', { userId: body.userId })
-      .andWhere('status <> :read', { read: 'READ' })
-      .execute();
-
-    const affected = Number(updateResult.affected ?? 0);
-    if (affected > 0) {
+    const unreadMessages = await this.messages.find({
+      where: { conversationId, recipientId: body.userId },
+    });
+    const unreadIds = unreadMessages.filter((msg) => msg.status !== 'READ').map((msg) => msg.id);
+    if (unreadIds.length) {
+      await this.messages
+        .createQueryBuilder()
+        .update(Message)
+        .set({ status: 'READ', readAt: now })
+        .where('id IN (:...ids)', { ids: unreadIds })
+        .execute();
       const recipientType = this.getParticipantType(conversation, body.userId);
-      messageReadCounter.inc({ recipient_type: recipientType }, affected);
+      messageReadCounter.inc({ recipient_type: recipientType }, unreadIds.length);
       await this.bus.publish('message.read', {
         conversationId,
         readerId: body.userId,
-        count: affected,
+        count: unreadIds.length,
         readAt: now,
       });
+      wsSendToUsers(
+        unreadMessages.map((msg) => msg.senderId),
+        {
+          type: 'message.read',
+          data: { messageIds: unreadIds, readAt: now.toISOString() },
+        },
+      );
     }
 
     await this.notifications
@@ -288,7 +369,54 @@ export class MessagesController {
       .execute();
 
     const unreadConversations = await this.getUnreadConversationCount(body.userId);
+    wsSendToUsers([body.userId], {
+      type: 'message.read',
+      data: { conversationId, unreadConversations },
+    });
     return { ok: true, unreadConversations };
+  }
+
+  @Post('messages/read')
+  async markMessagesRead(@Body() body: MessageReadDto) {
+    if (!body.messageIds?.length) {
+      throw new BadRequestException('message_ids_required');
+    }
+    const now = new Date();
+    const ids = body.messageIds.slice(0, 200);
+    const messages = await this.messages.find({ where: { id: In(ids) } });
+    const targetIds = messages
+      .filter((msg) => msg.recipientId === body.userId && msg.status !== 'READ')
+      .map((msg) => msg.id);
+
+    if (!targetIds.length) {
+      return { ok: true, messageIds: [] };
+    }
+
+    await this.messages
+      .createQueryBuilder()
+      .update(Message)
+      .set({ status: 'READ', readAt: now })
+      .where('id IN (:...ids)', { ids: targetIds })
+      .execute();
+
+    await this.notifications
+      .createQueryBuilder()
+      .update(MessageNotification)
+      .set({ ack: true, ackedAt: now })
+      .where('messageId IN (:...ids)', { ids: targetIds })
+      .andWhere('recipientId = :userId', { userId: body.userId })
+      .andWhere('ack = false')
+      .execute();
+
+    wsSendToUsers(
+      messages.map((msg) => msg.senderId),
+      {
+        type: 'message.read',
+        data: { messageIds: targetIds, readAt: now.toISOString() },
+      },
+    );
+
+    return { ok: true, messageIds: targetIds };
   }
 
   private async getUnreadConversationCount(userId: string) {

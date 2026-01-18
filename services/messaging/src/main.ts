@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import * as client from 'prom-client';
 import { Request, Response } from 'express';
+import { attachWebSocketServer } from './ws';
 
 function setupMetrics(app: any) {
   const registry = new client.Registry();
@@ -42,6 +43,7 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT) || 3012;
   await app.listen(port, '0.0.0.0');
+  attachWebSocketServer(app.getHttpServer());
   console.log('Messaging service listening on', port);
 }
 

@@ -59,6 +59,28 @@ export class BookingController {
     return b || { error: 'not_found' };
   }
 
+  @Post(':id/cancel')
+  async cancel(@Param('id') id: string, @Body() body: any, @Res() res: Response) {
+    const passengerId = body?.passengerId;
+    if (!passengerId || typeof passengerId !== 'string') {
+      return res.status(HttpStatus.BAD_REQUEST).json({ error: 'passenger_required' });
+    }
+    const booking = await this.bookings.findOne({ where: { id } });
+    if (!booking) {
+      return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+    }
+    if (booking.passengerId !== passengerId) {
+      return res.status(HttpStatus.FORBIDDEN).json({ error: 'forbidden' });
+    }
+    if (booking.status === 'CANCELLED') {
+      return res.status(HttpStatus.OK).json(booking);
+    }
+    booking.status = 'CANCELLED';
+    const saved = await this.bookings.save(booking);
+    this.queueRefresh();
+    return res.status(HttpStatus.OK).json(saved);
+  }
+
   @Post()
   async create(@Body() dto: CreateBookingDto, @Res() res: Response) {
     // 1) lock des sièges côté ride

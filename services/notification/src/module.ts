@@ -50,6 +50,7 @@ export class AppModule implements OnModuleInit {
     private readonly identity: IdentityClient,
     private readonly bookings: BookingClient,
     private readonly rides: RideClient,
+    private readonly push: PushService,
   ) {}
 
   configure(consumer: MiddlewareConsumer) {
@@ -110,6 +111,12 @@ export class AppModule implements OnModuleInit {
     if (!sent) {
       this.logger.warn(`Echec de l'envoi de l'email de notification pour ${recipient.email}`);
     }
+
+    await this.push.sendMessagePush(recipient.id, {
+      conversationId: evt.conversationId,
+      senderId: evt.senderId,
+      preview: evt.body ? `${this.resolveName(sender)}: ${evt.body}` : undefined,
+    });
   }
 
   private async handleBookingConfirmed(evt: BookingConfirmedEvent) {
@@ -130,6 +137,18 @@ export class AppModule implements OnModuleInit {
     });
     if (!sent) {
       this.logger.warn(`Echec de la confirmation email pour ${passenger.email}`);
+    }
+
+    if (evt.departureAt) {
+      const departure = new Date(evt.departureAt);
+      const diffMinutes = (departure.getTime() - Date.now()) / 60000;
+      if (!Number.isNaN(diffMinutes) && diffMinutes <= 15 && diffMinutes >= -5) {
+        await this.push.sendRideImminentPush(passenger.id, {
+          rideId: evt.rideId,
+          originCity: evt.originCity,
+          destinationCity: evt.destinationCity,
+        });
+      }
     }
   }
 
@@ -169,5 +188,11 @@ export class AppModule implements OnModuleInit {
     if (!sent) {
       this.logger.warn(`Echec de l'envoi du recu pour ${passenger.email}`);
     }
+
+    await this.push.sendPaymentPush(passenger.id, {
+      bookingId: booking.id,
+      amount: evt.amount ?? booking.amount ?? undefined,
+      rideId: booking.rideId ?? undefined,
+    });
   }
 }

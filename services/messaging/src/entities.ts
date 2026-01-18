@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 import { ParticipantType } from './dto';
 
-export type MessageStatus = 'DELIVERED' | 'READ';
+export type MessageStatus = 'SENT' | 'DELIVERED' | 'READ';
 
 @Entity('conversations')
 @Index(['pairKey'], { unique: true })
@@ -90,14 +90,23 @@ export class Message {
   @Column({ type: 'text' })
   body!: string;
 
+  @Column({ name: 'attachment_url', type: 'varchar', nullable: true })
+  attachmentUrl?: string | null;
+
+  @Column({ name: 'attachment_name', type: 'varchar', nullable: true })
+  attachmentName?: string | null;
+
+  @Column({ name: 'attachment_type', type: 'varchar', nullable: true })
+  attachmentType?: string | null;
+
   @Column({ type: 'varchar', default: 'DELIVERED' })
   status!: MessageStatus;
 
   @Column({ type: 'timestamptz', nullable: true })
   readAt?: Date | null;
 
-  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
-  deliveredAt!: Date;
+  @Column({ name: 'delivered_at', type: 'timestamptz', nullable: true })
+  deliveredAt?: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

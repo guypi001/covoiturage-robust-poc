@@ -7,6 +7,7 @@ import { HealthController } from './health.controller';
 import { MetricsController, MetricsMiddleware } from './metrics';
 import { InternalController } from './internal.controller';
 import { AdminAccountsController } from './admin.controller';
+import { UploadsController } from './uploads.controller';
 import { Account, OtpToken, PasswordResetToken } from './entities';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
@@ -47,6 +48,7 @@ const migrationsRun =
     InternalController,
     AdminAccountsController,
     AdminToolsController,
+    UploadsController,
   ],
   providers: [AuthService, JwtAuthGuard, OtpService, MailerService, InternalGuard, AdminGuard, AdminRideService],
 })

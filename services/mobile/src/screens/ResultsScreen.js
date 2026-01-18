@@ -4,6 +4,7 @@ import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { RideCard } from '../components/RideCard';
 import { searchRides } from '../api/search';
+import { getFirstName } from '../utils/name';
 
 const normalizeRide = (ride) => ({
   id: ride.rideId || ride.id,
@@ -12,7 +13,7 @@ const normalizeRide = (ride) => ({
   departure: new Date(ride.departureAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' }),
   seats: `${ride.seatsAvailable}/${ride.seatsTotal}`,
   price: `${Number(ride.pricePerSeat).toLocaleString('fr-FR')} XOF`,
-  driver: ride.driverLabel || 'Conducteur KariGo',
+  driver: getFirstName(ride.driverLabel) || ride.driverLabel || 'Conducteur KariGo',
   liveTracking: Boolean(ride.liveTrackingEnabled),
 });
 

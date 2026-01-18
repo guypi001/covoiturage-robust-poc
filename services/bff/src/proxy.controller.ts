@@ -365,6 +365,23 @@ export class ProxyController {
     };
   }
 
+  @Post('me/bookings/:id/cancel')
+  async cancelBooking(@Req() req: any, @Param('id') id: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+    return this.forward(
+      () =>
+        axios.post(
+          `${BOOKING}/bookings/${id}/cancel`,
+          { passengerId: account.id },
+          { headers: this.internalHeaders() },
+        ),
+      'booking',
+    );
+  }
+
   @Get('me/bookings/:id/receipt')
   async bookingReceipt(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
     const account = await this.fetchMyAccount(req);

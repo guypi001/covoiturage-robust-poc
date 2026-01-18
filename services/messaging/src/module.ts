@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Conversation, Message, MessageNotification } from './entities';
 import { MessagesController } from './messages.controller';
+import { UploadsController } from './uploads.controller';
 import { EventBus } from './event-bus';
 import { MetricsController, MetricsMiddleware } from './metrics';
 import { HealthController } from './health.controller';
@@ -25,7 +26,7 @@ const migrationsRun =
     }),
     TypeOrmModule.forFeature([Conversation, Message, MessageNotification]),
   ],
-  controllers: [MessagesController, HealthController, MetricsController],
+  controllers: [MessagesController, UploadsController, HealthController, MetricsController],
   providers: [EventBus],
 })
 export class AppModule {

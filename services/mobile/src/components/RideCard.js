@@ -1,7 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
+import { getFirstName } from '../utils/name';
 
 export function RideCard({ ride }) {
+  const driverLabel = getFirstName(ride.driver) || ride.driver;
+
   return (
     <View style={styles.card}>
       <View style={styles.badgeRow}>
@@ -28,7 +31,7 @@ export function RideCard({ ride }) {
       <View style={styles.footerRow}>
         <View>
           <Text style={styles.price}>{ride.price}</Text>
-          <Text style={styles.driver}>Chauffeur: {ride.driver}</Text>
+          <Text style={styles.driver}>Chauffeur: {driverLabel}</Text>
         </View>
         <View style={styles.pill}>
           <Text style={styles.pillText}>Profil verifie</Text>

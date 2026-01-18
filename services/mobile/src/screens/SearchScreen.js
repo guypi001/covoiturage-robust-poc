@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, Switch } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { CitySelect } from '../components/CitySelect';
 import { DateTimeField } from '../components/DateTimeField';
+import { loadPreferences, savePreferences } from '../preferences';
 
 export function SearchScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
@@ -16,6 +17,66 @@ export function SearchScreen({ navigation }) {
   const [beforeTime, setBeforeTime] = useState(null);
   const [liveTracking, setLiveTracking] = useState(true);
   const [sort, setSort] = useState('soonest');
+  const [prefs, setPrefs] = useState(null);
+  const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    const hydrate = async () => {
+      const stored = await loadPreferences();
+      if (!active) return;
+      setPrefs(stored);
+      const defaults = stored.searchDefaults || {};
+      setFromCity(defaults.fromCity || 'Abidjan');
+      setToCity(defaults.toCity || 'Yamoussoukro');
+      setSeats(defaults.seats || '1');
+      setBudget(defaults.budget || '');
+      setLiveTracking(defaults.liveTracking ?? true);
+      setSort(defaults.sort || 'soonest');
+    };
+    hydrate();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!prefs) return;
+    const next = {
+      ...prefs,
+      searchDefaults: {
+        ...(prefs.searchDefaults || {}),
+        fromCity,
+        toCity,
+        seats,
+        budget,
+        liveTracking,
+        sort,
+      },
+    };
+    setPrefs(next);
+    savePreferences(next);
+  }, [fromCity, toCity, seats, budget, liveTracking, sort]);
+
+  const validation = useMemo(() => {
+    const next = {};
+    if (!fromCity.trim()) next.fromCity = 'Ville requise.';
+    if (!toCity.trim()) next.toCity = 'Ville requise.';
+    const seatCount = Number.parseInt(seats, 10);
+    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 7) {
+      next.seats = 'Entre 1 et 7 places.';
+    }
+    if (budget) {
+      const budgetValue = Number.parseInt(String(budget).replace(/\D/g, ''), 10);
+      if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
+        next.budget = 'Budget invalide.';
+      }
+    }
+    if (afterTime && beforeTime && afterTime.getTime() >= beforeTime.getTime()) {
+      next.time = 'Plage horaire incoherente.';
+    }
+    return next;
+  }, [fromCity, toCity, seats, budget, afterTime, beforeTime]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -23,8 +84,20 @@ export function SearchScreen({ navigation }) {
       <Text style={text.subtitle}>Affiner l'horaire, le budget et le suivi en direct.</Text>
 
       <View style={styles.card}>
-        <CitySelect label="Depart" placeholder="Abidjan" value={fromCity} onChange={setFromCity} />
-        <CitySelect label="Arrivee" placeholder="Yamoussoukro" value={toCity} onChange={setToCity} />
+        <CitySelect
+          label="Depart"
+          placeholder="Abidjan"
+          value={fromCity}
+          onChange={setFromCity}
+          error={errors.fromCity}
+        />
+        <CitySelect
+          label="Arrivee"
+          placeholder="Yamoussoukro"
+          value={toCity}
+          onChange={setToCity}
+          error={errors.toCity}
+        />
         <View style={styles.row}>
           <DateTimeField
             label="Date"
@@ -40,6 +113,7 @@ export function SearchScreen({ navigation }) {
             onChangeText={setSeats}
             keyboardType="number-pad"
             hint="1 a 7 places."
+            error={errors.seats}
           />
         </View>
         <View style={styles.row}>
@@ -50,10 +124,23 @@ export function SearchScreen({ navigation }) {
             onChangeText={setBudget}
             keyboardType="number-pad"
             hint="Optionnel."
+            error={errors.budget}
           />
           <View style={styles.timeColumn}>
-            <DateTimeField label="Apres" mode="time" value={afterTime} onChange={setAfterTime} />
-            <DateTimeField label="Avant" mode="time" value={beforeTime} onChange={setBeforeTime} />
+            <DateTimeField
+              label="Apres"
+              mode="time"
+              value={afterTime}
+              onChange={setAfterTime}
+              error={errors.time}
+            />
+            <DateTimeField
+              label="Avant"
+              mode="time"
+              value={beforeTime}
+              onChange={setBeforeTime}
+              error={errors.time}
+            />
           </View>
         </View>
 
@@ -86,7 +173,9 @@ export function SearchScreen({ navigation }) {
 
         <PrimaryButton
           label="Afficher les resultats"
-          onPress={() =>
+          onPress={() => {
+            setErrors(validation);
+            if (Object.keys(validation).length) return;
             navigation.navigate('Results', {
               from: fromCity,
               to: toCity,
@@ -101,8 +190,8 @@ export function SearchScreen({ navigation }) {
                 : undefined,
               liveTracking,
               sort,
-            })
-          }
+            });
+          }}
         />
       </View>
     </ScrollView>

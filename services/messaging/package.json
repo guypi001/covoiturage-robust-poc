@@ -26,7 +26,8 @@
     "prom-client": "^15.1.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
-    "typeorm": "^0.3.20"
+    "typeorm": "^0.3.20",
+    "ws": "^8.17.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
