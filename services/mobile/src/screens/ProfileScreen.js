@@ -3,7 +3,6 @@ import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from '
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { InputField } from '../components/InputField';
@@ -17,10 +16,16 @@ import {
   deleteProfilePhoto,
   uploadProfilePhoto,
   verifyGmailOtp,
+  requestPhoneOtp,
+  verifyPhoneOtp,
 } from '../api/identity';
 import { useToast } from '../ui/ToastContext';
 import { resolveAssetUrl } from '../config';
 import { getDisplayName } from '../utils/name';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
+import { SkeletonBlock } from '../components/Skeleton';
+import { Banner } from '../components/Banner';
 
 export function ProfileScreen({ navigation }) {
   const { token, account, guest, login, logout, refreshProfile, applyAuth } = useAuth();
@@ -47,12 +52,15 @@ export function ProfileScreen({ navigation }) {
   const [profileErrors, setProfileErrors] = useState({});
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [phoneOtpBusy, setPhoneOtpBusy] = useState(false);
 
   const isCompany = account?.type === 'COMPANY';
   const typeLabel = isCompany ? 'Entreprise' : 'Particulier';
   const statusLabel =
     account?.status === 'ACTIVE' ? 'Actif' : account?.status === 'SUSPENDED' ? 'Suspendu' : 'Inconnu';
   const roleLabel = account?.role === 'ADMIN' ? 'Administrateur' : 'Utilisateur';
+  const phoneVerified = Boolean(account?.phoneVerifiedAt);
 
   useEffect(() => {
     if (!account) return;
@@ -235,16 +243,6 @@ export function ProfileScreen({ navigation }) {
     .map((item) => item.trim())
     .filter(Boolean);
 
-  const SectionHeader = ({ icon, title, meta }) => (
-    <View style={styles.sectionHeaderRow}>
-      <View style={styles.sectionTitleRow}>
-        <Ionicons name={icon} size={16} color={colors.slate600} />
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
-      {meta ? <Text style={styles.sectionMeta}>{meta}</Text> : null}
-    </View>
-  );
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -255,17 +253,17 @@ export function ProfileScreen({ navigation }) {
       </View>
 
       {guest && (
-        <View style={styles.card}>
+        <SurfaceCard style={styles.card} delay={60}>
           <SectionHeader icon="person-outline" title="Mode visiteur" />
           <Text style={styles.helperText}>
             Tu peux consulter les trajets sans compte. Pour reserver et discuter, connecte-toi.
           </Text>
           <PrimaryButton label="Se connecter / s'inscrire" onPress={logout} />
-        </View>
+        </SurfaceCard>
       )}
 
       {!token && !guest && (
-        <View style={styles.card}>
+        <SurfaceCard style={styles.card} delay={60}>
           <SectionHeader icon="log-in-outline" title="Connexion" />
           <InputField
             label="Email"
@@ -286,7 +284,7 @@ export function ProfileScreen({ navigation }) {
             textContentType="password"
             autoComplete="password"
           />
-          {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
+          {authError ? <Banner tone="error" message={authError} /> : null}
           <PrimaryButton
             label="Se connecter"
             onPress={async () => {
@@ -300,11 +298,11 @@ export function ProfileScreen({ navigation }) {
               }
             }}
           />
-        </View>
+        </SurfaceCard>
       )}
 
       {token && (
-        <View style={styles.profileCard}>
+        <SurfaceCard style={styles.profileCard} delay={90}>
           <View style={styles.avatar}>
             {photoPreview || photoUrl ? (
               <Image source={{ uri: resolveAssetUrl(photoPreview || photoUrl) }} style={styles.avatarImage} />
@@ -320,21 +318,24 @@ export function ProfileScreen({ navigation }) {
               <Text style={styles.tag}>{statusLabel}</Text>
               <Text style={styles.tag}>{roleLabel}</Text>
               <Text style={styles.tag}>{isCompany ? 'Entreprise verifiee' : 'Conducteur verifie'}</Text>
+              <Text style={phoneVerified ? styles.tagSuccess : styles.tagWarning}>
+                {phoneVerified ? 'Telephone verifie' : 'Telephone non verifie'}
+              </Text>
             </View>
           </View>
-        </View>
+        </SurfaceCard>
       )}
 
       {token && (
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
+          <SurfaceCard style={styles.statCard} tone="soft" delay={120}>
             <Text style={styles.statValue}>{bookings.length}</Text>
             <Text style={styles.statLabel}>Reservations</Text>
-          </View>
-          <View style={styles.statCard}>
+          </SurfaceCard>
+          <SurfaceCard style={styles.statCard} tone="soft" delay={150}>
             <Text style={styles.statValue}>{paymentMethods.length}</Text>
             <Text style={styles.statLabel}>Moyens de paiement</Text>
-          </View>
+          </SurfaceCard>
         </View>
       )}
 
@@ -352,7 +353,7 @@ export function ProfileScreen({ navigation }) {
         </View>
       )}
 
-      <View style={styles.card}>
+      <SurfaceCard style={styles.card} delay={180}>
         <SectionHeader icon="pulse-outline" title="Apercu du compte" meta={statsLabel} />
         <View style={styles.preferenceRow}>
           <Text style={styles.preferenceLabel}>Notifications</Text>
@@ -366,11 +367,16 @@ export function ProfileScreen({ navigation }) {
           <Text style={styles.preferenceLabel}>Mode trajet</Text>
           <Text style={styles.preferenceValue}>Passager</Text>
         </View>
-        {loadingData && token ? <Text style={styles.loadingText}>Chargement des donnees...</Text> : null}
-      </View>
+        {loadingData && token ? (
+          <View style={styles.skeletonList}>
+            <SkeletonBlock width="55%" height={12} />
+            <SkeletonBlock width="40%" height={12} />
+          </View>
+        ) : null}
+      </SurfaceCard>
 
       {token && (
-        <View style={styles.card}>
+        <SurfaceCard style={styles.card} delay={210}>
           <SectionHeader icon="create-outline" title="Edition du profil" meta="Informations publiques" />
           <View style={styles.photoRow}>
             <PrimaryButton label="Prendre une photo" variant="ghost" onPress={handleCapturePhoto} />
@@ -439,6 +445,14 @@ export function ProfileScreen({ navigation }) {
                 error={profileErrors.fullName}
               />
               <InputField
+                label="Telephone"
+                value={contactPhone}
+                onChangeText={setContactPhone}
+                placeholder="+225 01 23 45 67 89"
+                keyboardType="phone-pad"
+                error={profileErrors.contactPhone}
+              />
+              <InputField
                 label="Preferences de confort (separees par une virgule)"
                 value={comfortText}
                 onChangeText={setComfortText}
@@ -491,6 +505,7 @@ export function ProfileScreen({ navigation }) {
                   updated = await updateIndividualProfile(token, {
                     ...payload,
                     fullName: fullName || undefined,
+                    contactPhone: contactPhone || undefined,
                     comfortPreferences: comfortPreferences.length ? comfortPreferences : undefined,
                   });
                 }
@@ -504,11 +519,11 @@ export function ProfileScreen({ navigation }) {
               }
             }}
           />
-        </View>
+        </SurfaceCard>
       )}
 
       {token && (
-        <View style={styles.card}>
+        <SurfaceCard style={styles.card} delay={240}>
           <SectionHeader icon="mail-outline" title="Verification email" />
           <Text style={styles.helperText}>
             Un code sera envoye a {account?.email || 'ton email'}. Entre-le pour verifier ton compte.
@@ -565,7 +580,75 @@ export function ProfileScreen({ navigation }) {
               }
             }}
           />
-        </View>
+        </SurfaceCard>
+      )}
+
+      {token && (
+        <SurfaceCard style={styles.card} delay={270}>
+          <SectionHeader icon="call-outline" title="Verification telephone" />
+          <Text style={styles.helperText}>
+            Ajoute un numero valide pour rassurer les autres passagers. Cela ne bloque pas l acces.
+          </Text>
+          <InputField
+            label="Numero de telephone"
+            value={contactPhone}
+            onChangeText={setContactPhone}
+            placeholder="+225 01 23 45 67 89"
+            keyboardType="phone-pad"
+          />
+          <PrimaryButton
+            label="Envoyer un code"
+            variant="ghost"
+            disabled={phoneOtpBusy}
+            onPress={async () => {
+              if (!token || !contactPhone.trim()) {
+                showToast('Numero manquant.', 'error');
+                return;
+              }
+              setPhoneOtpBusy(true);
+              try {
+                await requestPhoneOtp(token, { phone: contactPhone.trim() });
+                showToast('Code SMS envoye.', 'success');
+              } catch (err) {
+                showToast('Impossible d envoyer le code.', 'error');
+              } finally {
+                setPhoneOtpBusy(false);
+              }
+            }}
+          />
+          <InputField
+            label="Code SMS"
+            value={phoneOtpCode}
+            onChangeText={setPhoneOtpCode}
+            placeholder="123456"
+            keyboardType="number-pad"
+          />
+          <PrimaryButton
+            label="Verifier le numero"
+            disabled={phoneOtpBusy}
+            onPress={async () => {
+              if (!token) return;
+              if (!contactPhone.trim() || !phoneOtpCode.trim()) {
+                showToast('Code invalide.', 'error');
+                return;
+              }
+              setPhoneOtpBusy(true);
+              try {
+                const updated = await verifyPhoneOtp(token, {
+                  phone: contactPhone.trim(),
+                  code: phoneOtpCode.trim(),
+                });
+                applyAuth({ token, account: updated });
+                setPhoneOtpCode('');
+                showToast('Telephone verifie.', 'success');
+              } catch (err) {
+                showToast('Verification impossible.', 'error');
+              } finally {
+                setPhoneOtpBusy(false);
+              }
+            }}
+          />
+        </SurfaceCard>
       )}
 
       <View style={styles.actions}>
@@ -598,11 +681,6 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     gap: spacing.md,
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     alignItems: 'center',
   },
   avatar: {
@@ -635,6 +713,26 @@ const styles = StyleSheet.create({
   tag: {
     backgroundColor: colors.emerald100,
     color: colors.emerald500,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.md,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  tagWarning: {
+    backgroundColor: colors.amber100,
+    color: colors.amber700,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.md,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  tagSuccess: {
+    backgroundColor: colors.emerald100,
+    color: colors.emerald600,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: radius.md,
@@ -675,11 +773,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     alignItems: 'center',
   },
   statValue: {
@@ -694,27 +787,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.sm,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  sectionMeta: {
-    fontSize: 12,
-    color: colors.slate500,
   },
   photoRow: {
     flexDirection: 'row',
@@ -723,11 +796,6 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.slate900,
   },
   preferenceRow: {
     flexDirection: 'row',
@@ -742,17 +810,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.slate900,
   },
-  errorText: {
-    color: '#991b1b',
-    fontSize: 13,
-    fontWeight: '600',
+  skeletonList: {
+    gap: 8,
   },
   helperText: {
     fontSize: 13,
     color: colors.slate600,
-  },
-  loadingText: {
-    fontSize: 12,
-    color: colors.slate500,
   },
 });

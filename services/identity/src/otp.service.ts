@@ -18,11 +18,6 @@ export class OtpService {
     private readonly mailer: MailerService,
   ) {}
 
-  private assertGmail(email: string) {
-    if (!email.endsWith('@gmail.com')) {
-      throw new BadRequestException('gmail_only');
-    }
-  }
 
   private generateCode(): string {
     const pow = 10 ** OTP_LENGTH;
@@ -33,7 +28,6 @@ export class OtpService {
 
   async requestOtp(rawEmail: string) {
     const email = rawEmail.trim().toLowerCase();
-    this.assertGmail(email);
 
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
     const code = this.generateCode();
@@ -58,7 +52,6 @@ export class OtpService {
 
   async verifyOtp(rawEmail: string, code: string) {
     const email = rawEmail.trim().toLowerCase();
-    this.assertGmail(email);
 
     const entry = await this.tokens.findOne({ where: { email } });
     if (!entry) {

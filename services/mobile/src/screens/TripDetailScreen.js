@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, text } from '../theme';
+import { colors, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useAuth } from '../auth';
 import { cancelBooking } from '../api/bff';
 import { useToast } from '../ui/ToastContext';
 import { useModal } from '../ui/ModalContext';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
 
 const statusLabels = {
   PENDING: 'En attente',
@@ -85,7 +87,7 @@ export function TripDetailScreen({ navigation, route }) {
       <Text style={text.title}>Details du trajet</Text>
       <Text style={text.subtitle}>Retrouve toutes les informations utiles.</Text>
 
-      <View style={styles.card}>
+      <SurfaceCard style={styles.card} delay={80}>
         <Text style={styles.route}>
           {ride?.originCity || ride?.origin || 'Depart'} → {ride?.destinationCity || ride?.destination || 'Arrivee'}
         </Text>
@@ -98,10 +100,10 @@ export function TripDetailScreen({ navigation, route }) {
         {ride?.pricePerSeat != null ? (
           <Text style={styles.meta}>Prix par place: {ride.pricePerSeat} XOF</Text>
         ) : null}
-      </View>
+      </SurfaceCard>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Actions rapides</Text>
+      <SurfaceCard style={styles.card} delay={120}>
+        <SectionHeader title="Actions rapides" icon="flash-outline" />
         <PrimaryButton
           label="Contacter"
           variant="ghost"
@@ -110,7 +112,7 @@ export function TripDetailScreen({ navigation, route }) {
         {isBooking && item?.status !== 'CANCELLED' ? (
           <PrimaryButton label="Annuler ma reservation" onPress={handleCancel} disabled={busy} />
         ) : null}
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }
@@ -125,11 +127,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.sm,
   },
   route: {
@@ -140,10 +137,5 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     color: colors.slate600,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.slate900,
   },
 });

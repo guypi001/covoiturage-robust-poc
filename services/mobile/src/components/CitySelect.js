@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radius, spacing, text } from '../theme';
+import { colors, fonts, radius, shadows, spacing, text } from '../theme';
 import { searchCities } from '../data/cities';
 
 export function CitySelect({ label, value, onChange, onSelect, placeholder, hint, error }) {
@@ -54,17 +54,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: colors.slate50,
+    backgroundColor: colors.white,
     fontSize: 15,
     color: colors.slate900,
+    fontFamily: fonts.text,
   },
   inputFocused: {
-    borderColor: colors.sky500,
-    backgroundColor: colors.white,
+    borderColor: colors.brandPrimary,
+    ...shadows.soft,
   },
   inputError: {
-    borderColor: '#dc2626',
-    backgroundColor: '#fef2f2',
+    borderColor: colors.rose600,
+    backgroundColor: colors.rose100,
   },
   dropdown: {
     borderWidth: 1,
@@ -72,6 +73,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.white,
     overflow: 'hidden',
+    ...shadows.soft,
   },
   option: {
     paddingHorizontal: spacing.md,
@@ -83,11 +85,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.slate900,
+    fontFamily: fonts.display,
   },
   optionMeta: {
     fontSize: 11,
     color: colors.slate500,
     marginTop: 2,
+    fontFamily: fonts.text,
   },
   hintText: {
     fontSize: 12,
@@ -96,6 +100,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#dc2626',
+    color: colors.rose600,
   },
 });

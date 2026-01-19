@@ -46,6 +46,7 @@ import {
 } from './metrics';
 import * as bcrypt from 'bcryptjs';
 import { OtpService } from './otp.service';
+import { PhoneOtpService } from './phone-otp.service';
 import { MailerService } from './mailer.service';
 import { randomBytes } from 'crypto';
 import axios from 'axios';
@@ -134,6 +135,7 @@ export class AuthService implements OnModuleInit {
     private readonly resetTokens: Repository<PasswordResetToken>,
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
+    private readonly phoneOtp: PhoneOtpService,
     private readonly mailer: MailerService,
   ) {}
 
@@ -190,6 +192,9 @@ export class AuthService implements OnModuleInit {
 
   private ensureAccountActive(account: Account) {
     if (account.status !== 'ACTIVE') {
+      if (!account.emailVerifiedAt) {
+        throw new ForbiddenException('email_not_verified');
+      }
       throw new ForbiddenException('account_suspended');
     }
   }
@@ -638,19 +643,23 @@ export class AuthService implements OnModuleInit {
       comfortPreferences: this.formatPreferences(dto.comfortPreferences),
       tagline: dto.tagline?.trim() || null,
       role: 'USER',
-      status: 'ACTIVE',
+      status: 'SUSPENDED',
+      emailVerifiedAt: null,
       loginCount: 0,
       profilePhotoUrl: null,
       homePreferences: null,
     });
     await this.ensureAdminBootstrap(account);
     const saved = await this.accounts.save(account);
-    const logged = await this.recordSuccessfulLogin(saved);
+    try {
+      await this.otp.requestOtp(email);
+    } catch (err) {
+      await this.accounts.delete({ id: saved.id });
+      throw err;
+    }
     accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
-    accountLoginCounter.inc({ type: 'INDIVIDUAL' });
-    await this.sendWelcomeEmail(logged);
     await this.refreshAccountMetrics();
-    return this.buildResponse(logged);
+    return { pending: true, email };
   }
 
   async registerCompany(dto: RegisterCompanyDto) {
@@ -666,19 +675,23 @@ export class AuthService implements OnModuleInit {
       contactName: dto.contactName?.trim() || null,
       contactPhone: dto.contactPhone?.trim() || null,
       role: 'USER',
-      status: 'ACTIVE',
+      status: 'SUSPENDED',
+      emailVerifiedAt: null,
       loginCount: 0,
       profilePhotoUrl: null,
       homePreferences: null,
     });
     await this.ensureAdminBootstrap(account);
     const saved = await this.accounts.save(account);
-    const logged = await this.recordSuccessfulLogin(saved);
+    try {
+      await this.otp.requestOtp(email);
+    } catch (err) {
+      await this.accounts.delete({ id: saved.id });
+      throw err;
+    }
     accountCreatedCounter.inc({ type: 'COMPANY' });
-    accountLoginCounter.inc({ type: 'COMPANY' });
-    await this.sendWelcomeEmail(logged);
     await this.refreshAccountMetrics();
-    return this.buildResponse(logged);
+    return { pending: true, email };
   }
 
   async login(dto: LoginDto) {
@@ -718,6 +731,7 @@ export class AuthService implements OnModuleInit {
         fullName: email.split('@')[0],
         role: 'USER',
         status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
         loginCount: 0,
         profilePhotoUrl: null,
         homePreferences: null,
@@ -729,7 +743,15 @@ export class AuthService implements OnModuleInit {
       await this.sendWelcomeEmail(account);
       await this.refreshAccountMetrics();
     } else {
-      this.ensureAccountActive(account);
+      if (account.emailVerifiedAt && account.status !== 'ACTIVE') {
+        throw new ForbiddenException('account_suspended');
+      }
+      if (!account.emailVerifiedAt) {
+        account.emailVerifiedAt = new Date();
+        account.status = 'ACTIVE';
+        account = await this.accounts.save(account);
+        await this.sendWelcomeEmail(account);
+      }
     }
 
     const logged = await this.recordSuccessfulLogin(account);
@@ -879,6 +901,13 @@ export class AuthService implements OnModuleInit {
     if (dto.profilePhotoUrl !== undefined || dto.removeProfilePhoto) {
       account.profilePhotoUrl = this.normalizeProfilePhoto(dto.profilePhotoUrl, dto.removeProfilePhoto);
     }
+    if (typeof dto.contactPhone === 'string') {
+      const nextPhone = dto.contactPhone.trim() || null;
+      if (account.contactPhone !== nextPhone) {
+        account.contactPhone = nextPhone;
+        account.phoneVerifiedAt = null;
+      }
+    }
     if (dto.homePreferences !== undefined) {
       account.homePreferences = this.sanitizeHomePreferencesInput(dto.homePreferences) ?? null;
     }
@@ -908,7 +937,11 @@ export class AuthService implements OnModuleInit {
       account.contactName = dto.contactName.trim() || null;
     }
     if (typeof dto.contactPhone === 'string') {
-      account.contactPhone = dto.contactPhone.trim() || null;
+      const nextPhone = dto.contactPhone.trim() || null;
+      if (account.contactPhone !== nextPhone) {
+        account.contactPhone = nextPhone;
+        account.phoneVerifiedAt = null;
+      }
     }
     if (dto.removeTagline) {
       account.tagline = null;
@@ -926,6 +959,32 @@ export class AuthService implements OnModuleInit {
     }
     const saved = await this.accounts.save(account);
     accountProfileUpdateCounter.inc({ actor: 'self', type: 'COMPANY' });
+    return this.sanitize(saved);
+  }
+
+  async requestPhoneVerification(accountId: string, phone: string) {
+    const account = await this.accounts.findOne({ where: { id: accountId } });
+    if (!account) {
+      throw new UnauthorizedException('account_not_found');
+    }
+    const normalized = this.phoneOtp.normalizePhone(phone);
+    account.contactPhone = normalized;
+    account.phoneVerifiedAt = null;
+    await this.accounts.save(account);
+    await this.phoneOtp.requestOtp(accountId, normalized);
+    return { success: true, phone: normalized };
+  }
+
+  async verifyPhoneVerification(accountId: string, phone: string, code: string): Promise<SafeAccount> {
+    const account = await this.accounts.findOne({ where: { id: accountId } });
+    if (!account) {
+      throw new UnauthorizedException('account_not_found');
+    }
+    const normalized = this.phoneOtp.normalizePhone(phone);
+    await this.phoneOtp.verifyOtp(accountId, normalized, code.trim());
+    account.contactPhone = normalized;
+    account.phoneVerifiedAt = new Date();
+    const saved = await this.accounts.save(account);
     return this.sanitize(saved);
   }
 

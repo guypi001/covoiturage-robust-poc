@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { colors, radius, text } from '../theme';
+import { colors, fonts, radius, shadows, text } from '../theme';
 
 export function DateTimeField({ label, mode, value, onChange, hint, error }) {
   const [show, setShow] = useState(false);
@@ -50,15 +50,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    backgroundColor: colors.slate50,
+    backgroundColor: colors.white,
+    ...shadows.soft,
   },
   inputError: {
-    borderColor: '#dc2626',
-    backgroundColor: '#fef2f2',
+    borderColor: colors.rose600,
+    backgroundColor: colors.rose100,
   },
   inputText: {
     fontSize: 15,
     color: colors.slate900,
+    fontFamily: fonts.text,
   },
   placeholderText: {
     color: colors.slate500,

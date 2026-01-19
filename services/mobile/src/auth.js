@@ -97,7 +97,9 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const auth = await registerIndividual(payload);
-    setSession(auth.token, auth.account);
+    if (auth?.token && auth?.account) {
+      setSession(auth.token, auth.account);
+    }
     return auth;
   };
 

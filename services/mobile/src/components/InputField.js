@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radius, text } from '../theme';
+import { colors, fonts, radius, shadows, text } from '../theme';
 
 export function InputField({
   label,
@@ -71,17 +71,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: colors.slate50,
+    backgroundColor: colors.white,
     fontSize: 15,
     color: colors.slate900,
+    fontFamily: fonts.text,
   },
   inputFocused: {
-    borderColor: colors.sky500,
-    backgroundColor: colors.white,
+    borderColor: colors.brandPrimary,
+    ...shadows.soft,
   },
   inputError: {
-    borderColor: '#dc2626',
-    backgroundColor: '#fef2f2',
+    borderColor: colors.rose600,
+    backgroundColor: colors.rose100,
   },
   inputDisabled: {
     opacity: 0.6,

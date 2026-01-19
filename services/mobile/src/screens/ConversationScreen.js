@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, text } from '../theme';
 import { useAuth } from '../auth';
 import {
@@ -15,6 +16,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { useToast } from '../ui/ToastContext';
 import { resolveAssetUrl } from '../config';
 import { getDisplayName, getFirstName } from '../utils/name';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
 
 const formatTime = (value) => {
   if (!value) return '';
@@ -22,6 +25,117 @@ const formatTime = (value) => {
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 };
+
+function AnimatedMessage({ children, delay = 0, fromRight = false, emphasis = false }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+  const translateX = useRef(new Animated.Value(fromRight ? 8 : -8)).current;
+  const scale = useRef(new Animated.Value(0.98)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 320,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 320,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 320,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 320,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      if (!emphasis) return;
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue: 1.02,
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }, [delay, emphasis, opacity, scale, translateX, translateY]);
+
+  return (
+    <Animated.View
+      style={{ opacity, transform: [{ translateX }, { translateY }, { scale }] }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+function TypingPulse() {
+  const dot1 = useRef(new Animated.Value(0.3)).current;
+  const dot2 = useRef(new Animated.Value(0.3)).current;
+  const dot3 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const createPulse = (node, delay) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(node, {
+            toValue: 1,
+            duration: 320,
+            delay,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(node, {
+            toValue: 0.3,
+            duration: 320,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+    const anim1 = createPulse(dot1, 0);
+    const anim2 = createPulse(dot2, 120);
+    const anim3 = createPulse(dot3, 240);
+    anim1.start();
+    anim2.start();
+    anim3.start();
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, [dot1, dot2, dot3]);
+
+  return (
+    <View style={styles.typingRow}>
+      <Animated.View style={[styles.typingDot, { opacity: dot1 }]} />
+      <Animated.View style={[styles.typingDot, { opacity: dot2 }]} />
+      <Animated.View style={[styles.typingDot, { opacity: dot3 }]} />
+    </View>
+  );
+}
 
 export function ConversationScreen({ route }) {
   const { account } = useAuth();
@@ -33,6 +147,7 @@ export function ConversationScreen({ route }) {
   const [textValue, setTextValue] = useState('');
   const [presenceMap, setPresenceMap] = useState({});
   const [typingMap, setTypingMap] = useState({});
+  const [lastSentId, setLastSentId] = useState('');
   const scrollRef = useRef(null);
   const socketRef = useRef(null);
 
@@ -171,6 +286,11 @@ export function ConversationScreen({ route }) {
   const otherTyping =
     Boolean(otherTypingEntry?.active) && otherTypingEntry?.conversationId === conversationId;
 
+  const triggerSendHaptic = () => {
+    if (Platform.OS !== 'ios') return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  };
+
   const handleSend = async () => {
     const trimmed = textValue.trim();
     if (!trimmed || !account?.id) return;
@@ -190,6 +310,8 @@ export function ConversationScreen({ route }) {
       sendTyping(false);
       if (res?.message) {
         setMessages((prev) => [...prev, res.message]);
+        setLastSentId(res.message.id);
+        triggerSendHaptic();
       }
     } catch (err) {
       showToast('Envoi impossible.', 'error');
@@ -231,6 +353,8 @@ export function ConversationScreen({ route }) {
       });
       if (res?.message) {
         setMessages((prev) => [...prev, res.message]);
+        setLastSentId(res.message.id);
+        triggerSendHaptic();
       }
       showToast('Piece jointe envoyee.', 'success');
     } catch (err) {
@@ -242,42 +366,54 @@ export function ConversationScreen({ route }) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>
-          {otherOnline ? 'En ligne' : 'Hors ligne'} · {otherTyping ? 'Ecrit...' : loading ? 'Sync...' : 'OK'}
-        </Text>
-      </View>
+      <SurfaceCard style={styles.headerCard} tone="soft" animated={false}>
+        <SectionHeader
+          title={title}
+          icon="chatbubble-ellipses-outline"
+          meta={otherOnline ? 'En ligne' : 'Hors ligne'}
+        />
+        <View style={styles.statusRow}>
+          <Text style={styles.subtitle}>{otherTyping ? 'Ecrit...' : loading ? 'Sync...' : 'OK'}</Text>
+          {otherTyping ? <TypingPulse /> : null}
+        </View>
+      </SurfaceCard>
 
       <ScrollView ref={scrollRef} style={styles.list} contentContainerStyle={styles.listContent}>
-        {messages.map((msg) => {
+        {messages.map((msg, index) => {
           const isMine = msg.senderId === account?.id;
           return (
-            <View key={msg.id} style={[styles.messageRow, isMine && styles.messageRowMine]}>
-              <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
-                {msg.attachmentUrl ? (
-                  <View style={styles.attachment}>
-                    <Text style={styles.attachmentText}>
-                      Piece jointe: {msg.attachmentName || 'fichier'}
-                    </Text>
-                    <Text style={styles.attachmentLink}>{resolveAssetUrl(msg.attachmentUrl)}</Text>
-                  </View>
-                ) : null}
-                {msg.body ? <Text style={styles.messageText}>{msg.body}</Text> : null}
-                <Text style={styles.metaText}>
-                  {formatTime(msg.createdAt)}
-                  {isMine && msg.status === 'READ' ? (
-                    <Text style={styles.readCheck}>{` · ✓✓`}</Text>
+            <AnimatedMessage
+              key={msg.id}
+              delay={index * 35}
+              fromRight={isMine}
+              emphasis={isMine && msg.id === lastSentId}
+            >
+              <View style={[styles.messageRow, isMine && styles.messageRowMine]}>
+                <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+                  {msg.attachmentUrl ? (
+                    <View style={styles.attachment}>
+                      <Text style={styles.attachmentText}>
+                        Piece jointe: {msg.attachmentName || 'fichier'}
+                      </Text>
+                      <Text style={styles.attachmentLink}>{resolveAssetUrl(msg.attachmentUrl)}</Text>
+                    </View>
                   ) : null}
-                  {isMine && msg.status === 'DELIVERED' ? (
-                    <Text style={styles.deliveredCheck}>{` · ✓✓`}</Text>
-                  ) : null}
-                  {isMine && msg.status === 'SENT' ? (
-                    <Text style={styles.sentCheck}>{` · ✓`}</Text>
-                  ) : null}
-                </Text>
+                  {msg.body ? <Text style={styles.messageText}>{msg.body}</Text> : null}
+                  <Text style={styles.metaText}>
+                    {formatTime(msg.createdAt)}
+                    {isMine && msg.status === 'READ' ? (
+                      <Text style={styles.readCheck}>{` · ✓✓`}</Text>
+                    ) : null}
+                    {isMine && msg.status === 'DELIVERED' ? (
+                      <Text style={styles.deliveredCheck}>{` · ✓✓`}</Text>
+                    ) : null}
+                    {isMine && msg.status === 'SENT' ? (
+                      <Text style={styles.sentCheck}>{` · ✓`}</Text>
+                    ) : null}
+                  </Text>
+                </View>
               </View>
-            </View>
+            </AnimatedMessage>
           );
         })}
       </ScrollView>
@@ -313,21 +449,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.slate50,
   },
-  header: {
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.slate200,
-    backgroundColor: colors.white,
-    gap: 4,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.slate900,
+  headerCard: {
+    margin: spacing.lg,
+    marginBottom: 0,
+    gap: spacing.xs,
   },
   subtitle: {
     fontSize: 12,
     color: colors.slate500,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  typingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.slate400,
   },
   list: {
     flex: 1,

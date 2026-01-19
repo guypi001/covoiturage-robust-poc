@@ -8,6 +8,10 @@ import { useAuth } from '../auth';
 import { useToast } from '../ui/ToastContext';
 import { useModal } from '../ui/ModalContext';
 import { getFirstName } from '../utils/name';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
+import { SkeletonBlock } from '../components/Skeleton';
+import { Banner } from '../components/Banner';
 
 export function RideDetailScreen({ route }) {
   const { token } = useAuth();
@@ -61,55 +65,82 @@ export function RideDetailScreen({ route }) {
       <Text style={text.subtitle}>Depart {departureLabel} · {seatsLabel} places</Text>
 
       {loading && (
-        <View style={styles.loadingCard}>
+        <SurfaceCard style={styles.loadingCard} tone="soft" delay={60}>
           <ActivityIndicator color={colors.sky600} />
           <Text style={styles.loadingText}>Chargement du trajet...</Text>
-        </View>
+        </SurfaceCard>
       )}
 
-      {error ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
+      {error ? <Banner tone="error" message={error} /> : null}
 
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapText}>Carte du trajet</Text>
-      </View>
-
-      <View style={styles.cardRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Prix</Text>
-          <Text style={styles.statValue}>{priceLabel}</Text>
-          <Text style={styles.statMeta}>par siege</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Places</Text>
-          <Text style={styles.statValue}>{ride?.seatsAvailable ?? '--'}</Text>
-          <Text style={styles.statMeta}>disponibles</Text>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Conducteur</Text>
-        <View style={styles.driverRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{driverLabel.charAt(0) || 'K'}</Text>
+      {loading ? (
+        <View style={styles.skeletonStack}>
+          <SurfaceCard style={styles.mapPlaceholder} tone="accent" animated={false}>
+            <SkeletonBlock width="55%" height={14} />
+          </SurfaceCard>
+          <View style={styles.cardRow}>
+            <SurfaceCard style={styles.statCard} tone="soft" animated={false}>
+              <SkeletonBlock width="40%" height={10} />
+              <SkeletonBlock width="60%" height={18} />
+              <SkeletonBlock width="30%" height={10} />
+            </SurfaceCard>
+            <SurfaceCard style={styles.statCard} tone="soft" animated={false}>
+              <SkeletonBlock width="40%" height={10} />
+              <SkeletonBlock width="60%" height={18} />
+              <SkeletonBlock width="30%" height={10} />
+            </SurfaceCard>
           </View>
-          <View>
-            <Text style={styles.driverName}>{driverLabel}</Text>
-            <Text style={styles.driverMeta}>Profil verifie · Support KariGo</Text>
-          </View>
+          <SurfaceCard style={styles.card} animated={false}>
+            <SkeletonBlock width="35%" height={12} />
+            <SkeletonBlock width="60%" height={12} />
+            <SkeletonBlock width="50%" height={12} />
+          </SurfaceCard>
+          <SurfaceCard style={styles.card} animated={false}>
+            <SkeletonBlock width="45%" height={12} />
+            <SkeletonBlock width="70%" height={12} />
+          </SurfaceCard>
         </View>
-      </View>
+      ) : (
+        <>
+          <SurfaceCard style={styles.mapPlaceholder} tone="accent" delay={90}>
+            <Text style={styles.mapText}>Carte du trajet</Text>
+          </SurfaceCard>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Suivi en direct</Text>
-        <Text style={styles.infoValue}>
-          {ride?.liveTrackingEnabled ? 'Actif 15 min avant le depart' : 'Non active par le chauffeur'}
-        </Text>
-        <Text style={styles.infoHint}>Disponible jusqu'a l'arrivee. Notification des grandes villes.</Text>
-      </View>
+          <View style={styles.cardRow}>
+            <SurfaceCard style={styles.statCard} tone="soft" delay={120}>
+              <Text style={styles.statLabel}>Prix</Text>
+              <Text style={styles.statValue}>{priceLabel}</Text>
+              <Text style={styles.statMeta}>par siege</Text>
+            </SurfaceCard>
+            <SurfaceCard style={styles.statCard} tone="soft" delay={150}>
+              <Text style={styles.statLabel}>Places</Text>
+              <Text style={styles.statValue}>{ride?.seatsAvailable ?? '--'}</Text>
+              <Text style={styles.statMeta}>disponibles</Text>
+            </SurfaceCard>
+          </View>
+
+          <SurfaceCard style={styles.card} delay={180}>
+            <SectionHeader title="Conducteur" icon="person-outline" />
+            <View style={styles.driverRow}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{driverLabel.charAt(0) || 'K'}</Text>
+              </View>
+              <View>
+                <Text style={styles.driverName}>{driverLabel}</Text>
+                <Text style={styles.driverMeta}>Profil verifie · Support KariGo</Text>
+              </View>
+            </View>
+          </SurfaceCard>
+
+          <SurfaceCard style={styles.card} delay={210}>
+            <SectionHeader title="Suivi en direct" icon="radio-outline" />
+            <Text style={styles.infoValue}>
+              {ride?.liveTrackingEnabled ? 'Actif 15 min avant le depart' : 'Non active par le chauffeur'}
+            </Text>
+            <Text style={styles.infoHint}>Disponible jusqu'a l'arrivee. Notification des grandes villes.</Text>
+          </SurfaceCard>
+        </>
+      )}
 
       <View style={styles.actions}>
         <PrimaryButton
@@ -127,8 +158,10 @@ export function RideDetailScreen({ route }) {
               onConfirm: async () => {
                 try {
                   await createBooking(token, { rideId, seats: 1 });
+                  setBookingStatus('Reservation enregistree.');
                   showToast('Reservation enregistree.', 'success');
                 } catch (err) {
+                  setBookingStatus('');
                   showToast('Impossible de reserver.', 'error');
                 }
               },
@@ -137,6 +170,7 @@ export function RideDetailScreen({ route }) {
         />
         <PrimaryButton label="Contacter" variant="ghost" />
       </View>
+      {bookingStatus ? <Banner tone="success" message={bookingStatus} /> : null}
     </ScrollView>
   );
 }
@@ -169,8 +203,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   mapPlaceholder: {
-    backgroundColor: colors.sky100,
-    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     height: 180,
@@ -183,11 +215,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.slate200,
   },
   loadingText: {
     fontSize: 13,
@@ -195,8 +222,6 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     backgroundColor: '#fee2e2',
-    padding: spacing.md,
-    borderRadius: radius.md,
   },
   errorText: {
     color: '#991b1b',
@@ -209,11 +234,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
   },
   statLabel: {
     fontSize: 11,
@@ -234,17 +254,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   card: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.slate900,
   },
   driverRow: {
     flexDirection: 'row',
@@ -284,5 +294,8 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  skeletonStack: {
+    gap: spacing.md,
   },
 });

@@ -87,9 +87,16 @@ function MainTabs() {
       screenOptions={({ route }) => ({
         headerStyle: { backgroundColor: colors.white },
         headerTitleStyle: { color: colors.slate900 },
-        tabBarStyle: { backgroundColor: colors.white },
+        tabBarStyle: {
+          backgroundColor: colors.white,
+          borderTopColor: colors.slate200,
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
         tabBarActiveTintColor: colors.brandPrimary,
         tabBarInactiveTintColor: colors.slate500,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarIcon: ({ color, size, focused }) => {
           let iconName = 'ellipse';
           if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';

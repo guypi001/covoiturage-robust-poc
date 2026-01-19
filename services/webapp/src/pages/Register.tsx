@@ -41,6 +41,7 @@ export default function Register() {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pendingOtp, setPendingOtp] = useState(false);
 
   // Gmail OTP state
   const [otpStep, setOtpStep] = useState<OtpStep>('email');
@@ -78,6 +79,7 @@ export default function Register() {
     setOtpSending(false);
     setOtpVerifying(false);
     setOtpMessage(undefined);
+    setPendingOtp(false);
     setError(undefined);
   };
 
@@ -110,6 +112,13 @@ export default function Register() {
           comfortPreferences: comfortList,
           tagline: tagline || undefined,
         });
+        if ('pending' in res) {
+          setPendingOtp(true);
+          setOtpEmail(email.trim().toLowerCase());
+          setOtpStep('code');
+          setOtpMessage('Code envoyé par email.');
+          return;
+        }
         setSession(res.token, res.account);
       } else {
         if (!companyName.trim()) {
@@ -125,6 +134,13 @@ export default function Register() {
           contactName: contactName || undefined,
           contactPhone: contactPhone || undefined,
         });
+        if ('pending' in res) {
+          setPendingOtp(true);
+          setOtpEmail(email.trim().toLowerCase());
+          setOtpStep('code');
+          setOtpMessage('Code envoyé par email.');
+          return;
+        }
         setSession(res.token, res.account);
       }
       navigate('/', { replace: true });
@@ -133,6 +149,22 @@ export default function Register() {
       clearSession();
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const resendPendingOtp = async () => {
+    if (!otpEmail.trim()) {
+      setError('Email manquant pour renvoyer le code.');
+      return;
+    }
+    try {
+      setOtpSending(true);
+      await requestGmailOtp({ email: otpEmail.trim().toLowerCase() });
+      setOtpMessage('Code envoyé par email.');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Impossible d’envoyer le code.');
+    } finally {
+      setOtpSending(false);
     }
   };
 
@@ -185,6 +217,7 @@ export default function Register() {
         }
       }
       setSession(res.token, accountPayload);
+      setPendingOtp(false);
       navigate('/', { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Code invalide.');
@@ -381,7 +414,64 @@ export default function Register() {
         </div>
 
         {method === 'password' ? (
-          <form onSubmit={onSubmitPassword} className="space-y-5">
+          pendingOtp ? (
+            <form className="space-y-4" onSubmit={verifyOtp}>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600">
+                  Code reçu sur {otpEmail}
+                </label>
+                <input
+                  type="text"
+                  className="input w-full text-center tracking-widest text-lg"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(sanitizeOtpInput(e.currentTarget.value))}
+                  maxLength={8}
+                  autoComplete="one-time-code"
+                  required
+                />
+              </div>
+
+              {renderError(error)}
+
+              {otpMessage && (
+                <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <MailCheck size={18} className="mt-0.5 shrink-0 text-sky-600" />
+                  <span>{otpMessage}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="submit"
+                  disabled={otpVerifying || showLoader}
+                  className="btn-primary flex-1 h-11 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {otpVerifying || showLoader ? 'Vérification…' : 'Valider le code'}
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-medium"
+                  onClick={resendPendingOtp}
+                  disabled={otpSending}
+                >
+                  Renvoyer le code
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-medium"
+                  onClick={() => {
+                    setPendingOtp(false);
+                    setOtpCode('');
+                    setOtpMessage(undefined);
+                    setError(undefined);
+                  }}
+                >
+                  Changer d’email
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={onSubmitPassword} className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">Email</label>

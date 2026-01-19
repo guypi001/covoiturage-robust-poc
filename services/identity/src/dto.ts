@@ -174,6 +174,12 @@ export class UpdateIndividualProfileDto {
   removeProfilePhoto?: boolean;
 
   @IsOptional()
+  @IsString()
+  @MinLength(6)
+  @MaxLength(32)
+  contactPhone?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => HomePreferencesDto)
   homePreferences?: HomePreferencesDto;
@@ -229,6 +235,25 @@ export class UpdateCompanyProfileDto {
   @ValidateNested()
   @Type(() => PaymentPreferencesDto)
   paymentPreferences?: PaymentPreferencesDto;
+}
+
+export class RequestPhoneOtpDto {
+  @IsString()
+  @MinLength(6)
+  @MaxLength(32)
+  phone!: string;
+}
+
+export class VerifyPhoneOtpDto {
+  @IsString()
+  @MinLength(6)
+  @MaxLength(32)
+  phone!: string;
+
+  @IsString()
+  @MinLength(4)
+  @MaxLength(8)
+  code!: string;
 }
 
 export class AdminSendRideDigestDto {

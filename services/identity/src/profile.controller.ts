@@ -19,7 +19,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
-import { UpdateCompanyProfileDto, UpdateIndividualProfileDto } from './dto';
+import { RequestPhoneOtpDto, UpdateCompanyProfileDto, UpdateIndividualProfileDto, VerifyPhoneOtpDto } from './dto';
 import type { AccountRole, AccountStatus, AccountType } from './entities';
 import { Request } from 'express';
 import { diskStorage } from 'multer';
@@ -148,6 +148,18 @@ export class ProfileController {
       throw new ForbiddenException('invalid_account_type');
     }
     return this.auth.updateCompanyProfile(payload.sub, dto);
+  }
+
+  @Post('me/phone/request')
+  async requestPhoneOtp(@Req() req: Request, @Body() dto: RequestPhoneOtpDto) {
+    const payload = this.getPayload(req);
+    return this.auth.requestPhoneVerification(payload.sub, dto.phone);
+  }
+
+  @Post('me/phone/verify')
+  async verifyPhoneOtp(@Req() req: Request, @Body() dto: VerifyPhoneOtpDto) {
+    const payload = this.getPayload(req);
+    return this.auth.verifyPhoneVerification(payload.sub, dto.phone, dto.code);
   }
 
   @Get('lookup')

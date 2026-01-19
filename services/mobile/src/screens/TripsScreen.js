@@ -4,6 +4,9 @@ import { colors, radius, spacing, text } from '../theme';
 import { useAuth } from '../auth';
 import { getMyBookings, getMyRides } from '../api/bff';
 import { useToast } from '../ui/ToastContext';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
+import { SkeletonBlock } from '../components/Skeleton';
 
 const TABS = [
   { id: 'upcoming', label: 'A venir' },
@@ -111,59 +114,77 @@ export function TripsScreen({ navigation }) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>En tant que passager</Text>
-        {loading ? <Text style={styles.helper}>Chargement...</Text> : null}
+        <SectionHeader title="En tant que passager" icon="person-outline" />
+        {loading ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: 2 }).map((_, index) => (
+              <SurfaceCard key={`sk-pass-${index}`} style={styles.card} tone="soft" animated={false}>
+                <SkeletonBlock width="70%" height={14} />
+                <SkeletonBlock width="50%" height={12} />
+                <SkeletonBlock width="40%" height={12} />
+              </SurfaceCard>
+            ))}
+          </View>
+        ) : null}
         {!loading && filteredBookings.length === 0 ? (
           <Text style={styles.helper}>Aucune reservation pour cette periode.</Text>
         ) : null}
-        {filteredBookings.map((booking) => {
+        {filteredBookings.map((booking, index) => {
           const ride = booking?.ride || {};
           return (
-            <Pressable
-              key={booking.id || ride.id}
-              style={styles.card}
-              onPress={() => navigation.navigate('TripDetail', { type: 'booking', item: booking })}
-            >
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>
-                  {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
+            <SurfaceCard key={booking.id || ride.id} style={styles.card} delay={100 + index * 40}>
+              <Pressable
+                onPress={() => navigation.navigate('TripDetail', { type: 'booking', item: booking })}
+              >
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>
+                    {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
+                  </Text>
+                  <Text style={styles.badge}>{booking.status || 'Reservation'}</Text>
+                </View>
+                <Text style={styles.cardMeta}>{formatDate(ride.departureAt || booking.departureAt)}</Text>
+                <Text style={styles.cardMeta}>{ride.pricePerSeat ? `${ride.pricePerSeat} FCFA` : ''}</Text>
+                <Text style={styles.cardMeta}>
+                  {formatTripLabel(classifyTrip(ride.departureAt || booking.departureAt))}
                 </Text>
-                <Text style={styles.badge}>{booking.status || 'Reservation'}</Text>
-              </View>
-              <Text style={styles.cardMeta}>{formatDate(ride.departureAt || booking.departureAt)}</Text>
-              <Text style={styles.cardMeta}>{ride.pricePerSeat ? `${ride.pricePerSeat} FCFA` : ''}</Text>
-              <Text style={styles.cardMeta}>
-                {formatTripLabel(classifyTrip(ride.departureAt || booking.departureAt))}
-              </Text>
-            </Pressable>
+              </Pressable>
+            </SurfaceCard>
           );
         })}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>En tant que conducteur</Text>
-        {loading ? <Text style={styles.helper}>Chargement...</Text> : null}
+        <SectionHeader title="En tant que conducteur" icon="car-outline" />
+        {loading ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: 2 }).map((_, index) => (
+              <SurfaceCard key={`sk-drive-${index}`} style={styles.card} tone="soft" animated={false}>
+                <SkeletonBlock width="70%" height={14} />
+                <SkeletonBlock width="50%" height={12} />
+                <SkeletonBlock width="40%" height={12} />
+              </SurfaceCard>
+            ))}
+          </View>
+        ) : null}
         {!loading && filteredRides.length === 0 ? (
           <Text style={styles.helper}>Aucun trajet publie pour cette periode.</Text>
         ) : null}
-        {filteredRides.map((ride) => (
-          <Pressable
-            key={ride.id}
-            style={styles.card}
-            onPress={() => navigation.navigate('TripDetail', { type: 'ride', item: ride })}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>
-                {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
+        {filteredRides.map((ride, index) => (
+          <SurfaceCard key={ride.id} style={styles.card} delay={180 + index * 40}>
+            <Pressable onPress={() => navigation.navigate('TripDetail', { type: 'ride', item: ride })}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>
+                  {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
+                </Text>
+                <Text style={styles.badge}>{ride.status || 'Publie'}</Text>
+              </View>
+              <Text style={styles.cardMeta}>{formatDate(ride.departureAt)}</Text>
+              <Text style={styles.cardMeta}>
+                {ride.seatsAvailable != null ? `${ride.seatsAvailable} places dispo` : ''}
               </Text>
-              <Text style={styles.badge}>{ride.status || 'Publie'}</Text>
-            </View>
-            <Text style={styles.cardMeta}>{formatDate(ride.departureAt)}</Text>
-            <Text style={styles.cardMeta}>
-              {ride.seatsAvailable != null ? `${ride.seatsAvailable} places dispo` : ''}
-            </Text>
-            <Text style={styles.cardMeta}>{formatTripLabel(classifyTrip(ride.departureAt))}</Text>
-          </Pressable>
+              <Text style={styles.cardMeta}>{formatTripLabel(classifyTrip(ride.departureAt))}</Text>
+            </Pressable>
+          </SurfaceCard>
         ))}
       </View>
     </ScrollView>
@@ -211,22 +232,15 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing.sm,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.slate900,
-  },
   helper: {
     fontSize: 12,
     color: colors.slate500,
   },
   card: {
-    borderWidth: 1,
-    borderColor: colors.slate200,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    backgroundColor: colors.white,
     gap: 6,
+  },
+  skeletonList: {
+    gap: spacing.sm,
   },
   cardHeader: {
     flexDirection: 'row',

@@ -74,3 +74,19 @@ export async function deleteProfilePhoto(token) {
   }
   return response.json();
 }
+
+export async function requestPhoneOtp(token, payload) {
+  return apiFetch(`${ENDPOINTS.identity}/profiles/me/phone/request`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyPhoneOtp(token, payload) {
+  return apiFetch(`${ENDPOINTS.identity}/profiles/me/phone/verify`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}

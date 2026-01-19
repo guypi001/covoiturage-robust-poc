@@ -6,6 +6,9 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { CitySelect } from '../components/CitySelect';
 import { DateTimeField } from '../components/DateTimeField';
 import { loadPreferences, savePreferences } from '../preferences';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
+import { SkeletonBlock } from '../components/Skeleton';
 
 export function SearchScreen({ navigation }) {
   const [fromCity, setFromCity] = useState('Abidjan');
@@ -83,117 +86,136 @@ export function SearchScreen({ navigation }) {
       <Text style={text.title}>Recherche avancee</Text>
       <Text style={text.subtitle}>Affiner l'horaire, le budget et le suivi en direct.</Text>
 
-      <View style={styles.card}>
-        <CitySelect
-          label="Depart"
-          placeholder="Abidjan"
-          value={fromCity}
-          onChange={setFromCity}
-          error={errors.fromCity}
-        />
-        <CitySelect
-          label="Arrivee"
-          placeholder="Yamoussoukro"
-          value={toCity}
-          onChange={setToCity}
-          error={errors.toCity}
-        />
-        <View style={styles.row}>
-          <DateTimeField
-            label="Date"
-            mode="date"
-            value={date}
-            onChange={setDate}
-            hint="Choisis une date ou laisse vide."
+      {prefs === null ? (
+        <SurfaceCard style={styles.card} delay={80} animated={false}>
+          <SectionHeader title="Filtres principaux" icon="options-outline" />
+          <SkeletonBlock width="60%" height={12} />
+          <SkeletonBlock width="80%" height={16} />
+          <View style={styles.row}>
+            <SkeletonBlock width="45%" height={40} />
+            <SkeletonBlock width="45%" height={40} />
+          </View>
+          <View style={styles.row}>
+            <SkeletonBlock width="45%" height={40} />
+            <SkeletonBlock width="45%" height={40} />
+          </View>
+          <SkeletonBlock width="40%" height={10} />
+          <SkeletonBlock width="90%" height={36} />
+        </SurfaceCard>
+      ) : (
+        <SurfaceCard style={styles.card} delay={80}>
+          <SectionHeader title="Filtres principaux" icon="options-outline" />
+          <CitySelect
+            label="Depart"
+            placeholder="Abidjan"
+            value={fromCity}
+            onChange={setFromCity}
+            error={errors.fromCity}
           />
-          <InputField
-            label="Places"
-            placeholder="1"
-            value={seats}
-            onChangeText={setSeats}
-            keyboardType="number-pad"
-            hint="1 a 7 places."
-            error={errors.seats}
+          <CitySelect
+            label="Arrivee"
+            placeholder="Yamoussoukro"
+            value={toCity}
+            onChange={setToCity}
+            error={errors.toCity}
           />
-        </View>
-        <View style={styles.row}>
-          <InputField
-            label="Budget max"
-            placeholder="5000 XOF"
-            value={budget}
-            onChangeText={setBudget}
-            keyboardType="number-pad"
-            hint="Optionnel."
-            error={errors.budget}
-          />
-          <View style={styles.timeColumn}>
+          <View style={styles.row}>
             <DateTimeField
-              label="Apres"
-              mode="time"
-              value={afterTime}
-              onChange={setAfterTime}
-              error={errors.time}
+              label="Date"
+              mode="date"
+              value={date}
+              onChange={setDate}
+              hint="Choisis une date ou laisse vide."
             />
-            <DateTimeField
-              label="Avant"
-              mode="time"
-              value={beforeTime}
-              onChange={setBeforeTime}
-              error={errors.time}
+            <InputField
+              label="Places"
+              placeholder="1"
+              value={seats}
+              onChangeText={setSeats}
+              keyboardType="number-pad"
+              hint="1 a 7 places."
+              error={errors.seats}
             />
           </View>
-        </View>
-
-        <View style={styles.sortRow}>
-          {[
-            { id: 'soonest', label: 'Plus tot' },
-            { id: 'cheapest', label: 'Moins cher' },
-            { id: 'seats', label: 'Places' },
-          ].map((option) => {
-            const active = sort === option.id;
-            return (
-              <Pressable
-                key={option.id}
-                onPress={() => setSort(option.id)}
-                style={[styles.sortChip, active && styles.sortChipActive]}
-              >
-                <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.switchRow}>
-          <View>
-            <Text style={styles.switchTitle}>Suivi en direct</Text>
-            <Text style={styles.switchText}>Afficher uniquement les trajets actives.</Text>
+          <View style={styles.row}>
+            <InputField
+              label="Budget max"
+              placeholder="5000 XOF"
+              value={budget}
+              onChangeText={setBudget}
+              keyboardType="number-pad"
+              hint="Optionnel."
+              error={errors.budget}
+            />
+            <View style={styles.timeColumn}>
+              <DateTimeField
+                label="Apres"
+                mode="time"
+                value={afterTime}
+                onChange={setAfterTime}
+                error={errors.time}
+              />
+              <DateTimeField
+                label="Avant"
+                mode="time"
+                value={beforeTime}
+                onChange={setBeforeTime}
+                error={errors.time}
+              />
+            </View>
           </View>
-          <Switch value={liveTracking} onValueChange={setLiveTracking} trackColor={{ true: colors.sky500 }} />
-        </View>
 
-        <PrimaryButton
-          label="Afficher les resultats"
-          onPress={() => {
-            setErrors(validation);
-            if (Object.keys(validation).length) return;
-            navigation.navigate('Results', {
-              from: fromCity,
-              to: toCity,
-              date: date ? date.toISOString().slice(0, 10) : undefined,
-              seats,
-              priceMax: budget || undefined,
-              departureAfter: afterTime
-                ? afterTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                : undefined,
-              departureBefore: beforeTime
-                ? beforeTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                : undefined,
-              liveTracking,
-              sort,
-            });
-          }}
-        />
-      </View>
+          <View style={styles.sortRow}>
+            {[
+              { id: 'soonest', label: 'Plus tot' },
+              { id: 'cheapest', label: 'Moins cher' },
+              { id: 'seats', label: 'Places' },
+            ].map((option) => {
+              const active = sort === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  onPress={() => setSort(option.id)}
+                  style={[styles.sortChip, active && styles.sortChipActive]}
+                >
+                  <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.switchRow}>
+            <View>
+              <Text style={styles.switchTitle}>Suivi en direct</Text>
+              <Text style={styles.switchText}>Afficher uniquement les trajets actives.</Text>
+            </View>
+            <Switch value={liveTracking} onValueChange={setLiveTracking} trackColor={{ true: colors.sky500 }} />
+          </View>
+
+          <PrimaryButton
+            label="Afficher les resultats"
+            onPress={() => {
+              setErrors(validation);
+              if (Object.keys(validation).length) return;
+              navigation.navigate('Results', {
+                from: fromCity,
+                to: toCity,
+                date: date ? date.toISOString().slice(0, 10) : undefined,
+                seats,
+                priceMax: budget || undefined,
+                departureAfter: afterTime
+                  ? afterTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                  : undefined,
+                departureBefore: beforeTime
+                  ? beforeTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                  : undefined,
+                liveTracking,
+                sort,
+              });
+            }}
+          />
+        </SurfaceCard>
+      )}
     </ScrollView>
   );
 }
@@ -208,11 +230,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.md,
   },
   row: {

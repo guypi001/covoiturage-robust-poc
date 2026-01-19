@@ -5,10 +5,13 @@ import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { BrandMark } from '../components/BrandMark';
 import { useAuth } from '../auth';
+import { requestGmailOtp, verifyGmailOtp } from '../api/identity';
 import { useToast } from '../ui/ToastContext';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SkeletonBlock } from '../components/Skeleton';
 
 export function AuthScreen() {
-  const { login, register, continueAsGuest } = useAuth();
+  const { login, register, continueAsGuest, applyAuth } = useAuth();
   const { showToast } = useToast();
   const [mode, setMode] = useState('login');
   const [firstName, setFirstName] = useState('');
@@ -16,6 +19,9 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
   const [errors, setErrors] = useState({});
 
   const validation = useMemo(() => {
@@ -46,17 +52,71 @@ export function AuthScreen() {
       const emailTrimmed = email.trim();
       if (mode === 'register') {
         const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-        await register({ fullName, email: emailTrimmed, password });
+        const res = await register({ fullName, email: emailTrimmed, password });
+        if (res?.pending) {
+          setPendingEmail(emailTrimmed);
+          showToast('Code OTP envoye.', 'success');
+          return;
+        }
         showToast('Compte cree.', 'success');
       } else {
         await login(emailTrimmed, password);
         showToast('Connexion reussie.', 'success');
       }
     } catch (err) {
-      const message = String(err?.message || 'Impossible de continuer.');
-      showToast(message, 'error');
+      const raw = String(err?.message || 'Impossible de continuer.');
+      if (raw === 'email_not_verified') {
+        try {
+          await requestGmailOtp({ email: email.trim() });
+          setPendingEmail(email.trim());
+          showToast('Email non verifie. Code OTP envoye.', 'error');
+          return;
+        } catch {
+          showToast('Email non verifie. Impossible d envoyer le code.', 'error');
+          return;
+        }
+      }
+      if (raw === 'gmail_only') {
+        showToast('Utilise une adresse Gmail valide.', 'error');
+        return;
+      }
+      showToast(raw, 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!pendingEmail) return;
+    if (!otpCode.trim()) {
+      showToast('Code invalide.', 'error');
+      return;
+    }
+    try {
+      setOtpBusy(true);
+      const auth = await verifyGmailOtp({ email: pendingEmail.trim(), code: otpCode.trim() });
+      applyAuth(auth);
+      setOtpCode('');
+      setPendingEmail('');
+      showToast('Email verifie.', 'success');
+    } catch (err) {
+      const message = String(err?.message || 'Verification impossible.');
+      showToast(message, 'error');
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!pendingEmail) return;
+    try {
+      setOtpBusy(true);
+      await requestGmailOtp({ email: pendingEmail.trim() });
+      showToast('Code envoye.', 'success');
+    } catch (err) {
+      showToast('Impossible d envoyer le code.', 'error');
+    } finally {
+      setOtpBusy(false);
     }
   };
 
@@ -88,60 +148,88 @@ export function AuthScreen() {
         })}
       </View>
 
-      <View style={styles.card}>
-        {mode === 'register' && (
+      <SurfaceCard style={styles.card} delay={80}>
+        {pendingEmail ? (
           <>
+            <Text style={styles.otpTitle}>Verification email</Text>
+            <Text style={styles.otpText}>Entre le code envoye a {pendingEmail}.</Text>
             <InputField
-              label="Prenom"
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="Aya"
-              error={errors.firstName}
+              label="Code OTP"
+              value={otpCode}
+              onChangeText={setOtpCode}
+              placeholder="123456"
+              keyboardType="number-pad"
             />
-            <InputField
-              label="Nom"
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Kouadio"
-              error={errors.lastName}
+            <PrimaryButton label="Verifier" onPress={handleVerifyOtp} disabled={otpBusy} />
+            {otpBusy ? <SkeletonBlock width="40%" height={8} /> : null}
+            <PrimaryButton label="Renvoyer le code" variant="ghost" onPress={handleResendOtp} disabled={otpBusy} />
+            <PrimaryButton
+              label="Modifier l'email"
+              variant="ghost"
+              onPress={() => {
+                setPendingEmail('');
+                setOtpCode('');
+              }}
             />
           </>
+        ) : (
+          <>
+            {mode === 'register' && (
+              <>
+                <InputField
+                  label="Prenom"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="Aya"
+                  error={errors.firstName}
+                />
+                <InputField
+                  label="Nom"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Kouadio"
+                  error={errors.lastName}
+                />
+              </>
+            )}
+            <InputField
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="email@exemple.com"
+              autoCapitalize="none"
+              autoComplete="email"
+              textContentType="emailAddress"
+              autoCorrect={false}
+              error={errors.email}
+            />
+            <InputField
+              label="Mot de passe"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="********"
+              secureTextEntry
+              textContentType="password"
+              autoComplete="password"
+              error={errors.password}
+            />
+            <PrimaryButton
+              label={mode === 'register' ? 'Creer mon compte' : 'Se connecter'}
+              onPress={handleSubmit}
+              disabled={busy}
+            />
+            {busy ? <SkeletonBlock width="40%" height={8} /> : null}
+          </>
         )}
-        <InputField
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="email@exemple.com"
-          autoCapitalize="none"
-          autoComplete="email"
-          textContentType="emailAddress"
-          autoCorrect={false}
-          error={errors.email}
-        />
-        <InputField
-          label="Mot de passe"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="********"
-          secureTextEntry
-          textContentType="password"
-          autoComplete="password"
-          error={errors.password}
-        />
-        <PrimaryButton
-          label={mode === 'register' ? 'Creer mon compte' : 'Se connecter'}
-          onPress={handleSubmit}
-          disabled={busy}
-        />
-      </View>
+      </SurfaceCard>
 
-      <View style={styles.visitorCard}>
+      <SurfaceCard style={styles.visitorCard} tone="soft" delay={120}>
         <Text style={styles.visitorTitle}>Mode visiteur</Text>
         <Text style={styles.visitorText}>
           Consulte les trajets sans compte. Tu pourras te connecter plus tard.
         </Text>
         <PrimaryButton label="Continuer en visiteur" variant="ghost" onPress={continueAsGuest} />
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }
@@ -193,19 +281,18 @@ const styles = StyleSheet.create({
     color: colors.brandPrimary,
   },
   card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.md,
   },
+  otpTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  otpText: {
+    fontSize: 13,
+    color: colors.slate600,
+  },
   visitorCard: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.sm,
   },
   visitorTitle: {

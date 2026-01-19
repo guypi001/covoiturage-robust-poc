@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, text } from '../theme';
+import { colors, radius, shadows, spacing, text } from '../theme';
 import { getFirstName } from '../utils/name';
 
 export function RideCard({ ride }) {
@@ -49,10 +49,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     backgroundColor: colors.white,
     gap: 12,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
+    ...shadows.card,
   },
   badgeRow: {
     flexDirection: 'row',

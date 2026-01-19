@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, text } from '../theme';
+import { colors, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { RideCard } from '../components/RideCard';
 import { searchRides } from '../api/search';
 import { getFirstName } from '../utils/name';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
+import { SkeletonBlock } from '../components/Skeleton';
+import { Banner } from '../components/Banner';
 
 const normalizeRide = (ride) => ({
   id: ride.rideId || ride.id,
@@ -74,42 +78,55 @@ export function ResultsScreen({ navigation, route }) {
       </View>
 
       {loading && (
-        <View style={styles.loadingCard}>
+        <SurfaceCard style={styles.loadingCard} tone="soft" delay={60}>
           <ActivityIndicator color={colors.sky600} />
           <Text style={styles.loadingText}>Chargement des trajets...</Text>
-        </View>
+        </SurfaceCard>
       )}
 
-      {error ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
+      {error ? <Banner tone="error" message={error} /> : null}
 
       <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
+        <SurfaceCard style={styles.summaryCard} tone="soft" delay={90}>
           <Text style={styles.summaryLabel}>Meilleur prix</Text>
           <Text style={styles.summaryValue}>{stats?.cheapest?.price || '--'}</Text>
           <Text style={styles.summaryMeta}>par siege</Text>
-        </View>
-        <View style={styles.summaryCard}>
+        </SurfaceCard>
+        <SurfaceCard style={styles.summaryCard} tone="soft" delay={120}>
           <Text style={styles.summaryLabel}>Depart rapide</Text>
           <Text style={styles.summaryValue}>{rides[0]?.departure?.split(' ')[0] || '--'}</Text>
           <Text style={styles.summaryMeta}>aujourd'hui</Text>
-        </View>
+        </SurfaceCard>
       </View>
 
-      <View style={styles.filterBar}>
-        <View>
-          <Text style={styles.filterText}>Tri: plus tot</Text>
-          <Text style={styles.filterMeta}>Suivi en direct active</Text>
+      <SurfaceCard style={styles.filterBar} tone="soft" delay={150}>
+        <SectionHeader title="Filtres actifs" icon="filter-outline" />
+        <View style={styles.filterRow}>
+          <View>
+            <Text style={styles.filterText}>Tri: plus tot</Text>
+            <Text style={styles.filterMeta}>Suivi en direct active</Text>
+          </View>
+          <PrimaryButton label="Modifier" variant="ghost" onPress={() => navigation.navigate('Search')} />
         </View>
-        <PrimaryButton label="Modifier" variant="ghost" onPress={() => navigation.navigate('Search')} />
-      </View>
+      </SurfaceCard>
 
       <View style={styles.list}>
-        {rides.map((ride) => (
-          <View key={ride.id} style={styles.cardWrapper}>
+        {loading ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: 3 }).map((_, index) => (
+              <SurfaceCard key={`sk-${index}`} style={styles.skeletonCard} tone="soft" animated={false}>
+                <SkeletonBlock width="70%" height={14} />
+                <SkeletonBlock width="45%" height={12} />
+                <SkeletonBlock width="55%" height={12} />
+                <View style={styles.skeletonActionRow}>
+                  <SkeletonBlock width={110} height={36} rounded />
+                </View>
+              </SurfaceCard>
+            ))}
+          </View>
+        ) : null}
+        {rides.map((ride, index) => (
+          <SurfaceCard key={ride.id} style={styles.rideCard} delay={180 + index * 40}>
             <RideCard ride={ride} />
             <View style={styles.cardActions}>
               <PrimaryButton
@@ -117,13 +134,13 @@ export function ResultsScreen({ navigation, route }) {
                 onPress={() => navigation.navigate('RideDetail', { rideId: ride.id })}
               />
             </View>
-          </View>
+          </SurfaceCard>
         ))}
         {!loading && rides.length === 0 && !error ? (
-          <View style={styles.emptyCard}>
+          <SurfaceCard style={styles.emptyCard} tone="soft" delay={120}>
             <Text style={styles.emptyTitle}>Aucun trajet trouve</Text>
             <Text style={styles.emptyText}>Essaie d'ajuster les filtres ou de modifier l'horaire.</Text>
-          </View>
+          </SurfaceCard>
         ) : null}
       </View>
     </ScrollView>
@@ -148,11 +165,6 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.slate200,
   },
   summaryLabel: {
     fontSize: 11,
@@ -173,14 +185,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   filterBar: {
+    gap: spacing.sm,
+  },
+  filterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.slate200,
   },
   filterText: {
     color: colors.slate700,
@@ -196,30 +206,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.slate200,
   },
   loadingText: {
     fontSize: 13,
     color: colors.slate600,
   },
-  errorCard: {
-    backgroundColor: '#fee2e2',
-    padding: spacing.md,
-    borderRadius: radius.md,
-  },
-  errorText: {
-    color: '#991b1b',
-    fontSize: 13,
-    fontWeight: '600',
-  },
   list: {
     gap: spacing.md,
   },
-  cardWrapper: {
+  skeletonList: {
+    gap: spacing.md,
+  },
+  skeletonCard: {
+    gap: spacing.sm,
+  },
+  skeletonActionRow: {
+    alignItems: 'flex-start',
+    marginTop: 4,
+  },
+  rideCard: {
     gap: spacing.sm,
   },
   cardActions: {
@@ -227,11 +232,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   emptyCard: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     alignItems: 'center',
     gap: spacing.sm,
   },

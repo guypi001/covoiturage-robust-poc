@@ -64,6 +64,9 @@ export class Account {
   @Column({ type: 'varchar', length: 20, default: 'ACTIVE' })
   status!: AccountStatus;
 
+  @Column({ name: 'email_verified_at', type: 'timestamptz', nullable: true })
+  emailVerifiedAt?: Date | null;
+
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt?: Date | null;
 
@@ -78,6 +81,12 @@ export class Account {
 
   @Column({ name: 'payment_preferences', type: 'jsonb', nullable: true })
   paymentPreferences?: PaymentPreferences | null;
+
+  @Column({ name: 'email_verified_at', type: 'timestamptz', nullable: true })
+  emailVerifiedAt?: Date | null;
+
+  @Column({ name: 'phone_verified_at', type: 'timestamptz', nullable: true })
+  phoneVerifiedAt?: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
@@ -94,6 +103,32 @@ export class OtpToken {
   @Index()
   @Column()
   email!: string;
+
+  @Column({ name: 'code_hash' })
+  codeHash!: string;
+
+  @Column({ name: 'expires_at', type: 'timestamptz' })
+  expiresAt!: Date;
+
+  @Column({ default: 0 })
+  attempts!: number;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+}
+
+@Entity('phone_otp_tokens')
+export class PhoneOtpToken {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'account_id', type: 'uuid' })
+  accountId!: string;
+
+  @Index()
+  @Column({ type: 'varchar', length: 32 })
+  phone!: string;
 
   @Column({ name: 'code_hash' })
   codeHash!: string;

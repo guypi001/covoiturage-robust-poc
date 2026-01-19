@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing } from '../theme';
 
 const ToastContext = createContext({
@@ -34,10 +34,8 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
       <View pointerEvents="none" style={styles.toastContainer}>
-        {toasts.map((toast) => (
-          <View key={toast.id} style={[styles.toast, styles[`toast_${toast.tone}`]]}>
-            <Text style={styles.toastText}>{toast.message}</Text>
-          </View>
+        {toasts.map((toast, index) => (
+          <ToastItem key={toast.id} tone={toast.tone} index={index} message={toast.message} />
         ))}
       </View>
     </ToastContext.Provider>
@@ -46,6 +44,42 @@ export function ToastProvider({ children }) {
 
 export function useToast() {
   return useContext(ToastContext);
+}
+
+function ToastItem({ tone, message, index }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-6)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 240,
+        delay: index * 40,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 240,
+        delay: index * 40,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, opacity, translateY]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.toast,
+        styles[`toast_${tone}`],
+        { opacity, transform: [{ translateY }] },
+      ]}
+    >
+      <Text style={styles.toastText}>{message}</Text>
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({

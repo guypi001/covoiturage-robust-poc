@@ -486,6 +486,8 @@ export type AuthResponse = {
   account: Account;
 };
 
+export type RegisterResponse = AuthResponse | { pending: true; email: string };
+
 export type AccountListStats = {
   byStatus: Record<AccountStatus, number>;
   byRole: Record<AccountRole, number>;
@@ -761,8 +763,8 @@ export async function registerIndividualAccount(payload: {
   fullName: string;
   comfortPreferences?: string[];
   tagline?: string;
-}): Promise<AuthResponse> {
-  const { data } = await api.post<AuthResponse>(`${IDENTITY_URL}/auth/register/individual`, payload);
+}): Promise<RegisterResponse> {
+  const { data } = await api.post<RegisterResponse>(`${IDENTITY_URL}/auth/register/individual`, payload);
   return data;
 }
 
@@ -773,8 +775,8 @@ export async function registerCompanyAccount(payload: {
   registrationNumber?: string;
   contactName?: string;
   contactPhone?: string;
-}): Promise<AuthResponse> {
-  const { data } = await api.post<AuthResponse>(`${IDENTITY_URL}/auth/register/company`, payload);
+}): Promise<RegisterResponse> {
+  const { data } = await api.post<RegisterResponse>(`${IDENTITY_URL}/auth/register/company`, payload);
   return data;
 }
 

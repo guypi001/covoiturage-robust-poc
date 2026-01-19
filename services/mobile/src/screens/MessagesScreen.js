@@ -1,9 +1,50 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { getConversations, getMessagingWsUrl } from '../api/messaging';
 import { useAuth } from '../auth';
 import { getFirstName } from '../utils/name';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SkeletonBlock } from '../components/Skeleton';
+import { Banner } from '../components/Banner';
+
+function AnimatedListItem({ children, delay = 0 }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+  const scale = useRef(new Animated.Value(0.98)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 280,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 280,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 280,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [delay, opacity, scale, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }, { scale }] }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export function MessagesScreen({ navigation }) {
   const { account } = useAuth();
@@ -77,57 +118,71 @@ export function MessagesScreen({ navigation }) {
       </Text>
 
       {loading && (
-        <View style={styles.loadingCard}>
+        <SurfaceCard style={styles.loadingCard} tone="soft" delay={60}>
           <ActivityIndicator color={colors.sky600} />
           <Text style={styles.loadingText}>Chargement...</Text>
-        </View>
+        </SurfaceCard>
       )}
 
-      {error ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
+      {error ? <Banner tone="error" message={error} /> : null}
+
+      {loading ? (
+        <View style={styles.skeletonList}>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SurfaceCard key={`sk-msg-${index}`} style={styles.skeletonCard} tone="soft" animated={false}>
+              <View style={styles.skeletonRow}>
+                <SkeletonBlock width={44} height={44} rounded />
+                <View style={styles.skeletonText}>
+                  <SkeletonBlock width="60%" height={12} />
+                  <SkeletonBlock width="80%" height={10} />
+                </View>
+              </View>
+            </SurfaceCard>
+          ))}
         </View>
       ) : null}
 
-      {items.map((item) => {
+      {items.map((item, index) => {
         const otherId = item.otherParticipant?.id;
         const online = otherId ? presenceMap[otherId] : false;
         const displayName = getFirstName(item.otherParticipant?.label) || item.otherParticipant?.label || 'Contact';
         return (
-          <Pressable
-            key={item.id}
-            style={styles.card}
-            onPress={() =>
-              navigation.navigate('Conversation', {
-                conversationId: item.id,
-                otherParticipant: item.otherParticipant,
-              })
-            }
-          >
-            <View style={styles.row}>
-              <View style={[styles.avatar, online && styles.avatarOnline]}>
-                <Text style={styles.avatarText}>
-                  {displayName.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.cardContent}>
-                <View style={styles.headerRow}>
-                  <Text style={styles.name}>{displayName}</Text>
-                  <Text style={styles.presence}>{online ? 'En ligne' : 'Hors ligne'}</Text>
+          <AnimatedListItem key={item.id} delay={120 + index * 35}>
+            <SurfaceCard style={styles.card} animated={false}>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('Conversation', {
+                  conversationId: item.id,
+                  otherParticipant: item.otherParticipant,
+                })
+              }
+            >
+              <View style={styles.row}>
+                <View style={[styles.avatar, online && styles.avatarOnline]}>
+                  <Text style={styles.avatarText}>
+                    {displayName.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
-                <Text style={styles.preview}>{item.lastMessagePreview || 'Nouvelle conversation'}</Text>
-                <Text style={styles.meta}>Non lus: {item.unreadCount ?? 0}</Text>
+                <View style={styles.cardContent}>
+                  <View style={styles.headerRow}>
+                    <Text style={styles.name}>{displayName}</Text>
+                    <Text style={styles.presence}>{online ? 'En ligne' : 'Hors ligne'}</Text>
+                  </View>
+                  <Text style={styles.preview}>{item.lastMessagePreview || 'Nouvelle conversation'}</Text>
+                  <Text style={styles.meta}>Non lus: {item.unreadCount ?? 0}</Text>
+                </View>
               </View>
-            </View>
-          </Pressable>
+            </Pressable>
+            </SurfaceCard>
+          </AnimatedListItem>
         );
       })}
 
       {!loading && items.length === 0 && !error ? (
-        <View style={styles.emptyCard}>
+        <SurfaceCard style={styles.emptyCard} tone="soft" delay={90}>
           <Text style={styles.emptyTitle}>Aucune conversation</Text>
           <Text style={styles.emptyText}>Tu verras ici tes messages recents.</Text>
-        </View>
+        </SurfaceCard>
       ) : null}
     </ScrollView>
   );
@@ -143,11 +198,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: 6,
   },
   row: {
@@ -203,34 +253,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.slate200,
   },
   loadingText: {
     fontSize: 13,
     color: colors.slate600,
   },
-  errorCard: {
-    backgroundColor: '#fee2e2',
-    padding: spacing.md,
-    borderRadius: radius.md,
-  },
-  errorText: {
-    color: '#991b1b',
-    fontSize: 13,
-    fontWeight: '600',
-  },
   emptyCard: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  skeletonList: {
+    gap: spacing.md,
+  },
+  skeletonCard: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  skeletonText: {
+    flex: 1,
+    gap: 6,
   },
   emptyTitle: {
     fontSize: 16,

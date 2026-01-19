@@ -7,6 +7,10 @@ import { loadPreferences, savePreferences } from '../preferences';
 import { useAuth } from '../auth';
 import { getMyBookings, getMyRides } from '../api/bff';
 import { useToast } from '../ui/ToastContext';
+import { SurfaceCard } from '../components/SurfaceCard';
+import { SectionHeader } from '../components/SectionHeader';
+import { SkeletonBlock } from '../components/Skeleton';
+import { Banner } from '../components/Banner';
 
 export function HomeScreen({ navigation }) {
   const { token } = useAuth();
@@ -132,8 +136,8 @@ export function HomeScreen({ navigation }) {
         </Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Actions rapides</Text>
+      <SurfaceCard style={styles.card} delay={60}>
+        <SectionHeader title="Actions rapides" icon="flash-outline" />
         <View style={styles.quickRow}>
           <Pressable style={styles.actionTile} onPress={() => navigation.navigate('Search')}>
             <Text style={styles.actionTitle}>Rechercher un trajet</Text>
@@ -144,15 +148,26 @@ export function HomeScreen({ navigation }) {
             <Text style={styles.actionMeta}>Gere tes reservations</Text>
           </Pressable>
         </View>
-      </View>
+      </SurfaceCard>
 
       {token ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Mes trajets a venir</Text>
+        <SurfaceCard style={styles.card} delay={120}>
+          <SectionHeader title="Mes trajets a venir" icon="calendar-outline" />
           {loadingTrips ? <Text style={styles.helperText}>Chargement...</Text> : null}
-          {tripError ? <Text style={styles.helperError}>{tripError}</Text> : null}
+          {tripError ? <Banner tone="error" message={tripError} /> : null}
           {!loadingTrips && upcomingTrips.length === 0 && !tripError ? (
             <Text style={styles.helperText}>Aucun trajet a venir pour le moment.</Text>
+          ) : null}
+          {loadingTrips ? (
+            <View style={styles.skeletonList}>
+              {Array.from({ length: 2 }).map((_, index) => (
+                <View key={`sk-up-${index}`} style={styles.tripCard}>
+                  <SkeletonBlock width="70%" height={14} />
+                  <SkeletonBlock width="40%" height={12} />
+                  <SkeletonBlock width="50%" height={12} />
+                </View>
+              ))}
+            </View>
           ) : null}
           {upcomingTrips.map((trip) => {
             const ride = trip.ride || {};
@@ -172,21 +187,32 @@ export function HomeScreen({ navigation }) {
               </Pressable>
             );
           })}
-        </View>
+        </SurfaceCard>
       ) : (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Mes trajets</Text>
+        <SurfaceCard style={styles.card} delay={120}>
+          <SectionHeader title="Mes trajets" icon="car-outline" />
           <Text style={styles.helperText}>Connecte-toi pour retrouver tes trajets a venir et passes.</Text>
           <PrimaryButton label="Se connecter" onPress={() => navigation.navigate('Profile')} />
-        </View>
+        </SurfaceCard>
       )}
 
       {token ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Mes trajets passes</Text>
+        <SurfaceCard style={styles.card} delay={180}>
+          <SectionHeader title="Mes trajets passes" icon="time-outline" />
           {loadingTrips ? <Text style={styles.helperText}>Chargement...</Text> : null}
           {!loadingTrips && pastTrips.length === 0 && !tripError ? (
             <Text style={styles.helperText}>Aucun trajet termine pour le moment.</Text>
+          ) : null}
+          {loadingTrips ? (
+            <View style={styles.skeletonList}>
+              {Array.from({ length: 2 }).map((_, index) => (
+                <View key={`sk-past-${index}`} style={styles.tripCard}>
+                  <SkeletonBlock width="70%" height={14} />
+                  <SkeletonBlock width="40%" height={12} />
+                  <SkeletonBlock width="50%" height={12} />
+                </View>
+              ))}
+            </View>
           ) : null}
           {pastTrips.map((trip) => {
             const ride = trip.ride || {};
@@ -206,18 +232,18 @@ export function HomeScreen({ navigation }) {
               </Pressable>
             );
           })}
-        </View>
+        </SurfaceCard>
       ) : null}
 
       <View style={styles.highlights}>
-        <View style={styles.highlightCard}>
+        <SurfaceCard style={styles.highlightCard} tone="soft" delay={240}>
           <Text style={styles.highlightTitle}>Suivi en direct</Text>
           <Text style={styles.highlightText}>Disponible 15 min avant le depart pour les trajets actives.</Text>
-        </View>
-        <View style={styles.highlightCard}>
+        </SurfaceCard>
+        <SurfaceCard style={styles.highlightCard} tone="soft" delay={300}>
           <Text style={styles.highlightTitle}>Communautaire & Pro</Text>
           <Text style={styles.highlightText}>Filtre rapidement les trajets avec suivi active.</Text>
-        </View>
+        </SurfaceCard>
       </View>
     </ScrollView>
   );
@@ -236,17 +262,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     gap: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.slate900,
   },
   quickRow: {
     flexDirection: 'row',
@@ -264,9 +280,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.sky200,
+    borderColor: colors.sky100,
     padding: spacing.md,
-    backgroundColor: colors.sky50,
+    backgroundColor: colors.brandSoft,
   },
   actionTitle: {
     fontSize: 14,
@@ -299,9 +315,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.slate600,
   },
-  helperError: {
+  skeletonList: {
+    gap: spacing.sm,
+  },
+  highlights: {
+    gap: spacing.md,
+  },
+  highlightCard: {
+    gap: spacing.sm,
+  },
+  highlightTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  highlightText: {
     fontSize: 13,
-    color: '#991b1b',
-    fontWeight: '600',
+    color: colors.slate600,
   },
 });
