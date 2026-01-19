@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
+import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -54,6 +55,19 @@ export function ProfileScreen({ navigation }) {
   const [otpCode, setOtpCode] = useState('');
   const [phoneOtpCode, setPhoneOtpCode] = useState('');
   const [phoneOtpBusy, setPhoneOtpBusy] = useState(false);
+
+  const sanitizeOtpInput = (value, maxLength = 6) =>
+    value.replace(/\D+/g, '').slice(0, maxLength);
+
+  const tryAutofillOtp = async (setter, maxLength = 6) => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      const code = sanitizeOtpInput(text, maxLength);
+      if (code.length >= 4) setter(code);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   const isCompany = account?.type === 'COMPANY';
   const typeLabel = isCompany ? 'Entreprise' : 'Particulier';
@@ -551,7 +565,8 @@ export function ProfileScreen({ navigation }) {
           <InputField
             label="Code de verification"
             value={otpCode}
-            onChangeText={setOtpCode}
+            onFocus={() => tryAutofillOtp(setOtpCode)}
+            onChangeText={(value) => setOtpCode(sanitizeOtpInput(value))}
             placeholder="123456"
             keyboardType="number-pad"
           />
@@ -619,7 +634,8 @@ export function ProfileScreen({ navigation }) {
           <InputField
             label="Code SMS"
             value={phoneOtpCode}
-            onChangeText={setPhoneOtpCode}
+            onFocus={() => tryAutofillOtp(setPhoneOtpCode)}
+            onChangeText={(value) => setPhoneOtpCode(sanitizeOtpInput(value))}
             placeholder="123456"
             keyboardType="number-pad"
           />

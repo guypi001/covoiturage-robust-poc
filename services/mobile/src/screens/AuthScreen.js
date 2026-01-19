@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { colors, radius, spacing, text } from '../theme';
 import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { BrandMark } from '../components/BrandMark';
 import { useAuth } from '../auth';
-import { requestGmailOtp, verifyGmailOtp } from '../api/identity';
+import { requestGmailOtp, requestPasswordReset, resetPassword, verifyGmailOtp } from '../api/identity';
 import { useToast } from '../ui/ToastContext';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SkeletonBlock } from '../components/Skeleton';
+import { Banner } from '../components/Banner';
 
 export function AuthScreen() {
   const { login, register, continueAsGuest, applyAuth } = useAuth();
@@ -23,6 +25,27 @@ export function AuthScreen() {
   const [otpCode, setOtpCode] = useState('');
   const [otpBusy, setOtpBusy] = useState(false);
   const [errors, setErrors] = useState({});
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetStep, setResetStep] = useState('email');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetTone, setResetTone] = useState('info');
+
+  const sanitizeOtpInput = (value, maxLength = 6) =>
+    value.replace(/\D+/g, '').slice(0, maxLength);
+
+  const tryAutofillOtp = async (setter, maxLength = 6) => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      const code = sanitizeOtpInput(text, maxLength);
+      if (code.length >= 4) setter(code);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   const validation = useMemo(() => {
     const next = {};
@@ -120,6 +143,62 @@ export function AuthScreen() {
     }
   };
 
+  const handleRequestReset = async () => {
+    const trimmed = resetEmail.trim();
+    if (!trimmed || !/^\S+@\S+\.\S+$/.test(trimmed)) {
+      setResetTone('error');
+      setResetMessage('Email invalide.');
+      return;
+    }
+    try {
+      setResetBusy(true);
+      setResetMessage('');
+      await requestPasswordReset({ email: trimmed });
+      setResetStep('code');
+      setResetTone('success');
+      setResetMessage('Code OTP envoye par email.');
+    } catch (err) {
+      setResetTone('error');
+      setResetMessage('Impossible d envoyer le code.');
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    const token = resetToken.trim();
+    if (!token) {
+      setResetTone('error');
+      setResetMessage('Code OTP manquant.');
+      return;
+    }
+    if (!resetPasswordValue || resetPasswordValue.length < 8) {
+      setResetTone('error');
+      setResetMessage('8 caracteres minimum.');
+      return;
+    }
+    try {
+      setResetBusy(true);
+      setResetMessage('');
+      await resetPassword({ token, password: resetPasswordValue });
+      setResetTone('success');
+      setResetMessage('Mot de passe mis a jour.');
+      setForgotMode(false);
+      setResetStep('email');
+      setResetToken('');
+      setResetPasswordValue('');
+      setEmail(resetEmail);
+      setMode('login');
+      showToast('Tu peux te connecter.', 'success');
+    } catch (err) {
+      const message = String(err?.message || 'Reset impossible.');
+      setResetTone('error');
+      setResetMessage(message);
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
@@ -149,14 +228,75 @@ export function AuthScreen() {
       </View>
 
       <SurfaceCard style={styles.card} delay={80}>
-        {pendingEmail ? (
+        {forgotMode ? (
+          <>
+            <Text style={styles.otpTitle}>Mot de passe oublie</Text>
+            <Text style={styles.otpText}>
+              {resetStep === 'email'
+                ? 'Entre ton email pour recevoir un code OTP.'
+                : 'Entre le code OTP recu et choisis un nouveau mot de passe.'}
+            </Text>
+            {resetMessage ? <Banner tone={resetTone} message={resetMessage} /> : null}
+            {resetStep === 'email' ? (
+              <>
+                <InputField
+                  label="Email"
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                  placeholder="email@exemple.com"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  autoCorrect={false}
+                />
+                <PrimaryButton label="Recevoir le code" onPress={handleRequestReset} disabled={resetBusy} />
+                {resetBusy ? <SkeletonBlock width="40%" height={8} /> : null}
+              </>
+            ) : (
+              <>
+                <InputField
+                  label="Code OTP"
+                  value={resetToken}
+                  onFocus={() => tryAutofillOtp(setResetToken)}
+                  onChangeText={(value) => setResetToken(sanitizeOtpInput(value))}
+                  placeholder="Code recu par email"
+                  keyboardType="number-pad"
+                />
+                <InputField
+                  label="Nouveau mot de passe"
+                  value={resetPasswordValue}
+                  onChangeText={setResetPasswordValue}
+                  placeholder="********"
+                  secureTextEntry
+                />
+                <PrimaryButton label="Reinitialiser" onPress={handleConfirmReset} disabled={resetBusy} />
+                {resetBusy ? <SkeletonBlock width="40%" height={8} /> : null}
+              </>
+            )}
+            <PrimaryButton
+              label={resetStep === 'email' ? 'Retour' : 'Modifier l email'}
+              variant="ghost"
+              onPress={() => {
+                if (resetStep === 'code') {
+                  setResetStep('email');
+                  setResetToken('');
+                  setResetPasswordValue('');
+                  return;
+                }
+                setForgotMode(false);
+                setResetMessage('');
+              }}
+            />
+          </>
+        ) : pendingEmail ? (
           <>
             <Text style={styles.otpTitle}>Verification email</Text>
             <Text style={styles.otpText}>Entre le code envoye a {pendingEmail}.</Text>
             <InputField
               label="Code OTP"
               value={otpCode}
-              onChangeText={setOtpCode}
+              onFocus={() => tryAutofillOtp(setOtpCode)}
+              onChangeText={(value) => setOtpCode(sanitizeOtpInput(value))}
               placeholder="123456"
               keyboardType="number-pad"
             />
@@ -219,6 +359,19 @@ export function AuthScreen() {
               disabled={busy}
             />
             {busy ? <SkeletonBlock width="40%" height={8} /> : null}
+            {mode === 'login' ? (
+              <Pressable
+                style={styles.forgotLink}
+                onPress={() => {
+                  setForgotMode(true);
+                  setResetEmail(email.trim());
+                  setResetMessage('');
+                  setResetStep('email');
+                }}
+              >
+                <Text style={styles.forgotText}>Mot de passe oublie ?</Text>
+              </Pressable>
+            ) : null}
           </>
         )}
       </SurfaceCard>
@@ -303,5 +456,13 @@ const styles = StyleSheet.create({
   visitorText: {
     fontSize: 13,
     color: colors.slate600,
+  },
+  forgotLink: {
+    alignSelf: 'flex-start',
+  },
+  forgotText: {
+    color: colors.brandPrimary,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

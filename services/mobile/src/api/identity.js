@@ -44,6 +44,20 @@ export async function verifyGmailOtp(payload) {
   });
 }
 
+export async function requestPasswordReset(payload) {
+  return apiFetch(`${ENDPOINTS.identity}/auth/password/forgot`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resetPassword(payload) {
+  return apiFetch(`${ENDPOINTS.identity}/auth/password/reset`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function uploadProfilePhoto(token, file) {
   const body = new FormData();
   body.append('file', file);
