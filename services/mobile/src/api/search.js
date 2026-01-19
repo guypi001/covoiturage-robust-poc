@@ -1,3 +1,4 @@
+import { apiFetch } from './http';
 import { CONFIG } from '../config';
 
 export async function searchRides(params) {
@@ -14,10 +15,5 @@ export async function searchRides(params) {
   if (typeof params.liveTracking === 'boolean') {
     search.set('liveTracking', params.liveTracking ? 'true' : 'false');
   }
-  const response = await fetch(`${CONFIG.searchUrl}/search?${search.toString()}`);
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload?.message || 'search_failed');
-  }
-  return response.json();
+  return apiFetch(`${CONFIG.searchUrl}/search?${search.toString()}`);
 }

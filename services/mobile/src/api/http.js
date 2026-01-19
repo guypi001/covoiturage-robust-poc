@@ -9,12 +9,21 @@ export async function apiFetch(url, options = {}) {
     },
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      unauthorizedHandler?.();
+    }
     const payload = await response.json().catch(() => ({}));
     const message = payload?.message || payload?.error || 'request_failed';
     throw new Error(message);
   }
   if (response.status === 204) return null;
   return response.json();
+}
+
+let unauthorizedHandler;
+
+export function registerUnauthorizedHandler(handler) {
+  unauthorizedHandler = handler;
 }
 
 export function withAuth(token) {

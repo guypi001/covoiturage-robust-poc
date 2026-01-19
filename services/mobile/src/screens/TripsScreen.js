@@ -7,6 +7,7 @@ import { useToast } from '../ui/ToastContext';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
+import { formatBookingStatus, formatRideStatus } from '../utils/status';
 
 const TABS = [
   { id: 'upcoming', label: 'A venir' },
@@ -140,7 +141,7 @@ export function TripsScreen({ navigation }) {
                   <Text style={styles.cardTitle}>
                     {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
                   </Text>
-                  <Text style={styles.badge}>{booking.status || 'Reservation'}</Text>
+                <Text style={styles.badge}>{formatBookingStatus(booking.status)}</Text>
                 </View>
                 <Text style={styles.cardMeta}>{formatDate(ride.departureAt || booking.departureAt)}</Text>
                 <Text style={styles.cardMeta}>{ride.pricePerSeat ? `${ride.pricePerSeat} FCFA` : ''}</Text>
@@ -176,7 +177,7 @@ export function TripsScreen({ navigation }) {
                 <Text style={styles.cardTitle}>
                   {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
                 </Text>
-                <Text style={styles.badge}>{ride.status || 'Publie'}</Text>
+              <Text style={styles.badge}>{formatRideStatus(ride.status)}</Text>
               </View>
               <Text style={styles.cardMeta}>{formatDate(ride.departureAt)}</Text>
               <Text style={styles.cardMeta}>

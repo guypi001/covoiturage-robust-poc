@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { loginAccount, registerIndividual } from './api/identity';
 import { getMyProfile } from './api/bff';
+import { registerUnauthorizedHandler } from './api/http';
 
 const TOKEN_KEY = 'kari_token';
 const ACCOUNT_KEY = 'kari_account';
@@ -72,6 +73,15 @@ export function AuthProvider({ children }) {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    registerUnauthorizedHandler(() => {
+      setToken(null);
+      setAccount(null);
+      setGuest(false);
+      persistSession(null, null, false);
+    });
   }, []);
 
   const persistSession = async (nextToken, nextAccount, nextGuest) => {

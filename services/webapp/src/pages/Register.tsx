@@ -472,158 +472,159 @@ export default function Register() {
             </form>
           ) : (
             <form onSubmit={onSubmitPassword} className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600">Email</label>
-                <input
-                  type="email"
-                  className="input w-full"
-                  value={email}
-                  onChange={(e) => setEmail(e.currentTarget.value)}
-                  placeholder="contact@karigo.ci"
-                  required
-                />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-600">Email</label>
+                  <input
+                    type="email"
+                    className="input w-full"
+                    value={email}
+                    onChange={(e) => setEmail(e.currentTarget.value)}
+                    placeholder="contact@karigo.ci"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-600">Mot de passe</label>
+                  <input
+                    type="password"
+                    className="input w-full"
+                    value={password}
+                    onChange={(e) => setPassword(e.currentTarget.value)}
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600">Mot de passe</label>
-                <input
-                  type="password"
-                  className="input w-full"
-                  value={password}
-                  onChange={(e) => setPassword(e.currentTarget.value)}
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
 
-            {kind === 'individual' ? (
-              <>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">Prénom</label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.currentTarget.value)}
-                      placeholder="Prénom"
-                      required
-                    />
+              {kind === 'individual' ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">Prénom</label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.currentTarget.value)}
+                        placeholder="Prénom"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">Nom</label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.currentTarget.value)}
+                        placeholder="Nom"
+                        required
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">Nom</label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.currentTarget.value)}
-                      placeholder="Nom"
-                      required
-                    />
-                  </div>
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">
-                      Phrase d’accroche (optionnel)
-                    </label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={tagline}
-                      onChange={(e) => setTagline(e.currentTarget.value)}
-                      placeholder="Toujours à l’heure, trajet confortable garanti"
-                    />
-                    <p className="text-xs text-slate-400">
-                      Optionnel — visible sur ton profil quand tu proposes un trajet.
-                    </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">
+                        Phrase d’accroche (optionnel)
+                      </label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={tagline}
+                        onChange={(e) => setTagline(e.currentTarget.value)}
+                        placeholder="Toujours à l’heure, trajet confortable garanti"
+                      />
+                      <p className="text-xs text-slate-400">
+                        Optionnel — visible sur ton profil quand tu proposes un trajet.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">
+                        Préférences de confort (séparées par des virgules)
+                      </label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={comfort}
+                        onChange={(e) => setComfort(e.currentTarget.value)}
+                        placeholder="Climatisation, musique douce, bouteille d’eau"
+                      />
+                      <p className="text-xs text-slate-400">
+                        Exemple : Climatisation, Wi-Fi, Snacks.
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">
-                      Préférences de confort (séparées par des virgules)
-                    </label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={comfort}
-                      onChange={(e) => setComfort(e.currentTarget.value)}
-                      placeholder="Climatisation, musique douce, bouteille d’eau"
-                    />
-                    <p className="text-xs text-slate-400">
-                      Exemple : Climatisation, Wi-Fi, Snacks.
-                    </p>
+                </>
+              ) : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">Nom de la compagnie</label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.currentTarget.value)}
+                        placeholder="KariGo Transports"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">
+                        Numéro d’immatriculation (optionnel)
+                      </label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={registrationNumber}
+                        onChange={(e) => setRegistrationNumber(e.currentTarget.value)}
+                        placeholder="RC-123456"
+                      />
+                    </div>
                   </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">Nom de la compagnie</label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.currentTarget.value)}
-                      placeholder="KariGo Transports"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">
-                      Numéro d’immatriculation (optionnel)
-                    </label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={registrationNumber}
-                      onChange={(e) => setRegistrationNumber(e.currentTarget.value)}
-                      placeholder="RC-123456"
-                    />
-                  </div>
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">
-                      Contact principal (optionnel)
-                    </label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={contactName}
-                      onChange={(e) => setContactName(e.currentTarget.value)}
-                      placeholder="Responsable flotte"
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">
+                        Contact principal (optionnel)
+                      </label>
+                      <input
+                        type="text"
+                        className="input w-full"
+                        value={contactName}
+                        onChange={(e) => setContactName(e.currentTarget.value)}
+                        placeholder="Responsable flotte"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600">
+                        Téléphone du contact (optionnel)
+                      </label>
+                      <input
+                        type="tel"
+                        className="input w-full"
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.currentTarget.value)}
+                        placeholder="+225 01 23 45 67 89"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">
-                      Téléphone du contact (optionnel)
-                    </label>
-                    <input
-                      type="tel"
-                      className="input w-full"
-                      value={contactPhone}
-                      onChange={(e) => setContactPhone(e.currentTarget.value)}
-                      placeholder="+225 01 23 45 67 89"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
 
-            {renderError(error)}
+              {renderError(error)}
 
-            <button
-              type="submit"
-              disabled={submitting || showLoader}
-              className="btn-primary w-full h-11 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {submitting || showLoader ? 'Création…' : 'Créer le compte'}
+              <button
+                type="submit"
+                disabled={submitting || showLoader}
+                className="btn-primary w-full h-11 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {submitting || showLoader ? 'Création…' : 'Créer le compte'}
             </button>
           </form>
+        )
         ) : (
           <div className="space-y-5">
             <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">

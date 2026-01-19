@@ -82,9 +82,6 @@ export class Account {
   @Column({ name: 'payment_preferences', type: 'jsonb', nullable: true })
   paymentPreferences?: PaymentPreferences | null;
 
-  @Column({ name: 'email_verified_at', type: 'timestamptz', nullable: true })
-  emailVerifiedAt?: Date | null;
-
   @Column({ name: 'phone_verified_at', type: 'timestamptz', nullable: true })
   phoneVerifiedAt?: Date | null;
 

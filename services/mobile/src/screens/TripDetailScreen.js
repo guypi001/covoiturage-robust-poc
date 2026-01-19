@@ -8,13 +8,7 @@ import { useToast } from '../ui/ToastContext';
 import { useModal } from '../ui/ModalContext';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
-
-const statusLabels = {
-  PENDING: 'En attente',
-  CONFIRMED: 'Confirmée',
-  PAID: 'Payée',
-  CANCELLED: 'Annulée',
-};
+import { formatBookingStatus } from '../utils/status';
 
 const formatDate = (value) => {
   if (!value) return 'Date inconnue';
@@ -30,7 +24,7 @@ const formatDate = (value) => {
 };
 
 const computeLiveStatus = (departureAt, status) => {
-  if (status === 'CANCELLED') return 'Annulé';
+  if (status === 'CANCELLED' || status === 'CANCELED') return 'Annulé';
   if (!departureAt) return 'En attente';
   const ts = Date.parse(departureAt);
   if (!Number.isFinite(ts)) return 'En attente';
@@ -49,7 +43,7 @@ export function TripDetailScreen({ navigation, route }) {
   const { type, item } = route.params || {};
   const ride = item?.ride || item;
   const isBooking = type === 'booking';
-  const bookingStatus = isBooking ? statusLabels[item?.status] || item?.status : null;
+  const bookingStatus = isBooking ? formatBookingStatus(item?.status) : null;
 
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
