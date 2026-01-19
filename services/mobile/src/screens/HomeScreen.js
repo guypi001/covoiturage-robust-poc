@@ -143,7 +143,17 @@ export function HomeScreen({ navigation }) {
             <Text style={styles.actionTitle}>Rechercher un trajet</Text>
             <Text style={styles.actionMeta}>Accede aux filtres avances</Text>
           </Pressable>
-          <Pressable style={styles.actionTileAlt} onPress={() => navigation.navigate('Trips')}>
+          <Pressable
+            style={styles.actionTileAlt}
+            onPress={() => {
+              if (token) {
+                navigation.navigate('Trips');
+                return;
+              }
+              showToast('Connecte-toi pour acceder aux trajets.', 'error');
+              navigation.navigate('Profile');
+            }}
+          >
             <Text style={styles.actionTitle}>Mes trajets</Text>
             <Text style={styles.actionMeta}>Gere tes reservations</Text>
           </Pressable>

@@ -107,7 +107,14 @@ export function TripDetailScreen({ navigation, route }) {
         <PrimaryButton
           label="Contacter"
           variant="ghost"
-          onPress={() => navigation.navigate('Tabs', { screen: 'MessagesTab' })}
+          onPress={() => {
+            if (!token) {
+              showToast('Connecte-toi pour contacter.', 'error');
+              navigation.navigate('Tabs', { screen: 'Profile' });
+              return;
+            }
+            navigation.navigate('Tabs', { screen: 'MessagesTab' });
+          }}
         />
         {isBooking && item?.status !== 'CANCELLED' ? (
           <PrimaryButton label="Annuler ma reservation" onPress={handleCancel} disabled={busy} />
