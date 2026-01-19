@@ -216,7 +216,7 @@ export class AuthService implements OnModuleInit {
   }
 
   private buildPasswordResetLink(token: string) {
-    const base = APP_PUBLIC_URL || 'http://192.168.0.50';
+    const base = APP_PUBLIC_URL || 'http://82.112.255.155:3006';
     try {
       const url = new URL('/reset-password', base);
       url.searchParams.set('token', token);
