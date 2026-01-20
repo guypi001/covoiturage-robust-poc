@@ -143,6 +143,7 @@ services:
     env_file: ./services/identity/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      APP_PUBLIC_URL: http://82.112.255.155:3006
     depends_on: [postgres, redpanda]
     ports: ["3001:3000"]
     restart: unless-stopped
