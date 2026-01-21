@@ -1,10 +1,14 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-timeout 120000 \
+    && npm install
 COPY . .
 
-# 🔽 important : passer les args au build Vite
+# Important: pass args to Vite build
 ARG VITE_SEARCH_URL
 ARG VITE_BOOKING_URL
 ARG VITE_RIDE_URL

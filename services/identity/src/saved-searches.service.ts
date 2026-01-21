@@ -32,7 +32,7 @@ export class SavedSearchesService {
   async create(accountId: string, input: SavedSearchInput) {
     const originCity = normalizeCity(input.originCity);
     const destinationCity = normalizeCity(input.destinationCity);
-    const date = input.date ? new Date(input.date) : null;
+    const date = input.date ? new Date(input.date) : undefined;
 
     const existing = await this.searches.findOne({
       where: {
@@ -40,12 +40,12 @@ export class SavedSearchesService {
         originCity,
         destinationCity,
         date,
-        seats: input.seats ?? null,
-        priceMax: input.priceMax ?? null,
-        departureAfter: input.departureAfter ?? null,
-        departureBefore: input.departureBefore ?? null,
+        seats: input.seats ?? undefined,
+        priceMax: input.priceMax ?? undefined,
+        departureAfter: input.departureAfter ?? undefined,
+        departureBefore: input.departureBefore ?? undefined,
         liveTracking: Boolean(input.liveTracking),
-        comfortLevel: input.comfortLevel?.trim() || null,
+        comfortLevel: input.comfortLevel?.trim() || undefined,
         driverVerified: Boolean(input.driverVerified),
       },
     });

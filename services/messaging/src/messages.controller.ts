@@ -9,7 +9,8 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
-  TooManyRequestsException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -215,7 +216,7 @@ export class MessagesController {
         .andWhere('m.createdAt >= :since', { since })
         .getCount();
       if (recentCount >= MESSAGE_RATE_LIMIT_PER_MIN) {
-        throw new TooManyRequestsException('rate_limited');
+        throw new HttpException('rate_limited', HttpStatus.TOO_MANY_REQUESTS);
       }
     }
 
