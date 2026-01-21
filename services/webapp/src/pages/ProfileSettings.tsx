@@ -6,9 +6,11 @@ import {
   type FavoriteRoute,
   type HomePreferencesPayload,
   deleteProfilePhoto,
+  getCompanyVerification,
   resolveIdentityAssetUrl,
   updateCompanyProfile,
   updateIndividualProfile,
+  uploadCompanyDocument,
   uploadProfilePhoto,
 } from '../api';
 import { HOME_THEME_OPTIONS, QUICK_ACTION_OPTIONS } from '../constants/homePreferences';
@@ -72,6 +74,9 @@ export default function ProfileSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
+  const [companyVerification, setCompanyVerification] = useState<any>(null);
+  const [companyDocUploading, setCompanyDocUploading] = useState(false);
+  const [companyDocType, setCompanyDocType] = useState('legal');
 
   const accountType = account?.type as AccountType | undefined;
 
@@ -108,6 +113,20 @@ export default function ProfileSettings() {
       }
     };
   }, [photoPreview]);
+
+  const loadCompanyVerification = async () => {
+    if (!token || account?.type !== 'COMPANY') return;
+    try {
+      const data = await getCompanyVerification(token);
+      setCompanyVerification(data);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Impossible de charger la verification.');
+    }
+  };
+
+  useEffect(() => {
+    void loadCompanyVerification();
+  }, [token, account?.type]);
 
   const comfortList = useMemo(
     () =>
@@ -305,6 +324,94 @@ export default function ProfileSettings() {
             </div>
             </div>
           </section>
+
+          {account.type === 'COMPANY' && (
+            <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <header className="space-y-1">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  Verification entreprise
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Charge les documents legaux pour activer le badge entreprise verifiee.
+                </p>
+              </header>
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span
+                  className={`rounded-full px-3 py-1 font-semibold ${
+                    companyVerification?.verifiedAt
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {companyVerification?.verifiedAt ? 'Entreprise verifiee' : 'Verification en attente'}
+                </span>
+                <span className="text-slate-500">
+                  {companyVerification?.verifiedAt
+                    ? `Valide le ${formatDate(companyVerification.verifiedAt)}`
+                    : 'Validation sous 24-48h'}
+                </span>
+              </div>
+              <div className="grid gap-3 text-xs text-slate-600">
+                {(companyVerification?.documents ?? []).length === 0 ? (
+                  <span>Aucun document soumis pour le moment.</span>
+                ) : (
+                  companyVerification.documents.map((doc: any) => (
+                    <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-800">{doc.type || 'Document'}</span>
+                      <span className="text-slate-500">{doc.status}</span>
+                      <a
+                        className="text-sky-600 hover:text-sky-700"
+                        href={resolveIdentityAssetUrl(doc.fileUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Ouvrir
+                      </a>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <select
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                  value={companyDocType}
+                  onChange={(e) => setCompanyDocType(e.target.value)}
+                >
+                  <option value="legal">Document legal</option>
+                  <option value="registration">Immatriculation</option>
+                  <option value="insurance">Assurance</option>
+                </select>
+                <label className="rounded-lg border border-slate-300 px-3 py-2 text-slate-600 hover:bg-slate-100 cursor-pointer">
+                  Importer un document
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,application/pdf"
+                    className="sr-only"
+                    onChange={async (e) => {
+                      const file = e.currentTarget.files?.[0];
+                      if (!file || !token) return;
+                      setCompanyDocUploading(true);
+                      setError(undefined);
+                      try {
+                        await uploadCompanyDocument(token, { file, type: companyDocType });
+                        await loadCompanyVerification();
+                        setSuccess('Document transmis pour verification.');
+                      } catch (err: any) {
+                        setError(
+                          err?.response?.data?.message ||
+                            err?.message ||
+                            'Impossible d envoyer le document.',
+                        );
+                      } finally {
+                        setCompanyDocUploading(false);
+                      }
+                    }}
+                  />
+                </label>
+                {companyDocUploading && <span className="text-slate-500">Upload en cours…</span>}
+              </div>
+            </section>
+          )}
 
         <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div>

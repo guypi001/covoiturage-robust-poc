@@ -85,6 +85,10 @@ export class AppModule implements OnModuleInit {
       await this.handleRidePublished(evt);
     });
 
+    await this.bus.subscribe('notif-group', 'ride.city_alert', async (evt) => {
+      await this.handleRideCityAlert(evt);
+    });
+
     await this.bus.subscribe('notif-group', 'message.sent', async (evt) => {
       await this.handleMessageSent(evt as MessageSentEvent);
     });
@@ -205,6 +209,25 @@ export class AppModule implements OnModuleInit {
         },
       });
     }
+  }
+
+  private async handleRideCityAlert(evt: { rideId?: string; city?: string }) {
+    if (!evt?.rideId || !evt?.city) return;
+    const bookings = await this.bookings.listByRide(evt.rideId);
+    if (!bookings.length) return;
+    const uniquePassengers = Array.from(
+      new Set(bookings.map((booking) => booking.passengerId).filter(Boolean)),
+    );
+    await Promise.all(
+      uniquePassengers.map((passengerId) =>
+        this.push.sendToOwner(passengerId, {
+          title: 'Trajet en cours',
+          body: `Le trajet passe par ${evt.city}`,
+          category: 'RIDE_IMMINENT',
+          data: { rideId: evt.rideId, city: evt.city },
+        }),
+      ),
+    );
   }
 
   private async handlePaymentCaptured(evt: PaymentCapturedEvent) {

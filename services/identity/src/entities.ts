@@ -85,6 +85,9 @@ export class Account {
   @Column({ name: 'phone_verified_at', type: 'timestamptz', nullable: true })
   phoneVerifiedAt?: Date | null;
 
+  @Column({ name: 'company_verified_at', type: 'timestamptz', nullable: true })
+  companyVerifiedAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
@@ -208,6 +211,37 @@ export class Report {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+}
+
+export type CompanyDocumentStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+@Entity('company_documents')
+@Index(['accountId', 'type'])
+export class CompanyDocument {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'account_id', type: 'uuid' })
+  accountId!: string;
+
+  @Column({ type: 'varchar', length: 64 })
+  type!: string;
+
+  @Column({ name: 'file_url', type: 'text' })
+  fileUrl!: string;
+
+  @Column({ type: 'varchar', length: 16, default: 'PENDING' })
+  status!: CompanyDocumentStatus;
+
+  @Column({ type: 'text', nullable: true })
+  note?: string | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
 }
 
 @Entity('saved_searches')

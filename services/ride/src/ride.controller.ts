@@ -303,6 +303,23 @@ export class RideController {
     return { ok: true, ride };
   }
 
+  @Post(':id/city-alert')
+  async cityAlert(@Param('id') id: string, @Body() body: { city?: string }) {
+    const ride = await this.rides.findOne({ where: { id } });
+    if (!ride) {
+      return { error: 'not_found' };
+    }
+    if (!ride.liveTrackingEnabled || ride.liveTrackingMode !== 'CITY_ALERTS') {
+      return { error: 'city_alert_not_enabled' };
+    }
+    const city = body?.city?.trim();
+    if (!city) {
+      return { error: 'city_required' };
+    }
+    await this.bus.publish('ride.city_alert', { rideId: ride.id, city }, ride.id);
+    return { ok: true };
+  }
+
   // Utilisé par "booking" pour réserver des places
   @Post(':id/lock')
   async lock(@Param('id') id: string, @Body() body: { seats: number }, @Res() res: Response) {

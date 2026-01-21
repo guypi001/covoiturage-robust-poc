@@ -103,6 +103,74 @@ export class PaymentService {
     );
   }
 
+  async getCompanyInvoice(companyId: string, month?: string) {
+    const { start, end } = this.resolveMonthRange(month);
+    const qb = this.intents
+      .createQueryBuilder('intent')
+      .where('intent.payerId = :companyId', { companyId })
+      .andWhere('intent.createdAt >= :start', { start })
+      .andWhere('intent.createdAt < :end', { end });
+
+    const intents = await qb.orderBy('intent.createdAt', 'DESC').getMany();
+    const totalAmount = intents.reduce((acc, item) => acc + (item.amount ?? 0), 0);
+    const totalRefunded = intents.reduce((acc, item) => acc + (item.refundedAmount ?? 0), 0);
+    const byStatus = intents.reduce<Record<string, number>>((acc, item) => {
+      acc[item.status] = (acc[item.status] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      companyId,
+      month: start.toISOString().slice(0, 7),
+      totalAmount,
+      totalRefunded,
+      byStatus,
+      items: intents,
+    };
+  }
+
+  getInvoiceCsv(invoice: Awaited<ReturnType<PaymentService['getCompanyInvoice']>>) {
+    const headers = [
+      'bookingId',
+      'amount',
+      'currency',
+      'status',
+      'paymentMethodType',
+      'paymentProvider',
+      'createdAt',
+    ];
+    const rows = invoice.items.map((item) =>
+      [
+        item.bookingId,
+        item.amount,
+        item.currency,
+        item.status,
+        item.paymentMethodType ?? '',
+        item.paymentProvider ?? '',
+        item.createdAt.toISOString(),
+      ].join(','),
+    );
+    return [headers.join(','), ...rows].join('\n');
+  }
+
+  private resolveMonthRange(month?: string) {
+    if (!month) {
+      const now = new Date();
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      return { start, end };
+    }
+    const [yearStr, monthStr] = month.split('-');
+    const year = Number(yearStr);
+    const mon = Number(monthStr);
+    if (!Number.isFinite(year) || !Number.isFinite(mon) || mon < 1 || mon > 12) {
+      throw new BadRequestException('invalid_month');
+    }
+    const start = new Date(Date.UTC(year, mon - 1, 1));
+    const end = new Date(Date.UTC(year, mon, 1));
+    return { start, end };
+  }
+
   async capture(idempotencyKey: string | undefined, payload: CapturePaymentDto) {
     const cached = await this.checkIdempotency(idempotencyKey, payload);
     if (cached) return cached;

@@ -126,3 +126,27 @@ export async function getPublicProfile(token, accountId) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export async function getCompanyVerification(token) {
+  return apiFetch(`${ENDPOINTS.identity}/companies/me/verification`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function uploadCompanyDocument(token, file, type) {
+  const body = new FormData();
+  body.append('file', file);
+  if (type) body.append('type', type);
+  const response = await fetch(`${ENDPOINTS.identity}/companies/me/verification/documents`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.message || 'company_doc_upload_failed');
+  }
+  return response.json();
+}

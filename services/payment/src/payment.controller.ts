@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Headers, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Query, Res } from '@nestjs/common';
 import { CapturePaymentDto, RefundPaymentDto, WebhookEventDto } from './dto';
 import { PaymentService } from './payment.service';
+import type { Response } from 'express';
 
 const CARD_PROVIDERS = new Set(['VISA', 'MASTERCARD', 'CARTE']);
 const MOBILE_PROVIDERS = new Set(['MTN Money', 'Orange Money', 'Moov Money']);
@@ -57,5 +58,23 @@ export class PaymentController {
   @Post('webhooks/mock')
   async webhook(@Body() body: WebhookEventDto) {
     return this.payments.handleWebhook(body);
+  }
+
+  @Get('companies/:companyId/invoices')
+  async companyInvoice(@Param('companyId') companyId: string, @Query('month') month?: string) {
+    return this.payments.getCompanyInvoice(companyId, month);
+  }
+
+  @Get('companies/:companyId/invoices/export')
+  async exportInvoice(
+    @Param('companyId') companyId: string,
+    @Query('month') month: string | undefined,
+    @Res() res: Response,
+  ) {
+    const invoice = await this.payments.getCompanyInvoice(companyId, month);
+    const csv = this.payments.getInvoiceCsv(invoice);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=\"invoice-${invoice.month}.csv\"`);
+    return res.send(csv);
   }
 }

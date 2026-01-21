@@ -144,6 +144,7 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:9092
       APP_PUBLIC_URL: http://82.112.255.155:3006
+      MIGRATIONS_RUN: 'true'
     depends_on: [postgres, redpanda]
     ports: ["3001:3000"]
     restart: unless-stopped
@@ -153,6 +154,7 @@ services:
     env_file: ./services/ride/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      MIGRATIONS_RUN: 'true'
     depends_on: [postgres, redpanda]
     ports: ["3002:3000"]
     restart: unless-stopped
@@ -173,6 +175,7 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:9092
       REDIS_URL: redis://redis:6379
+      MIGRATIONS_RUN: 'true'
     depends_on: [redis, redpanda, ride, wallet, postgres]
     ports: ["3004:3000"]
     restart: unless-stopped
@@ -182,6 +185,7 @@ services:
     env_file: ./services/payment/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      MIGRATIONS_RUN: 'true'
     depends_on: [redpanda]
     ports: ["3005:3000"]
     restart: unless-stopped
@@ -191,6 +195,7 @@ services:
     env_file: ./services/wallet/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      MIGRATIONS_RUN: 'true'
     depends_on: [postgres, redpanda]
     ports: ["3008:3000"]
     restart: unless-stopped
@@ -200,6 +205,7 @@ services:
     env_file: ./services/payouts/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      MIGRATIONS_RUN: 'true'
     depends_on: [redpanda, wallet, postgres]
     ports: ["3009:3000"]
     restart: unless-stopped
@@ -218,6 +224,7 @@ services:
     env_file: ./services/messaging/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      MIGRATIONS_RUN: 'true'
     depends_on: [postgres, redpanda]
     ports: ["3012:3012"]
     restart: unless-stopped

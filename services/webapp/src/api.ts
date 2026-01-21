@@ -443,6 +443,61 @@ export async function createFleetVehicle(payload: CreateFleetVehiclePayload) {
   return data;
 }
 
+export type CompanyPolicy = {
+  companyId: string;
+  maxPricePerSeat?: number | null;
+  allowedOrigins?: string[] | null;
+  allowedDestinations?: string[] | null;
+  blackoutWindows?: Array<{ days?: number[]; start: string; end: string }> | null;
+  requireApproval?: boolean;
+};
+
+export async function getCompanyPolicy(companyId: string) {
+  const { data } = await api.get<CompanyPolicy>(`${RIDE_URL}/admin/companies/${companyId}/policy`);
+  return data;
+}
+
+export async function updateCompanyPolicy(companyId: string, payload: Partial<CompanyPolicy>) {
+  const { data } = await api.patch<CompanyPolicy>(`${RIDE_URL}/admin/companies/${companyId}/policy`, payload);
+  return data;
+}
+
+export async function approveCompanySchedule(companyId: string, scheduleId: string, payload?: { actorId?: string; note?: string }) {
+  const { data } = await api.post(
+    `${RIDE_URL}/admin/companies/${companyId}/schedules/${scheduleId}/approve`,
+    payload ?? {},
+  );
+  return data;
+}
+
+export async function rejectCompanySchedule(companyId: string, scheduleId: string, payload?: { actorId?: string; note?: string }) {
+  const { data } = await api.post(
+    `${RIDE_URL}/admin/companies/${companyId}/schedules/${scheduleId}/reject`,
+    payload ?? {},
+  );
+  return data;
+}
+
+export async function getCompanyDashboard(companyId: string) {
+  const { data } = await api.get(`${RIDE_URL}/admin/companies/${companyId}/dashboard`);
+  return data;
+}
+
+export async function getCompanyInvoice(companyId: string, month?: string) {
+  const { data } = await api.get(`${PAYMENT_URL}/companies/${companyId}/invoices`, {
+    params: { month },
+  });
+  return data;
+}
+
+export async function downloadCompanyInvoiceCsv(companyId: string, month?: string) {
+  const { data } = await api.get(`${PAYMENT_URL}/companies/${companyId}/invoices/export`, {
+    params: { month },
+    responseType: 'blob',
+  });
+  return data as Blob;
+}
+
 export async function updateFleetVehicle(vehicleId: string, payload: UpdateFleetVehiclePayload) {
   const { data } = await api.patch<FleetVehicle>(`/companies/me/vehicles/${vehicleId}`, payload);
   return data;
@@ -729,7 +784,7 @@ export type BookingAdminSummary = {
 };
 
 export type FleetVehicleStatus = 'ACTIVE' | 'INACTIVE';
-export type FleetScheduleStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+export type FleetScheduleStatus = 'PENDING' | 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 export type FleetScheduleRecurrence = 'NONE' | 'DAILY' | 'WEEKLY';
 
 export type FleetSchedule = {
@@ -1157,6 +1212,25 @@ export async function getMyProfile(token: string): Promise<Account> {
 
 export async function getPublicProfile(accountId: string, token: string): Promise<Account> {
   const { data } = await api.get<Account>(`${IDENTITY_URL}/profiles/${accountId}/public`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function getCompanyVerification(token: string) {
+  const { data } = await api.get(`${IDENTITY_URL}/companies/me/verification`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function uploadCompanyDocument(token: string, payload: { file: File; type?: string }) {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  if (payload.type) {
+    formData.append('type', payload.type);
+  }
+  const { data } = await api.post(`${IDENTITY_URL}/companies/me/verification/documents`, formData, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;

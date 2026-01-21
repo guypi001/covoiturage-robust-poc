@@ -12,7 +12,7 @@ import {
 export type RideStatus = 'PUBLISHED' | 'CLOSED';
 export type LiveTrackingMode = 'FULL' | 'CITY_ALERTS';
 export type VehicleStatus = 'ACTIVE' | 'INACTIVE';
-export type ScheduleStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+export type ScheduleStatus = 'PENDING' | 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 export type ScheduleRecurrence = 'NONE' | 'DAILY' | 'WEEKLY';
 
 @Entity('rides')
@@ -193,6 +193,71 @@ export class VehicleSchedule {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+}
+
+@Entity('company_policies')
+@Index(['companyId'], { unique: true })
+export class CompanyPolicy {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'company_id', type: 'uuid' })
+  companyId!: string;
+
+  @Column({ name: 'max_price_per_seat', type: 'int', nullable: true })
+  maxPricePerSeat?: number | null;
+
+  @Column({ name: 'allowed_origins', type: 'text', array: true, nullable: true })
+  allowedOrigins?: string[] | null;
+
+  @Column({ name: 'allowed_destinations', type: 'text', array: true, nullable: true })
+  allowedDestinations?: string[] | null;
+
+  @Column({ name: 'blackout_windows', type: 'jsonb', nullable: true })
+  blackoutWindows?: Array<{ days?: number[]; start: string; end: string }> | null;
+
+  @Column({ name: 'require_approval', type: 'boolean', default: false })
+  requireApproval!: boolean;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
+}
+
+@Entity('schedule_approvals')
+@Index(['companyId', 'scheduleId'])
+export class ScheduleApproval {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'company_id', type: 'uuid' })
+  companyId!: string;
+
+  @Index()
+  @Column({ name: 'schedule_id', type: 'uuid' })
+  scheduleId!: string;
+
+  @Column({ type: 'varchar', length: 16, default: 'PENDING' })
+  status!: 'PENDING' | 'APPROVED' | 'REJECTED';
+
+  @Column({ name: 'requested_by', type: 'uuid', nullable: true })
+  requestedBy?: string | null;
+
+  @Column({ name: 'decided_by', type: 'uuid', nullable: true })
+  decidedBy?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  note?: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+
+  @Column({ name: 'decided_at', type: 'timestamptz', nullable: true })
+  decidedAt?: Date | null;
 }
 
 @Entity('outbox')

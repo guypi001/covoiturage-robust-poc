@@ -60,4 +60,9 @@ export class AdminAccountsController {
   updateProfile(@Param('id') id: string, @Body() dto: UpdateAccountProfileDto) {
     return this.auth.adminUpdateAccountProfile(id, dto);
   }
+
+  @Patch(':id/company-verification')
+  updateCompanyVerification(@Param('id') id: string, @Body('verified') verified: boolean) {
+    return this.auth.updateCompanyVerification(id, Boolean(verified));
+  }
 }

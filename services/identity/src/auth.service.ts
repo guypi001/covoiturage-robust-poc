@@ -1169,6 +1169,23 @@ export class AuthService implements OnModuleInit {
     return this.sanitize(saved);
   }
 
+  async updateCompanyVerification(id: string, verified: boolean) {
+    const trimmed = id?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('id_required');
+    }
+    const account = await this.accounts.findOne({ where: { id: trimmed } });
+    if (!account) {
+      throw new NotFoundException('account_not_found');
+    }
+    if (account.type !== 'COMPANY') {
+      throw new BadRequestException('account_not_company');
+    }
+    account.companyVerifiedAt = verified ? new Date() : null;
+    const saved = await this.accounts.save(account);
+    return this.sanitize(saved);
+  }
+
   private async sendWelcomeEmail(account: Account) {
     try {
       const displayName =

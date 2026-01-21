@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, MoreThan, Repository } from 'typeorm';
-import { FleetVehicle, VehicleSchedule } from './entities';
+import { CompanyPolicy, FleetVehicle, ScheduleApproval, VehicleSchedule } from './entities';
 import {
   CreateScheduleDto,
   CreateVehicleDto,
@@ -33,10 +33,18 @@ type VehicleListQuery = {
 };
 
 type ScheduleListQuery = {
-  status?: 'PLANNED' | 'COMPLETED' | 'CANCELLED' | 'ALL';
+  status?: 'PENDING' | 'PLANNED' | 'COMPLETED' | 'CANCELLED' | 'ALL';
   window?: 'upcoming' | 'past' | 'all';
   limit?: string;
   offset?: string;
+};
+
+type CompanyPolicyDto = {
+  maxPricePerSeat?: number | null;
+  allowedOrigins?: string[];
+  allowedDestinations?: string[];
+  blackoutWindows?: Array<{ days?: number[]; start: string; end: string }>;
+  requireApproval?: boolean;
 };
 
 @Controller('admin/companies/:companyId/vehicles')
@@ -50,7 +58,60 @@ export class FleetAdminController {
     private readonly vehicles: Repository<FleetVehicle>,
     @InjectRepository(VehicleSchedule)
     private readonly schedules: Repository<VehicleSchedule>,
+    @InjectRepository(CompanyPolicy)
+    private readonly policies: Repository<CompanyPolicy>,
+    @InjectRepository(ScheduleApproval)
+    private readonly approvals: Repository<ScheduleApproval>,
   ) {}
+
+  private parseTimeToMinutes(value: string) {
+    const [hh, mm = '0'] = value.split(':', 2);
+    const hour = Number(hh);
+    const minutes = Number(mm);
+    if (!Number.isFinite(hour) || !Number.isFinite(minutes)) return null;
+    if (hour < 0 || hour > 23 || minutes < 0 || minutes > 59) return null;
+    return hour * 60 + minutes;
+  }
+
+  private isBlackout(policy: CompanyPolicy | null, departure: Date) {
+    if (!policy?.blackoutWindows?.length) return false;
+    const day = departure.getDay();
+    const minutes = departure.getHours() * 60 + departure.getMinutes();
+    for (const window of policy.blackoutWindows) {
+      const start = this.parseTimeToMinutes(window.start);
+      const end = this.parseTimeToMinutes(window.end);
+      if (start === null || end === null) continue;
+      if (window.days?.length && !window.days.includes(day)) continue;
+      if (start <= end) {
+        if (minutes >= start && minutes <= end) return true;
+      } else {
+        if (minutes >= start || minutes <= end) return true;
+      }
+    }
+    return false;
+  }
+
+  private enforcePolicy(policy: CompanyPolicy | null, payload: { originCity: string; destinationCity: string; pricePerSeat: number; departureAt: Date }) {
+    if (!policy) return { requiresApproval: false };
+    const origin = payload.originCity.trim().toLowerCase();
+    const destination = payload.destinationCity.trim().toLowerCase();
+
+    if (typeof policy.maxPricePerSeat === 'number' && payload.pricePerSeat > policy.maxPricePerSeat) {
+      throw new BadRequestException('policy_price_exceeded');
+    }
+    if (policy.allowedOrigins?.length) {
+      const allowed = policy.allowedOrigins.map((c) => c.toLowerCase());
+      if (!allowed.includes(origin)) throw new BadRequestException('policy_origin_forbidden');
+    }
+    if (policy.allowedDestinations?.length) {
+      const allowed = policy.allowedDestinations.map((c) => c.toLowerCase());
+      if (!allowed.includes(destination)) throw new BadRequestException('policy_destination_forbidden');
+    }
+    if (this.isBlackout(policy, payload.departureAt)) {
+      throw new BadRequestException('policy_blackout_window');
+    }
+    return { requiresApproval: policy.requireApproval };
+  }
 
   private async refreshFleetAggregates() {
     if (this.refreshInFlight) return;
@@ -403,6 +464,7 @@ export class FleetAdminController {
       offset,
       limit,
       summary: {
+        pending: summaryMap.PENDING ?? 0,
         planned: summaryMap.PLANNED ?? 0,
         completed: summaryMap.COMPLETED ?? 0,
         cancelled: summaryMap.CANCELLED ?? 0,
@@ -445,6 +507,14 @@ export class FleetAdminController {
       throw new BadRequestException('planned_seats_exceed_vehicle_capacity');
     }
 
+    const policy = await this.policies.findOne({ where: { companyId } });
+    const { requiresApproval } = this.enforcePolicy(policy, {
+      originCity: dto.originCity,
+      destinationCity: dto.destinationCity,
+      pricePerSeat: dto.pricePerSeat ?? 0,
+      departureAt: departure,
+    });
+
     const schedule = this.schedules.create({
       companyId,
       vehicleId: vehicle.id,
@@ -455,12 +525,21 @@ export class FleetAdminController {
       plannedSeats,
       pricePerSeat: dto.pricePerSeat ?? 0,
       recurrence: dto.recurrence ?? 'NONE',
-      status: 'PLANNED',
+      status: requiresApproval ? 'PENDING' : 'PLANNED',
       notes: dto.notes?.trim() || null,
       metadata: dto.metadata ?? null,
     });
 
     const saved = await this.schedules.save(schedule);
+    if (requiresApproval) {
+      await this.approvals.save(
+        this.approvals.create({
+          companyId,
+          scheduleId: saved.id,
+          status: 'PENDING',
+        }),
+      );
+    }
     this.queueRefresh();
     return saved;
   }
@@ -553,6 +632,24 @@ export class FleetAdminController {
     schedule.arrivalEstimate = nextArrival;
     schedule.plannedSeats = nextPlannedSeats;
     schedule.reservedSeats = nextReservedSeats;
+
+    const policy = await this.policies.findOne({ where: { companyId } });
+    const { requiresApproval } = this.enforcePolicy(policy, {
+      originCity: schedule.originCity,
+      destinationCity: schedule.destinationCity,
+      pricePerSeat: schedule.pricePerSeat ?? 0,
+      departureAt: schedule.departureAt,
+    });
+    if (requiresApproval) {
+      schedule.status = 'PENDING';
+      await this.approvals.save(
+        this.approvals.create({
+          companyId,
+          scheduleId: schedule.id,
+          status: 'PENDING',
+        }),
+      );
+    }
 
     const saved = await this.schedules.save(schedule);
     this.queueRefresh();

@@ -284,7 +284,7 @@ export class UpdateScheduleDto {
   metadata?: Record<string, any>;
 
   @IsOptional()
-  @IsIn(['PLANNED', 'COMPLETED', 'CANCELLED'] satisfies ScheduleStatus[])
+  @IsIn(['PENDING', 'PLANNED', 'COMPLETED', 'CANCELLED'] satisfies ScheduleStatus[])
   status?: ScheduleStatus;
 
   @ValidateIf((o) => o.status === 'COMPLETED')

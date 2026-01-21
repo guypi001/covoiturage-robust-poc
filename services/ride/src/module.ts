@@ -1,10 +1,11 @@
 import { Module, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Ride, Outbox, FleetVehicle, VehicleSchedule } from './entities';
+import { Ride, Outbox, FleetVehicle, VehicleSchedule, CompanyPolicy, ScheduleApproval } from './entities';
 import { RideController } from './ride.controller';
 import { EventBus } from './event-bus';
 import { AdminRideController } from './admin.controller';
 import { FleetAdminController } from './fleet.controller';
+import { CompanyOpsController } from './company-ops.controller';
 import { InternalGuard } from './internal.guard';
 import { MetricsController, MetricsMiddleware } from './metrics';
 
@@ -19,14 +20,14 @@ const migrationsRun =
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: dbUrl,
-      entities: [Ride, Outbox, FleetVehicle, VehicleSchedule],
+      entities: [Ride, Outbox, FleetVehicle, VehicleSchedule, CompanyPolicy, ScheduleApproval],
       synchronize: false,
       migrationsRun,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
     }),
-    TypeOrmModule.forFeature([Ride, Outbox, FleetVehicle, VehicleSchedule]),
+    TypeOrmModule.forFeature([Ride, Outbox, FleetVehicle, VehicleSchedule, CompanyPolicy, ScheduleApproval]),
   ],
-  controllers: [RideController, AdminRideController, FleetAdminController, MetricsController],
+  controllers: [RideController, AdminRideController, FleetAdminController, CompanyOpsController, MetricsController],
   providers: [EventBus, InternalGuard],
 })
 export class AppModule {

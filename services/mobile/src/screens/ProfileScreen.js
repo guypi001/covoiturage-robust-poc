@@ -15,6 +15,8 @@ import {
   updateCompanyProfile,
   updateIndividualProfile,
   deleteProfilePhoto,
+  getCompanyVerification,
+  uploadCompanyDocument,
   uploadProfilePhoto,
   verifyGmailOtp,
   requestPhoneOtp,
@@ -57,6 +59,11 @@ export function ProfileScreen({ navigation }) {
   const [otpCode, setOtpCode] = useState('');
   const [phoneOtpCode, setPhoneOtpCode] = useState('');
   const [phoneOtpBusy, setPhoneOtpBusy] = useState(false);
+  const [companyVerification, setCompanyVerification] = useState(null);
+  const [companyDocBusy, setCompanyDocBusy] = useState(false);
+  const [companyDocType, setCompanyDocType] = useState('legal');
+
+  const MAX_COMPANY_DOC_SIZE = 6 * 1024 * 1024;
 
   const sanitizeOtpInput = (value, maxLength = 6) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
@@ -181,6 +188,47 @@ export function ProfileScreen({ navigation }) {
     });
   };
 
+  const handleUploadCompanyDoc = async () => {
+    if (!token) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showToast('Autorisation photo requise.', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    if (asset.fileSize && asset.fileSize > MAX_COMPANY_DOC_SIZE) {
+      showToast('Document trop lourd. 6 Mo maximum.', 'error');
+      return;
+    }
+    const fileName = asset.fileName || `company-doc-${Date.now()}.jpg`;
+    const fileType = asset.mimeType || 'image/jpeg';
+    setCompanyDocBusy(true);
+    try {
+      await uploadCompanyDocument(
+        token,
+        {
+          uri: asset.uri,
+          name: fileName,
+          type: fileType,
+        },
+        companyDocType,
+      );
+      const verification = await getCompanyVerification(token);
+      setCompanyVerification(verification);
+      showToast('Document transmis pour verification.', 'success');
+    } catch (err) {
+      showToast('Impossible d envoyer le document.', 'error');
+    } finally {
+      setCompanyDocBusy(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -188,17 +236,19 @@ export function ProfileScreen({ navigation }) {
       setLoadingData(true);
       try {
         await refreshProfile();
-        const [bookingRes, paymentRes, walletRes, txRes] = await Promise.all([
+        const [bookingRes, paymentRes, walletRes, txRes, verificationRes] = await Promise.all([
           getMyBookings(token),
           getMyPaymentMethods(token),
           getMyWallet(token),
           getMyWalletTransactions(token, 10),
+          isCompany ? getCompanyVerification(token) : Promise.resolve(null),
         ]);
         if (active) {
           setBookings(bookingRes?.data || bookingRes?.items || []);
           setPaymentMethods(Array.isArray(paymentRes) ? paymentRes : []);
           setWallet(walletRes?.error ? null : walletRes);
           setWalletTransactions(Array.isArray(txRes) ? txRes : []);
+          if (verificationRes) setCompanyVerification(verificationRes);
         }
       } catch (err) {
         if (active) setAuthError('Impossible de charger les donnees.');
@@ -210,7 +260,7 @@ export function ProfileScreen({ navigation }) {
     return () => {
       active = false;
     };
-  }, [token, refreshProfile]);
+  }, [token, refreshProfile, isCompany]);
 
   const handleEnablePush = async () => {
     try {
@@ -578,6 +628,69 @@ export function ProfileScreen({ navigation }) {
         </SurfaceCard>
       )}
 
+      {token && isCompany && (
+        <SurfaceCard style={styles.card} delay={225}>
+          <SectionHeader icon="shield-checkmark-outline" title="Verification entreprise" meta="Documents legaux" />
+          <Text style={styles.helperText}>
+            Charge un document pour afficher le badge entreprise verifiee.
+          </Text>
+          <View style={styles.badgeRow}>
+            <View
+              style={[
+                styles.badge,
+                companyVerification?.verifiedAt ? styles.badgeSuccess : styles.badgeWarning,
+              ]}
+            >
+              <Text style={styles.badgeText}>
+                {companyVerification?.verifiedAt ? 'Entreprise verifiee' : 'Verification en attente'}
+              </Text>
+            </View>
+            <Text style={styles.helperText}>
+              {companyVerification?.verifiedAt
+                ? `Valide le ${formatShortDate(companyVerification.verifiedAt)}`
+                : 'Validation sous 24-48h'}
+            </Text>
+          </View>
+          <View style={styles.docTypeRow}>
+            {['legal', 'registration', 'insurance'].map((value) => (
+              <Pressable
+                key={value}
+                onPress={() => setCompanyDocType(value)}
+                style={[
+                  styles.docTypeChip,
+                  companyDocType === value && styles.docTypeChipActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.docTypeChipText,
+                    companyDocType === value && styles.docTypeChipTextActive,
+                  ]}
+                >
+                  {value === 'legal' ? 'Legal' : value === 'registration' ? 'Immatriculation' : 'Assurance'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <PrimaryButton
+            label={companyDocBusy ? 'Envoi...' : 'Ajouter un document'}
+            variant="ghost"
+            onPress={handleUploadCompanyDoc}
+            disabled={companyDocBusy}
+          />
+          {companyVerification?.documents?.length ? (
+            <View style={styles.docList}>
+              {companyVerification.documents.map((doc) => (
+                <View key={doc.id} style={styles.docItem}>
+                  <Text style={styles.docTitle}>{doc.type || 'Document'}</Text>
+                  <Text style={styles.docMeta}>{doc.status}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </SurfaceCard>
+      )}
+
       {token && (
         <SurfaceCard style={styles.card} delay={240}>
           <SectionHeader icon="mail-outline" title="Verification email" />
@@ -892,5 +1005,68 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 13,
     color: colors.slate600,
+  },
+  badgeRow: {
+    gap: 8,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.lg,
+  },
+  badgeSuccess: {
+    backgroundColor: colors.emerald100,
+  },
+  badgeWarning: {
+    backgroundColor: colors.amber100,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: colors.slate700,
+  },
+  docTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  docTypeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate100,
+  },
+  docTypeChipActive: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky100,
+  },
+  docTypeChipText: {
+    fontSize: 12,
+    color: colors.slate600,
+    fontWeight: '600',
+  },
+  docTypeChipTextActive: {
+    color: colors.sky700,
+  },
+  docList: {
+    gap: 6,
+  },
+  docItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  docTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate900,
+  },
+  docMeta: {
+    fontSize: 12,
+    color: colors.slate500,
   },
 });
