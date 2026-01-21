@@ -37,6 +37,16 @@ type PaymentCapturedEvent = {
   paymentMethodId?: string;
 };
 
+type PaymentFailedEvent = {
+  bookingId: string;
+  reason?: string;
+};
+
+type PaymentRefundedEvent = {
+  bookingId: string;
+  amount?: number;
+};
+
 @Module({
   controllers: [MetricsController, PushController],
   providers: [EventBus, MailerService, IdentityClient, BookingClient, RideClient, PushService],
@@ -61,11 +71,18 @@ export class AppModule implements OnModuleInit {
     await this.bus.subscribe('notif-group', 'payment.captured', async (evt) => {
       await this.handlePaymentCaptured(evt as PaymentCapturedEvent);
     });
+    await this.bus.subscribe('notif-group', 'payment.failed', async (evt) => {
+      await this.handlePaymentFailed(evt as PaymentFailedEvent);
+    });
+    await this.bus.subscribe('notif-group', 'payment.refunded', async (evt) => {
+      await this.handlePaymentRefunded(evt as PaymentRefundedEvent);
+    });
 
     await this.bus.subscribe('notif-group', 'ride.published', async (evt) => {
       this.logger.log(
         `[ride] nouvelle annonce ${evt?.originCity || '?'} -> ${evt?.destinationCity || '?'}`,
       );
+      await this.handleRidePublished(evt);
     });
 
     await this.bus.subscribe('notif-group', 'message.sent', async (evt) => {
@@ -152,6 +169,44 @@ export class AppModule implements OnModuleInit {
     }
   }
 
+  private async handleRidePublished(evt: any) {
+    const originCity = evt?.originCity;
+    const destinationCity = evt?.destinationCity;
+    if (!originCity || !destinationCity) return;
+    const searches = await this.identity.getSavedSearches(originCity, destinationCity);
+    if (!searches.length) return;
+
+    const rideDeparture = evt?.departureAt ? Date.parse(evt.departureAt) : NaN;
+    for (const search of searches) {
+      if (!search?.accountId) continue;
+      if (search.seats && evt.seatsAvailable < search.seats) continue;
+      if (search.priceMax && evt.pricePerSeat > search.priceMax) continue;
+      if (search.liveTracking && !evt.liveTrackingEnabled) continue;
+      if (search.driverVerified && !evt.driverVerified) continue;
+      if (search.comfortLevel && search.comfortLevel !== evt.comfortLevel) continue;
+      if (search.date && Number.isFinite(rideDeparture)) {
+        const target = Date.parse(search.date);
+        if (Number.isFinite(target)) {
+          const sameDay =
+            new Date(target).toISOString().slice(0, 10) ===
+            new Date(rideDeparture).toISOString().slice(0, 10);
+          if (!sameDay) continue;
+        }
+      }
+      await this.push.sendToOwner(search.accountId, {
+        title: 'Nouveau trajet disponible',
+        body: `${originCity} → ${destinationCity}`,
+        category: 'RIDE_IMMINENT',
+        data: {
+          rideId: evt?.rideId || evt?.id,
+          originCity,
+          destinationCity,
+          savedSearchId: search.id,
+        },
+      });
+    }
+  }
+
   private async handlePaymentCaptured(evt: PaymentCapturedEvent) {
     if (!evt?.bookingId) return;
     const booking = await this.bookings.getBooking(evt.bookingId);
@@ -193,6 +248,30 @@ export class AppModule implements OnModuleInit {
       bookingId: booking.id,
       amount: evt.amount ?? booking.amount ?? undefined,
       rideId: booking.rideId ?? undefined,
+    });
+  }
+
+  private async handlePaymentFailed(evt: PaymentFailedEvent) {
+    if (!evt?.bookingId) return;
+    const booking = await this.bookings.getBooking(evt.bookingId);
+    if (!booking?.passengerId) return;
+    await this.push.sendToOwner(booking.passengerId, {
+      title: 'Paiement échoué',
+      body: evt.reason || 'Le paiement n’a pas pu être confirmé.',
+      category: 'PAYMENT',
+      data: { bookingId: evt.bookingId, status: 'FAILED' },
+    });
+  }
+
+  private async handlePaymentRefunded(evt: PaymentRefundedEvent) {
+    if (!evt?.bookingId) return;
+    const booking = await this.bookings.getBooking(evt.bookingId);
+    if (!booking?.passengerId) return;
+    await this.push.sendToOwner(booking.passengerId, {
+      title: 'Paiement remboursé',
+      body: 'Le remboursement a été enregistré.',
+      category: 'PAYMENT',
+      data: { bookingId: evt.bookingId, status: 'REFUNDED', amount: evt.amount },
     });
   }
 }

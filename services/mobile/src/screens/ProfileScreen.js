@@ -8,7 +8,7 @@ import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { InputField } from '../components/InputField';
 import { registerPushToken, sendTestNotification } from '../api/notifications';
-import { getMyBookings, getMyPaymentMethods } from '../api/bff';
+import { getMyBookings, getMyPaymentMethods, getMyWallet, getMyWalletTransactions } from '../api/bff';
 import { useAuth } from '../auth';
 import {
   requestGmailOtp,
@@ -38,6 +38,8 @@ export function ProfileScreen({ navigation }) {
   const [authError, setAuthError] = useState('');
   const [bookings, setBookings] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [wallet, setWallet] = useState(null);
+  const [walletTransactions, setWalletTransactions] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState('');
@@ -75,6 +77,7 @@ export function ProfileScreen({ navigation }) {
     account?.status === 'ACTIVE' ? 'Actif' : account?.status === 'SUSPENDED' ? 'Suspendu' : 'Inconnu';
   const roleLabel = account?.role === 'ADMIN' ? 'Administrateur' : 'Utilisateur';
   const phoneVerified = Boolean(account?.phoneVerifiedAt);
+  const emailVerified = Boolean(account?.emailVerifiedAt);
 
   useEffect(() => {
     if (!account) return;
@@ -97,6 +100,12 @@ export function ProfileScreen({ navigation }) {
     process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 
   const profileLabel = useMemo(() => getDisplayName(account), [account]);
+  const formatShortDate = (value) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
 
   const validateProfile = () => {
     const next = {};
@@ -127,10 +136,14 @@ export function ProfileScreen({ navigation }) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.7,
     });
     if (result.canceled || !result.assets?.length) return;
     const asset = result.assets[0];
+    if (asset.fileSize && asset.fileSize > 2 * 1024 * 1024) {
+      showToast('Photo trop lourde. Maximum 2 Mo.', 'error');
+      return;
+    }
     const fileName = asset.fileName || `profile-${Date.now()}.jpg`;
     const fileType = asset.mimeType || 'image/jpeg';
     setPhotoPreview(asset.uri);
@@ -150,10 +163,14 @@ export function ProfileScreen({ navigation }) {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.7,
     });
     if (result.canceled || !result.assets?.length) return;
     const asset = result.assets[0];
+    if (asset.fileSize && asset.fileSize > 2 * 1024 * 1024) {
+      showToast('Photo trop lourde. Maximum 2 Mo.', 'error');
+      return;
+    }
     const fileName = asset.fileName || `profile-${Date.now()}.jpg`;
     const fileType = asset.mimeType || 'image/jpeg';
     setPhotoPreview(asset.uri);
@@ -171,13 +188,17 @@ export function ProfileScreen({ navigation }) {
       setLoadingData(true);
       try {
         await refreshProfile();
-        const [bookingRes, paymentRes] = await Promise.all([
+        const [bookingRes, paymentRes, walletRes, txRes] = await Promise.all([
           getMyBookings(token),
           getMyPaymentMethods(token),
+          getMyWallet(token),
+          getMyWalletTransactions(token, 10),
         ]);
         if (active) {
           setBookings(bookingRes?.data || bookingRes?.items || []);
           setPaymentMethods(Array.isArray(paymentRes) ? paymentRes : []);
+          setWallet(walletRes?.error ? null : walletRes);
+          setWalletTransactions(Array.isArray(txRes) ? txRes : []);
         }
       } catch (err) {
         if (active) setAuthError('Impossible de charger les donnees.');
@@ -250,7 +271,8 @@ export function ProfileScreen({ navigation }) {
     }
   };
 
-  const statsLabel = `${bookings.length} reservations · ${paymentMethods.length} moyens de paiement`;
+  const walletBalance = wallet?.balance ?? 0;
+  const statsLabel = `${bookings.length} reservations · ${paymentMethods.length} moyens de paiement · Solde ${walletBalance} XOF`;
 
   const comfortPreferences = comfortText
     .split(',')
@@ -260,9 +282,9 @@ export function ProfileScreen({ navigation }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={text.title}>Personnalisation du profil</Text>
+        <Text style={text.title}>Profil</Text>
         <Text style={text.subtitle}>
-          Mets a jour ta photo, tes preferences de confort et l experience affichee sur ton profil.
+          Garde tes informations a jour et personnalise ton experience KariGo.
         </Text>
       </View>
 
@@ -326,15 +348,31 @@ export function ProfileScreen({ navigation }) {
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.name}>{profileLabel}</Text>
-            <Text style={styles.meta}>{typeLabel}</Text>
             <Text style={styles.meta}>{account?.email || ''}</Text>
             <View style={styles.tagRow}>
               <Text style={styles.tag}>{statusLabel}</Text>
+              <Text style={styles.tag}>{typeLabel}</Text>
               <Text style={styles.tag}>{roleLabel}</Text>
-              <Text style={styles.tag}>{isCompany ? 'Entreprise verifiee' : 'Conducteur verifie'}</Text>
+              <Text style={emailVerified ? styles.tagSuccess : styles.tagWarning}>
+                {emailVerified ? 'Email verifie' : 'Email non verifie'}
+              </Text>
               <Text style={phoneVerified ? styles.tagSuccess : styles.tagWarning}>
                 {phoneVerified ? 'Telephone verifie' : 'Telephone non verifie'}
               </Text>
+            </View>
+            <View style={styles.infoGrid}>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Derniere connexion</Text>
+                <Text style={styles.infoValue}>{formatShortDate(account?.lastLoginAt)}</Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Inscrit le</Text>
+                <Text style={styles.infoValue}>{formatShortDate(account?.createdAt)}</Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Connexions</Text>
+                <Text style={styles.infoValue}>{account?.loginCount ?? 0}</Text>
+              </View>
             </View>
           </View>
         </SurfaceCard>
@@ -349,6 +387,10 @@ export function ProfileScreen({ navigation }) {
           <SurfaceCard style={styles.statCard} tone="soft" delay={150}>
             <Text style={styles.statValue}>{paymentMethods.length}</Text>
             <Text style={styles.statLabel}>Moyens de paiement</Text>
+          </SurfaceCard>
+          <SurfaceCard style={styles.statCard} tone="soft" delay={180}>
+            <Text style={styles.statValue}>{walletBalance}</Text>
+            <Text style={styles.statLabel}>Solde (XOF)</Text>
           </SurfaceCard>
         </View>
       )}
@@ -368,7 +410,7 @@ export function ProfileScreen({ navigation }) {
       )}
 
       <SurfaceCard style={styles.card} delay={180}>
-        <SectionHeader icon="pulse-outline" title="Apercu du compte" meta={statsLabel} />
+        <SectionHeader icon="pulse-outline" title="Preferences du compte" meta={statsLabel} />
         <View style={styles.preferenceRow}>
           <Text style={styles.preferenceLabel}>Notifications</Text>
           <Text style={styles.preferenceValue}>{pushStatus}</Text>
@@ -764,6 +806,24 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     color: colors.slate500,
+  },
+  infoGrid: {
+    marginTop: 10,
+    gap: 8,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: colors.slate500,
+  },
+  infoValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate900,
   },
   statsRow: {
     flexDirection: 'row',

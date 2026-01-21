@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Wallet, Hold, PaymentMethod } from './entities';
+import { Wallet, Hold, PaymentMethod, WalletTransaction } from './entities';
 
 @Controller()
 export class WalletController {
@@ -18,6 +18,7 @@ export class WalletController {
     @InjectRepository(Wallet) private wallets: Repository<Wallet>,
     @InjectRepository(Hold) private holds: Repository<Hold>,
     @InjectRepository(PaymentMethod) private paymentMethods: Repository<PaymentMethod>,
+    @InjectRepository(WalletTransaction) private transactions: Repository<WalletTransaction>,
   ) {}
 
   @Post('wallets')
@@ -32,6 +33,16 @@ export class WalletController {
   async getWallet(@Param('ownerId') ownerId: string) {
     const wallet = await this.wallets.findOne({ where: { ownerId } });
     return wallet || { error: 'not_found' };
+  }
+
+  @Get('wallets/:ownerId/transactions')
+  async listTransactions(@Param('ownerId') ownerId: string, @Query('limit') limit?: string) {
+    const take = Math.min(Math.max(Number(limit || 50) || 50, 1), 200);
+    return this.transactions.find({
+      where: { ownerId },
+      order: { createdAt: 'DESC' },
+      take,
+    });
   }
 
   @Post('holds')

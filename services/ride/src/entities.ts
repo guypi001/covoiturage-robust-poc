@@ -30,6 +30,24 @@ export class Ride {
   @Column({ type: 'varchar', length: 1024, nullable: true })
   driverPhotoUrl?: string | null;
 
+  @Column({ name: 'driver_email_verified', type: 'boolean', default: false })
+  driverEmailVerified!: boolean;
+
+  @Column({ name: 'driver_phone_verified', type: 'boolean', default: false })
+  driverPhoneVerified!: boolean;
+
+  @Column({ name: 'driver_verified', type: 'boolean', default: false })
+  driverVerified!: boolean;
+
+  @Column({ name: 'comfort_level', type: 'varchar', length: 32, nullable: true })
+  comfortLevel?: string | null;
+
+  @Column({ name: 'estimated_duration_minutes', type: 'int', nullable: true })
+  estimatedDurationMinutes?: number | null;
+
+  @Column({ type: 'text', array: true, nullable: true })
+  stops?: string[] | null;
+
   @Column()
   originCity!: string;
 
@@ -57,6 +75,12 @@ export class Ride {
 
   @Column({ type: 'varchar', length: 32, default: 'FULL', name: 'live_tracking_mode' })
   liveTrackingMode!: LiveTrackingMode;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'cancelled_at' })
+  cancelledAt?: Date | null;
+
+  @Column({ type: 'text', nullable: true, name: 'cancellation_reason' })
+  cancellationReason?: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

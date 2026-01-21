@@ -9,6 +9,7 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
+  TooManyRequestsException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -31,6 +32,8 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { wsSendToUsers } from './ws';
 import type { Request } from 'express';
+
+const MESSAGE_RATE_LIMIT_PER_MIN = Number(process.env.MESSAGE_RATE_LIMIT_PER_MIN ?? 24);
 
 @Controller()
 export class MessagesController {
@@ -103,6 +106,8 @@ export class MessagesController {
       attachmentUrl: message.attachmentUrl,
       attachmentName: message.attachmentName,
       attachmentType: message.attachmentType,
+      clientMessageId: message.clientMessageId,
+      messageType: message.messageType,
       status: message.status,
       readAt: message.readAt,
       deliveredAt: message.deliveredAt,
@@ -202,8 +207,32 @@ export class MessagesController {
       throw new BadRequestException('empty_message');
     }
 
+    if (MESSAGE_RATE_LIMIT_PER_MIN > 0) {
+      const since = new Date(Date.now() - 60 * 1000);
+      const recentCount = await this.messages
+        .createQueryBuilder('m')
+        .where('m.senderId = :senderId', { senderId: dto.senderId })
+        .andWhere('m.createdAt >= :since', { since })
+        .getCount();
+      if (recentCount >= MESSAGE_RATE_LIMIT_PER_MIN) {
+        throw new TooManyRequestsException('rate_limited');
+      }
+    }
+
     const pairKey = this.buildPairKey(dto.senderId, dto.recipientId);
     let conversation = await this.getConversationOrFail(pairKey, dto);
+
+    if (dto.clientMessageId) {
+      const existing = await this.messages.findOne({
+        where: { clientMessageId: dto.clientMessageId },
+      });
+      if (existing) {
+        return {
+          message: this.serializeMessage(existing),
+          conversation: this.buildConversationSummary(conversation, dto.senderId),
+        };
+      }
+    }
 
     const message = this.messages.create({
       conversationId: conversation.id,
@@ -223,6 +252,8 @@ export class MessagesController {
       attachmentUrl: attachmentUrl ?? null,
       attachmentName: dto.attachmentName?.trim() || null,
       attachmentType: dto.attachmentType?.trim() || null,
+      clientMessageId: dto.clientMessageId?.trim() || null,
+      messageType: dto.messageType === 'SYSTEM' ? 'SYSTEM' : 'USER',
       status: 'SENT',
     });
 

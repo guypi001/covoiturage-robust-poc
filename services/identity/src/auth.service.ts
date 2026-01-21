@@ -238,10 +238,13 @@ export class AuthService implements OnModuleInit {
     if (remove) return null;
     const trimmed = url?.trim();
     if (!trimmed) return null;
-    if (!/^https?:\/\//i.test(trimmed)) {
-      throw new BadRequestException('invalid_photo_url');
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed.slice(0, 1024);
     }
-    return trimmed.slice(0, 1024);
+    if (trimmed.startsWith('/uploads/profile/')) {
+      return trimmed.slice(0, 1024);
+    }
+    throw new BadRequestException('invalid_photo_url');
   }
 
   private sanitizeHomePreferencesInput(input?: HomePreferencesDto | null): HomePreferences | null {

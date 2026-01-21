@@ -242,6 +242,7 @@ export default function Messages() {
     setSending(true);
     setError(null);
     try {
+      const clientMessageId = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const response = await sendChatMessage({
         senderId: userId,
         senderType: userType,
@@ -250,6 +251,7 @@ export default function Messages() {
         recipientType: other.type,
         recipientLabel: other.label ?? 'Destinataire',
         body: draft.trim(),
+        clientMessageId,
       });
       setDraft('');
       setMessages((prev) => [...prev, response.message]);
@@ -275,6 +277,7 @@ export default function Messages() {
       if (profile.id === userId) {
         throw new Error('Tu ne peux pas te contacter toi-même.');
       }
+      const clientMessageId = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const response = await sendChatMessage({
         senderId: userId,
         senderType: userType,
@@ -283,6 +286,7 @@ export default function Messages() {
         recipientType: profile.type,
         recipientLabel: profile.fullName ?? profile.companyName ?? profile.email,
         body: newBody.trim(),
+        clientMessageId,
       });
       setNewEmail('');
       setNewBody('');

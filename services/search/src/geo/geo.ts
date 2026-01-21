@@ -1,6 +1,6 @@
 // services/search/src/geo/geo.ts
 import { Injectable } from '@nestjs/common';
-import { CI_CITIES_GEO, findCityGeo } from './ci-cities-geo';
+import { CI_CITIES_GEO, findCityGeo, suggestCities } from './ci-cities-geo';
 
 export type Pt = { lat: number; lng: number };
 
@@ -64,6 +64,28 @@ export class GeoService {
     const c = findCityGeo(name);
     if (!c) return;
     return { name: c.name, lat: c.lat, lng: c.lng };
+  }
+
+  resolveCity(name: string): {
+    city?: Pt & { name: string };
+    suggestions: string[];
+    matchType?: 'exact' | 'fuzzy';
+  } {
+    const exact = this.getCity(name);
+    if (exact) {
+      return { city: exact, suggestions: [], matchType: 'exact' };
+    }
+    const suggestions = suggestCities(name, 5);
+    const best = suggestions[0];
+    if (!best) return { suggestions: [] };
+    const threshold = name.length >= 6 ? 3 : 2;
+    if (best.score <= threshold) {
+      const city = this.getCity(best.name);
+      if (city) {
+        return { city, suggestions: suggestions.map((item) => item.name), matchType: 'fuzzy' };
+      }
+    }
+    return { suggestions: suggestions.map((item) => item.name) };
   }
 
   /** Liste des villes à <= radiusKm autour d'une ville. */

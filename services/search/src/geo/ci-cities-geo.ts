@@ -44,20 +44,75 @@ export const CI_CITIES_GEO: CiCityGeo[] = [
   { name: 'Jacqueville',    lat: 5.213,      lng: -4.413,      region: 'Grands-Ponts' },
 ];
 
-const norm = (s: string) =>
-  s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+export const normalizeCityName = (value: string) =>
+  value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+
+type CityVariant = { normalized: string; label: string; city: CiCityGeo };
 
 const normalizedCityIndex = new Map<string, CiCityGeo>();
+const cityVariants: CityVariant[] = [];
+
+const registerVariant = (label: string, city: CiCityGeo) => {
+  const normalized = normalizeCityName(label);
+  if (!normalized) return;
+  if (!normalizedCityIndex.has(normalized)) {
+    normalizedCityIndex.set(normalized, city);
+  }
+  cityVariants.push({ normalized, label, city });
+};
+
 for (const city of CI_CITIES_GEO) {
-  normalizedCityIndex.set(norm(city.name), city);
+  registerVariant(city.name, city);
   if (city.alt) {
     for (const alt of city.alt) {
-      normalizedCityIndex.set(norm(alt), city);
+      registerVariant(alt, city);
     }
   }
 }
 
+const levenshtein = (a: string, b: string) => {
+  if (a === b) return 0;
+  const aLen = a.length;
+  const bLen = b.length;
+  if (!aLen) return bLen;
+  if (!bLen) return aLen;
+  const v0 = new Array(bLen + 1).fill(0);
+  const v1 = new Array(bLen + 1).fill(0);
+  for (let i = 0; i <= bLen; i += 1) v0[i] = i;
+  for (let i = 0; i < aLen; i += 1) {
+    v1[0] = i + 1;
+    for (let j = 0; j < bLen; j += 1) {
+      const cost = a[i] === b[j] ? 0 : 1;
+      v1[j + 1] = Math.min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+    }
+    for (let j = 0; j <= bLen; j += 1) v0[j] = v1[j];
+  }
+  return v0[bLen];
+};
+
 export function findCityGeo(name: string): { lat: number; lng: number; name: string } | null {
-  const entry = normalizedCityIndex.get(norm(name));
+  const entry = normalizedCityIndex.get(normalizeCityName(name));
   return entry ? { lat: entry.lat, lng: entry.lng, name: entry.name } : null;
+}
+
+export function suggestCities(
+  input: string,
+  limit = 5,
+): Array<{ name: string; score: number }> {
+  const normalized = normalizeCityName(input);
+  if (!normalized) return [];
+  const seen = new Map<string, number>();
+  for (const variant of cityVariants) {
+    const distance = variant.normalized.includes(normalized)
+      ? Math.max(0, variant.normalized.length - normalized.length)
+      : levenshtein(normalized, variant.normalized);
+    const prev = seen.get(variant.city.name);
+    if (prev === undefined || distance < prev) {
+      seen.set(variant.city.name, distance);
+    }
+  }
+  return Array.from(seen.entries())
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, Math.max(1, limit))
+    .map(([name, score]) => ({ name, score }));
 }

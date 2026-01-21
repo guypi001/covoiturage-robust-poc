@@ -21,6 +21,7 @@ import { BrandLogo } from './components/BrandLogo';
 import { AppFooter } from './components/AppFooter';
 import { Menu, X, MessageCircle, LogOut, ShoppingBag } from 'lucide-react';
 import { CookieConsent } from './components/CookieConsent';
+import { resolveIdentityAssetUrl } from './api';
 
 type AppShellProps = {
   requireAuth?: boolean;
@@ -103,7 +104,7 @@ function AppShell({ requireAuth = false }: AppShellProps) {
     account?.companyName ||
     account?.email ||
     'Visiteur';
-  const avatarUrl = account?.profilePhotoUrl?.trim();
+  const avatarUrl = resolveIdentityAssetUrl(account?.profilePhotoUrl);
   const displayInitial = displayName?.charAt(0)?.toUpperCase() ?? 'V';
 
   return (

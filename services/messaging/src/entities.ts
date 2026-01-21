@@ -12,6 +12,7 @@ import {
 import { ParticipantType } from './dto';
 
 export type MessageStatus = 'SENT' | 'DELIVERED' | 'READ';
+export type MessageType = 'USER' | 'SYSTEM';
 
 @Entity('conversations')
 @Index(['pairKey'], { unique: true })
@@ -58,6 +59,7 @@ export class Conversation {
 
 @Entity('messages')
 @Index(['conversationId', 'createdAt'])
+@Index(['clientMessageId'], { unique: true })
 export class Message {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -98,6 +100,12 @@ export class Message {
 
   @Column({ name: 'attachment_type', type: 'varchar', nullable: true })
   attachmentType?: string | null;
+
+  @Column({ name: 'client_message_id', type: 'varchar', length: 64, nullable: true })
+  clientMessageId?: string | null;
+
+  @Column({ name: 'message_type', type: 'varchar', length: 16, default: 'USER' })
+  messageType!: MessageType;
 
   @Column({ type: 'varchar', default: 'DELIVERED' })
   status!: MessageStatus;

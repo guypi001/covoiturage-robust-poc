@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, MapPin, Clock, Users, Sparkles } from 'lucide-react';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { createRide } from '../api';
@@ -26,6 +26,7 @@ const toIsoUtc = (date: string, time: string) => {
 
 export default function CreateRide() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setSearch = useApp((state) => state.setSearch);
   const setResults = useApp((state) => state.setResults);
   const setLoading = useApp((state) => state.setLoading);
@@ -57,6 +58,29 @@ export default function CreateRide() {
       setForm((prev) => ({ ...prev, liveTrackingEnabled: true }));
     }
   }, [isCompany]);
+
+  useEffect(() => {
+    const statePrefill = (location.state as { prefill?: Partial<FormState> } | null)?.prefill;
+    if (statePrefill) {
+      setForm((prev) => ({ ...prev, ...statePrefill }));
+    }
+
+    if (!location.search) return;
+    const params = new URLSearchParams(location.search);
+    if (![...params.keys()].length) return;
+    setForm((prev) => ({
+      ...prev,
+      originCity: params.get('from') || prev.originCity,
+      destinationCity: params.get('to') || prev.destinationCity,
+      date: params.get('date') || prev.date,
+      time: params.get('time') || prev.time,
+      pricePerSeat: params.get('price') ? Number(params.get('price')) : prev.pricePerSeat,
+      seatsTotal: params.get('seats') ? Number(params.get('seats')) : prev.seatsTotal,
+      liveTrackingEnabled: params.get('tracking')
+        ? params.get('tracking') === 'true'
+        : prev.liveTrackingEnabled,
+    }));
+  }, [location.search, location.state]);
 
   const validate = (state: FormState): string | null => {
     if (!state.originCity.trim() || !state.destinationCity.trim()) {

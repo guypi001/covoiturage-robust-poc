@@ -19,6 +19,7 @@ import {
   type PaymentSimulationStep,
 } from '../utils/paymentSimulation';
 import { CheckCircle2, Copy, CreditCard, ShieldCheck, Smartphone, Wallet as WalletIcon, Trash2 } from 'lucide-react';
+import { getPaymentStatusInfo } from '../constants/status';
 
 export function Booking() {
   const { rideId } = useParams<{ rideId: string }>();
@@ -94,6 +95,7 @@ export function Booking() {
   const [paymentError, setPaymentError] = useState<string>();
   const [paymentSteps, setPaymentSteps] = useState<PaymentSimulationStep[]>([]);
   const paymentSimulationRef = useRef<PaymentSimulationHandle | null>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
   const copyRefTimerRef = useRef<number | null>(null);
   const [receiptIssuedAt, setReceiptIssuedAt] = useState<string>();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -112,6 +114,17 @@ export function Booking() {
   const [instantPhoneTouched, setInstantPhoneTouched] = useState(false);
   const [copyRefFeedback, setCopyRefFeedback] = useState<'idle' | 'copied'>('idle');
   const [cashCommitmentOpen, setCashCommitmentOpen] = useState(false);
+
+  const createIdempotencyKey = useCallback(() => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return `pay_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }, []);
+
+  useEffect(() => {
+    idempotencyKeyRef.current = null;
+  }, [selectedMethodId, bookingResult?.id]);
   const selectedMethod =
     selectedMethodId === 'cash'
       ? { type: 'CASH' as const, label: 'Paiement en espèces' }
@@ -221,6 +234,9 @@ export function Booking() {
   const reservationStepStatus = bookingResult ? 'done' : loading ? 'active' : 'pending';
   const paymentStepStatus = paymentMessage ? 'done' : paying ? 'active' : bookingResult ? 'ready' : 'pending';
   const confirmationStepStatus = paymentMessage ? 'done' : 'pending';
+  const paymentStatusInfo = bookingResult?.paymentStatus
+    ? getPaymentStatusInfo(bookingResult.paymentStatus)
+    : null;
   const instantPhoneDigits = instantMobileForm.phone.replace(/\D/g, '');
   const mobileInstantValid = selectedMethodId !== 'mobile-instant' || instantPhoneDigits.length >= 8;
   const paymentBlockedReason =
@@ -377,6 +393,9 @@ export function Booking() {
     }
     setPaymentError(undefined);
     setPaymentMessage(undefined);
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = createIdempotencyKey();
+    }
     paymentSimulationRef.current?.cancel();
     const simulation = startPaymentSimulation({
       steps: buildPaymentSteps(method?.type),
@@ -393,6 +412,7 @@ export function Booking() {
         paymentMethodType: method?.type ?? 'CASH',
         paymentProvider:
           method?.type === 'CASH' ? 'CASH' : method?.provider,
+        idempotencyKey: idempotencyKeyRef.current ?? undefined,
       });
       await simulation.promise;
       setPaymentMessage(
@@ -400,6 +420,7 @@ export function Booking() {
           ? 'Paiement en espèces confirmé 🥳'
           : `Paiement confirmé via ${method.label || method.provider || method.type} 🥳`,
       );
+      idempotencyKeyRef.current = null;
       setReceiptIssuedAt(new Date().toISOString());
     } catch (e: any) {
       simulation.cancel();
@@ -416,7 +437,14 @@ export function Booking() {
           return step;
         }),
       );
-      setPaymentError(e?.message || 'Échec du paiement');
+      const errorCode = e?.response?.data?.message || e?.response?.data?.error;
+      if (errorCode === 'payment_velocity_exceeded') {
+        setPaymentError('Trop de tentatives récentes. Patiente quelques minutes et réessaie.');
+      } else if (errorCode === 'idempotency_key_conflict') {
+        setPaymentError('Cette transaction est déjà en cours. Réessaie dans quelques secondes.');
+      } else {
+        setPaymentError(e?.message || 'Échec du paiement');
+      }
     } finally {
       paymentSimulationRef.current = null;
       setPaying(false);
@@ -685,6 +713,11 @@ export function Booking() {
                   <p className="text-sm font-semibold text-slate-700">Réservation confirmée</p>
                   <p className="text-xs text-slate-500">Réf {bookingResult.id}</p>
                 </div>
+                {paymentStatusInfo ? (
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paymentStatusInfo.tone}`}>
+                    {paymentStatusInfo.label}
+                  </span>
+                ) : null}
                 <button
                   className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                   onClick={() => {

@@ -12,6 +12,10 @@ export type RideDoc = {
   driverId: string;
   driverLabel?: string | null;
   driverPhotoUrl?: string | null;
+  driverEmailVerified?: boolean;
+  driverPhoneVerified?: boolean;
+  driverVerified?: boolean;
+  comfortLevel?: string | null;
   status: string;
   liveTrackingEnabled?: boolean;
   liveTrackingMode?: string;
@@ -51,6 +55,10 @@ export class MeiliService {
           'seatsAvailable',
           'liveTrackingEnabled',
           'liveTrackingMode',
+          'driverVerified',
+          'driverEmailVerified',
+          'driverPhoneVerified',
+          'comfortLevel',
         ],
       });
       if (task?.taskUid) await this.client.waitForTask(task.taskUid);
@@ -72,6 +80,10 @@ export class MeiliService {
       driverId: evt.driverId,
       driverLabel: evt.driverLabel ?? null,
       driverPhotoUrl: evt.driverPhotoUrl ?? null,
+      driverEmailVerified: Boolean(evt.driverEmailVerified),
+      driverPhoneVerified: Boolean(evt.driverPhoneVerified),
+      driverVerified: Boolean(evt.driverVerified),
+      comfortLevel: evt.comfortLevel ?? null,
       status: evt.status,
       liveTrackingEnabled: Boolean(evt.liveTrackingEnabled),
       liveTrackingMode: evt.liveTrackingMode ?? 'FULL',
@@ -94,6 +106,10 @@ export class MeiliService {
     minSeats?: number,
     maxPrice?: number,
     liveTrackingOnly?: boolean,
+    comfortLevel?: string,
+    verifiedOnly?: boolean,
+    emailVerifiedOnly?: boolean,
+    phoneVerifiedOnly?: boolean,
   ): Promise<RideDoc[]> {
     const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
     const filters: string[] = [];
@@ -115,6 +131,18 @@ export class MeiliService {
     }
     if (liveTrackingOnly) {
       filters.push('liveTrackingEnabled = true');
+    }
+    if (comfortLevel) {
+      filters.push(`comfortLevel = ${quote(comfortLevel)}`);
+    }
+    if (verifiedOnly) {
+      filters.push('driverVerified = true');
+    }
+    if (emailVerifiedOnly) {
+      filters.push('driverEmailVerified = true');
+    }
+    if (phoneVerifiedOnly) {
+      filters.push('driverPhoneVerified = true');
     }
     const opts: any = { limit };
     if (filters.length) opts.filter = filters.join(' AND ');

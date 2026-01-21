@@ -37,5 +37,19 @@ export class AppModule implements OnModuleInit {
         'ride.published',
       ),
     );
+
+    await this.bus.subscribe(
+      'search-group',
+      'ride.updated',
+      withRetryAndDLQ(
+        async (evt: any) => {
+          const key = evt.rideId || evt.id;
+          if (!key) return;
+          await this.meili.indexRide(evt);
+        },
+        this.bus,
+        'ride.updated',
+      ),
+    );
   }
 }

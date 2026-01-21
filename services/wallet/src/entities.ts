@@ -9,6 +9,35 @@ export class Wallet {
   @Column()
   ownerId!: string;
 
+  @Column({ type: 'int', default: 0 })
+  balance!: number;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+}
+
+@Entity('wallet_transactions')
+export class WalletTransaction {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column()
+  ownerId!: string;
+
+  @Index()
+  @Column()
+  referenceId!: string;
+
+  @Column({ type: 'varchar', length: 16 })
+  type!: 'CREDIT' | 'DEBIT';
+
+  @Column({ type: 'int' })
+  amount!: number;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  reason?: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

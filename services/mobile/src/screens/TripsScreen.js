@@ -7,7 +7,7 @@ import { useToast } from '../ui/ToastContext';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
-import { formatBookingStatus, formatRideStatus } from '../utils/status';
+import { formatBookingStatus, formatPaymentStatus, formatRideStatus } from '../utils/status';
 
 const TABS = [
   { id: 'upcoming', label: 'A venir' },
@@ -148,6 +148,9 @@ export function TripsScreen({ navigation }) {
                 <Text style={styles.cardMeta}>
                   {formatTripLabel(classifyTrip(ride.departureAt || booking.departureAt))}
                 </Text>
+                {booking.paymentStatus ? (
+                  <Text style={styles.cardMeta}>{formatPaymentStatus(booking.paymentStatus)}</Text>
+                ) : null}
               </Pressable>
             </SurfaceCard>
           );

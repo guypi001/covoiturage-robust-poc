@@ -31,6 +31,19 @@ export async function getMyPaymentMethods(token) {
   });
 }
 
+export async function getMyWallet(token) {
+  return apiFetch(`${ENDPOINTS.bff}/me/wallet`, {
+    headers: withAuth(token),
+  });
+}
+
+export async function getMyWalletTransactions(token, limit = 50) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return apiFetch(`${ENDPOINTS.bff}/me/wallet/transactions?${params.toString()}`, {
+    headers: withAuth(token),
+  });
+}
+
 export async function createBooking(token, { rideId, seats }) {
   return apiFetch(`${ENDPOINTS.bff}/bookings`, {
     method: 'POST',

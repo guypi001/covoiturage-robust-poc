@@ -196,6 +196,70 @@ export class MailerService {
     }
   }
 
+  async sendReportEmail(
+    to: string,
+    payload: {
+      id: string;
+      reporterId: string;
+      category: string;
+      reason: string;
+      message?: string;
+      targetAccountId?: string;
+      targetRideId?: string;
+      targetBookingId?: string;
+    },
+  ) {
+    if (!this.transporter) {
+      this.logger.warn(`sendReportEmail skipped (no transporter) for ${to}`);
+      return false;
+    }
+
+    const subject = `Signalement KariGo - ${payload.reason}`;
+    const text = [
+      `Signalement ${payload.id}`,
+      `Categorie: ${payload.category}`,
+      `Motif: ${payload.reason}`,
+      payload.message ? `Message: ${payload.message}` : null,
+      `Reporter: ${payload.reporterId}`,
+      payload.targetAccountId ? `Compte cible: ${payload.targetAccountId}` : null,
+      payload.targetRideId ? `Trajet cible: ${payload.targetRideId}` : null,
+      payload.targetBookingId ? `Reservation cible: ${payload.targetBookingId}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const html = this.renderTemplate({
+      title: 'Nouveau signalement',
+      intro: 'Un membre KariGo a signale un contenu.',
+      bodyHtml: `
+        <ul style="margin:0 0 16px 16px;padding:0;color:#334155;font-size:14px;line-height:1.6;">
+          <li><strong>ID</strong> : ${payload.id}</li>
+          <li><strong>Categorie</strong> : ${payload.category}</li>
+          <li><strong>Motif</strong> : ${payload.reason}</li>
+          ${payload.message ? `<li><strong>Message</strong> : ${payload.message}</li>` : ''}
+          <li><strong>Reporter</strong> : ${payload.reporterId}</li>
+          ${payload.targetAccountId ? `<li><strong>Compte cible</strong> : ${payload.targetAccountId}</li>` : ''}
+          ${payload.targetRideId ? `<li><strong>Trajet cible</strong> : ${payload.targetRideId}</li>` : ''}
+          ${payload.targetBookingId ? `<li><strong>Reservation cible</strong> : ${payload.targetBookingId}</li>` : ''}
+        </ul>
+      `,
+      previewText: 'Nouveau signalement KariGo',
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to,
+        subject,
+        text,
+        html,
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(`sendReportEmail failed for ${to}: ${(err as Error)?.message || err}`);
+      return false;
+    }
+  }
+
   renderTemplate(options: EmailTemplateOptions) {
     const preview = options.previewText ?? 'KariGo';
     const footerNote =

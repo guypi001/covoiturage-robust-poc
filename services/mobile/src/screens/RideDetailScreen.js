@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { getRide } from '../api/ride';
@@ -12,6 +23,23 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
+import { CONFIG, resolveAssetUrl } from '../config';
+import { createReport } from '../api/identity';
+
+const toCalendarDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+};
+
+const addHours = (value, hours = 2) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(date.getHours() + hours);
+  return date.toISOString();
+};
 
 export function RideDetailScreen({ route }) {
   const { token } = useAuth();
@@ -21,6 +49,9 @@ export function RideDetailScreen({ route }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [bookingStatus, setBookingStatus] = useState('');
+  const [reportReason, setReportReason] = useState('Comportement inapproprie');
+  const [reportMessage, setReportMessage] = useState('');
+  const [reportBusy, setReportBusy] = useState(false);
   const rideId = route?.params?.rideId;
 
   useEffect(() => {
@@ -51,6 +82,55 @@ export function RideDetailScreen({ route }) {
   const priceLabel = ride?.pricePerSeat ? `${Number(ride.pricePerSeat).toLocaleString('fr-FR')} XOF` : '--';
   const seatsLabel = ride ? `${ride.seatsAvailable}/${ride.seatsTotal}` : '--';
   const driverLabel = getFirstName(ride?.driverLabel) || ride?.driverLabel || 'Conducteur KariGo';
+  const shareUrl = rideId ? `${CONFIG.baseUrl}/ride/${rideId}` : CONFIG.baseUrl;
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Trajet KariGo: ${ride?.originCity || ''} → ${ride?.destinationCity || ''}\n${shareUrl}`,
+      });
+    } catch {
+      // ignore share errors
+    }
+  };
+
+  const handleCalendar = async () => {
+    if (!ride?.departureAt) return;
+    const start = toCalendarDate(ride.departureAt);
+    const end = toCalendarDate(addHours(ride.departureAt, 2));
+    const title = encodeURIComponent(`Trajet KariGo ${ride.originCity || ''} → ${ride.destinationCity || ''}`);
+    const details = encodeURIComponent('Trajet KariGo - ajoute automatiquement');
+    const location = encodeURIComponent(`${ride.originCity || ''} → ${ride.destinationCity || ''}`);
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&location=${location}&dates=${start}/${end}`;
+    try {
+      await Linking.openURL(calendarUrl);
+    } catch {
+      showToast('Impossible d’ouvrir le calendrier.', 'error');
+    }
+  };
+
+  const handleReport = async () => {
+    if (!token) {
+      showToast('Connecte-toi pour signaler.', 'error');
+      return;
+    }
+    if (!rideId) return;
+    setReportBusy(true);
+    try {
+      await createReport(token, {
+        targetRideId: rideId,
+        category: 'RIDE',
+        reason: reportReason,
+        message: reportMessage || undefined,
+      });
+      showToast('Signalement envoye.', 'success');
+      setReportMessage('');
+    } catch {
+      showToast('Signalement impossible.', 'error');
+    } finally {
+      setReportBusy(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -123,7 +203,11 @@ export function RideDetailScreen({ route }) {
             <SectionHeader title="Conducteur" icon="person-outline" />
             <View style={styles.driverRow}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{driverLabel.charAt(0) || 'K'}</Text>
+                {ride?.driverPhotoUrl ? (
+                  <Image source={{ uri: resolveAssetUrl(ride.driverPhotoUrl) }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{driverLabel.charAt(0) || 'K'}</Text>
+                )}
               </View>
               <View>
                 <Text style={styles.driverName}>{driverLabel}</Text>
@@ -138,6 +222,12 @@ export function RideDetailScreen({ route }) {
               {ride?.liveTrackingEnabled ? 'Actif 15 min avant le depart' : 'Non active par le chauffeur'}
             </Text>
             <Text style={styles.infoHint}>Disponible jusqu'a l'arrivee. Notification des grandes villes.</Text>
+          </SurfaceCard>
+
+          <SurfaceCard style={styles.card} delay={240}>
+            <SectionHeader title="Actions rapides" icon="flash-outline" />
+            <PrimaryButton label="Partager" variant="ghost" onPress={handleShare} />
+            <PrimaryButton label="Ajouter au calendrier" variant="ghost" onPress={handleCalendar} />
           </SurfaceCard>
         </>
       )}
@@ -171,6 +261,30 @@ export function RideDetailScreen({ route }) {
         <PrimaryButton label="Contacter" variant="ghost" />
       </View>
       {bookingStatus ? <Banner tone="success" message={bookingStatus} /> : null}
+
+      <SurfaceCard style={styles.card} delay={260}>
+        <SectionHeader title="Signalement" icon="alert-circle-outline" />
+        <View style={styles.reasonRow}>
+          {['Comportement inapproprie', 'Informations trompeuses', 'Tarif abusif', 'Autre'].map((reason) => (
+            <Pressable
+              key={reason}
+              onPress={() => setReportReason(reason)}
+              style={[styles.reasonChip, reportReason === reason && styles.reasonChipActive]}
+            >
+              <Text style={[styles.reasonText, reportReason === reason && styles.reasonTextActive]}>{reason}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <TextInput
+          value={reportMessage}
+          onChangeText={setReportMessage}
+          placeholder="Ajoute des details si besoin."
+          placeholderTextColor={colors.slate400}
+          style={styles.reportInput}
+          multiline
+        />
+        <PrimaryButton label="Envoyer le signalement" onPress={handleReport} disabled={reportBusy} />
+      </SurfaceCard>
     </ScrollView>
   );
 }
@@ -268,6 +382,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.sky100,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     fontSize: 20,
@@ -291,6 +410,40 @@ const styles = StyleSheet.create({
   infoHint: {
     fontSize: 12,
     color: colors.slate500,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  reasonChip: {
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.lg,
+  },
+  reasonChipActive: {
+    borderColor: colors.rose600,
+    backgroundColor: colors.rose100,
+  },
+  reasonText: {
+    fontSize: 12,
+    color: colors.slate600,
+    fontWeight: '600',
+  },
+  reasonTextActive: {
+    color: colors.rose600,
+  },
+  reportInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    padding: 12,
+    fontSize: 13,
+    color: colors.slate800,
+    backgroundColor: colors.white,
   },
   actions: {
     gap: spacing.sm,

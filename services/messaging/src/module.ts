@@ -8,11 +8,10 @@ import { MetricsController, MetricsMiddleware } from './metrics';
 import { HealthController } from './health.controller';
 
 const dbUrl = process.env.DATABASE_URL || 'postgres://app:app@postgres:5432/covoiturage';
-const isProd = process.env.NODE_ENV === 'production';
 const migrationsRun =
   process.env.MIGRATIONS_RUN !== undefined
     ? ['1', 'true', 'yes', 'on'].includes(process.env.MIGRATIONS_RUN.toLowerCase())
-    : isProd;
+    : true;
 
 @Module({
   imports: [

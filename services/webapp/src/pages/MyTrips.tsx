@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BarChart3, Clock, MapPin, RefreshCw, Ticket, Users, User2 } from 'lucide-react';
+import {
+  ArrowRight,
+  BarChart3,
+  CalendarPlus,
+  Clock,
+  MapPin,
+  RefreshCw,
+  Repeat,
+  Share2,
+  Ticket,
+  Users,
+  User2,
+} from 'lucide-react';
 import {
   getMyBookings,
   getMyPublishedRides,
@@ -10,6 +22,7 @@ import {
   type RideReservation,
 } from '../api';
 import { useApp } from '../store';
+import { getBookingStatusInfo, getPaymentStatusInfo, getRideStatusInfo } from '../constants/status';
 
 type BookingWithMeta = BookingAdminItem & {
   departureAt?: string | null;
@@ -25,27 +38,13 @@ type RideWithDerived = RideAdminItem & {
   reservations: RideReservation[];
 };
 
-const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
-  PENDING: { label: 'En attente', tone: 'text-amber-700 bg-amber-100' },
-  CONFIRMED: { label: 'Confirmée', tone: 'text-sky-700 bg-sky-100' },
-  PAID: { label: 'Payée', tone: 'text-emerald-700 bg-emerald-100' },
-  CANCELLED: { label: 'Annulée', tone: 'text-rose-700 bg-rose-100' },
-};
-
 const STATUS_OPTIONS = [
   { id: 'upcoming', label: 'À venir' },
   { id: 'past', label: 'Passés' },
   { id: 'all', label: 'Tous' },
 ];
 
-const RESERVATION_STATUS_LABEL: Record<string, string> = {
-  PENDING: 'En attente',
-  CONFIRMED: 'Confirmée',
-  PAID: 'Payée',
-  CANCELLED: 'Annulée',
-};
-
-const formatReservationStatus = (status?: string) => RESERVATION_STATUS_LABEL[status ?? ''] ?? status ?? 'Inconnu';
+const formatReservationStatus = (status?: string) => getBookingStatusInfo(status).label;
 const extractFirstName = (value?: string | null) => {
   if (!value) return undefined;
   const trimmed = value.trim();
@@ -75,6 +74,89 @@ const formatDate = (value?: string | null, withTime = true) => {
   } catch {
     return value;
   }
+};
+
+const toCalendarDate = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+};
+
+const addHours = (value?: string | null, hours = 2) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  date.setHours(date.getHours() + hours);
+  return date.toISOString();
+};
+
+const buildIcs = (payload: {
+  title: string;
+  description?: string;
+  location?: string;
+  start?: string;
+  end?: string;
+}) => {
+  const start = toCalendarDate(payload.start);
+  const end = toCalendarDate(payload.end);
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//KariGo//Trips//FR',
+    'BEGIN:VEVENT',
+    `UID:${Date.now()}@karigo`,
+    `DTSTAMP:${toCalendarDate(new Date().toISOString())}`,
+    start ? `DTSTART:${start}` : '',
+    end ? `DTEND:${end}` : '',
+    `SUMMARY:${payload.title}`,
+    payload.description ? `DESCRIPTION:${payload.description}` : '',
+    payload.location ? `LOCATION:${payload.location}` : '',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
+
+const downloadIcs = (filename: string, content: string) => {
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+};
+
+const copyText = async (value: string) => {
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+};
+
+const getTimelineSteps = (createdAt?: string | null, departureAt?: string | null) => {
+  const arrivalAt = addHours(departureAt);
+  const steps = [
+    { id: 'created', label: 'Créé', time: createdAt },
+    { id: 'departure', label: 'Départ', time: departureAt },
+    { id: 'arrival', label: 'Arrivée estimée', time: arrivalAt },
+  ];
+  const now = Date.now();
+  return steps.map((step) => {
+    const ts = step.time ? Date.parse(step.time) : Number.NaN;
+    const isDone = Number.isFinite(ts) ? ts < now : false;
+    return { ...step, isDone };
+  });
 };
 
 export default function MyTrips() {
@@ -135,6 +217,39 @@ export default function MyTrips() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(PASSENGER_NAME_PREF_KEY, String(showPassengerNames));
   }, [showPassengerNames]);
+
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const buildRideUrl = (rideId?: string | null) => (rideId ? `${baseUrl}/ride/${rideId}` : '');
+
+  const handleShare = async (url: string, title: string) => {
+    if (!url) return;
+    try {
+      if (navigator?.share) {
+        await navigator.share({ title, url });
+        return;
+      }
+      await copyText(url);
+    } catch {
+      // ignore share errors
+    }
+  };
+
+  const handleCalendar = (payload: {
+    title: string;
+    description?: string;
+    location?: string;
+    start?: string | null;
+  }) => {
+    if (!payload.start) return;
+    const ics = buildIcs({
+      title: payload.title,
+      description: payload.description,
+      location: payload.location,
+      start: payload.start,
+      end: addHours(payload.start, 2),
+    });
+    downloadIcs('trajet-karigo.ics', ics);
+  };
 
   const enrichedBookings = useMemo<BookingWithMeta[]>(() => {
     const now = Date.now();
@@ -296,13 +411,14 @@ export default function MyTrips() {
           ) : (
             <div className="grid gap-4">
               {filteredBookings.map((booking) => {
-                const statusInfo = STATUS_LABEL[booking.status] ?? {
-                  label: booking.status,
-                  tone: 'text-slate-600 bg-slate-100',
-                };
+                const statusInfo = getBookingStatusInfo(booking.status);
+                const paymentStatusInfo = getPaymentStatusInfo(booking.paymentStatus);
                 const departureLabel = booking.departureAt
                   ? formatDate(booking.departureAt)
                   : formatDate(booking.createdAt);
+                const bookingRideId =
+                  booking.ride?.id || booking.ride?.rideId || booking.rideId || undefined;
+                const bookingSteps = getTimelineSteps(booking.createdAt, booking.departureAt);
                 return (
                   <article
                     key={booking.id}
@@ -319,9 +435,16 @@ export default function MyTrips() {
                           {departureLabel}
                         </p>
                       </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusInfo.tone}`}>
-                        {statusInfo.label}
-                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusInfo.tone}`}>
+                          {statusInfo.label}
+                        </span>
+                        {booking.paymentStatus ? (
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paymentStatusInfo.tone}`}>
+                            {paymentStatusInfo.label}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
                       <div>
@@ -338,6 +461,58 @@ export default function MyTrips() {
                           {booking.amount?.toLocaleString?.() ?? booking.amount} XOF
                         </p>
                       </div>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+                      <div className="flex flex-wrap gap-2">
+                        {bookingSteps.map((step) => (
+                          <div
+                            key={step.id}
+                            className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                              step.isDone ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500'
+                            }`}
+                          >
+                            {step.label}
+                            {step.time ? ` · ${formatDate(step.time, false)}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleShare(
+                            buildRideUrl(bookingRideId),
+                            'Trajet KariGo',
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
+                      >
+                        <Share2 size={14} /> Partager
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCalendar({
+                            title: `Trajet KariGo ${booking.originCity ?? ''} → ${booking.destinationCity ?? ''}`,
+                            description: `Reservation ${booking.id}`,
+                            location: `${booking.originCity ?? ''} → ${booking.destinationCity ?? ''}`,
+                            start: booking.departureAt ?? booking.createdAt,
+                          })
+                        }
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
+                      >
+                        <CalendarPlus size={14} /> Ajouter au calendrier
+                      </button>
+                      {bookingRideId ? (
+                        <Link
+                          to={`/ride/${bookingRideId}`}
+                          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
+                        >
+                          <ArrowRight size={14} /> Voir le trajet
+                        </Link>
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -436,17 +611,14 @@ export default function MyTrips() {
                       </div>
                       <div className="text-sm text-slate-500">{formatDate(ride.departureAt)}</div>
                     </div>
-                    <div
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        ride.status === 'PUBLISHED'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : ride.status === 'CLOSED'
-                          ? 'bg-slate-200 text-slate-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {ride.status === 'PUBLISHED' ? 'En ligne' : ride.status === 'CLOSED' ? 'Clôturé' : ride.status}
-                    </div>
+                    {(() => {
+                      const statusInfo = getRideStatusInfo(ride.status);
+                      return (
+                        <div className={`rounded-full px-3 py-1 text-xs font-semibold ${statusInfo.tone}`}>
+                          {statusInfo.label}
+                        </div>
+                      );
+                    })()}
                   </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-sm text-slate-600">
@@ -468,6 +640,22 @@ export default function MyTrips() {
                   <div className="flex items-center justify-between text-sm text-slate-600">
                     <span>Tarif</span>
                     <span className="font-semibold text-slate-900">{ride.pricePerSeat?.toLocaleString()} XOF</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Timeline</div>
+                  <div className="flex flex-wrap gap-2">
+                    {getTimelineSteps(ride.createdAt ?? ride.updatedAt, ride.departureAt).map((step) => (
+                      <div
+                        key={step.id}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                          step.isDone ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500'
+                        }`}
+                      >
+                        {step.label}
+                        {step.time ? ` · ${formatDate(step.time, false)}` : ''}
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div className="space-y-2 border-t border-slate-100 pt-3">
@@ -515,18 +703,64 @@ export default function MyTrips() {
                     <p className="text-xs text-slate-400">Aucune réservation pour ce trajet.</p>
                   )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <Link
-                    to={`/ride/${ride.id}`}
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-sky-600 hover:text-sky-700"
-                  >
-                      Voir le détail
-                      <ArrowRight size={16} />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      to="/create"
+                      state={{
+                        prefill: {
+                          originCity: ride.originCity,
+                          destinationCity: ride.destinationCity,
+                          date: ride.departureAt
+                            ? new Date(ride.departureAt).toLocaleDateString('fr-CA')
+                            : '',
+                          time: ride.departureAt
+                            ? new Date(ride.departureAt).toLocaleTimeString('fr-FR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '',
+                          pricePerSeat: ride.pricePerSeat ?? 0,
+                          seatsTotal: ride.seatsTotal ?? 1,
+                          liveTrackingEnabled: Boolean(ride.liveTrackingEnabled),
+                        },
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
+                    >
+                      <Repeat size={14} /> Reprogrammer
                     </Link>
-                    <div className="text-xs text-slate-400">
-                      Mise à jour {ride.updatedAt ? formatDate(ride.updatedAt, false) : 'récente'}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleShare(buildRideUrl(ride.id), 'Trajet KariGo')}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
+                    >
+                      <Share2 size={14} /> Partager
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCalendar({
+                          title: `Trajet KariGo ${ride.originCity} → ${ride.destinationCity}`,
+                          description: `Trajet ${ride.id}`,
+                          location: `${ride.originCity} → ${ride.destinationCity}`,
+                          start: ride.departureAt,
+                        })
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
+                    >
+                      <CalendarPlus size={14} /> Ajouter au calendrier
+                    </button>
+                    <Link
+                      to={`/ride/${ride.id}`}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
+                    >
+                      <ArrowRight size={14} /> Voir le détail
+                    </Link>
                   </div>
+                  <div className="text-xs text-slate-400">
+                    Mise à jour {ride.updatedAt ? formatDate(ride.updatedAt, false) : 'récente'}
+                  </div>
+                </div>
                 </article>
               ))}
             </div>

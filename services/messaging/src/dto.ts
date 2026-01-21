@@ -41,6 +41,14 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   recipientLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  clientMessageId?: string;
+
+  @IsOptional()
+  @IsIn(['USER', 'SYSTEM'])
+  messageType?: 'USER' | 'SYSTEM';
 }
 
 export class ConversationQueryDto {

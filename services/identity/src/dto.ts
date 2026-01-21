@@ -6,6 +6,7 @@ import {
   IsEmail,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -139,6 +140,54 @@ export class RequestPasswordResetDto {
   email!: string;
 }
 
+export class CreateSavedSearchDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  originCity!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  destinationCity!: string;
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  seats?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  priceMax?: number;
+
+  @IsOptional()
+  @Matches(/^\d{1,2}:\d{2}$/)
+  departureAfter?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,2}:\d{2}$/)
+  departureBefore?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  liveTracking?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  comfortLevel?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  driverVerified?: boolean;
+}
+
 export class ConfirmPasswordResetDto {
   @IsString()
   token!: string;
@@ -165,7 +214,7 @@ export class UpdateIndividualProfileDto {
   removeTagline?: boolean;
 
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsString()
   @MaxLength(1024)
   profilePhotoUrl?: string;
 
@@ -209,7 +258,7 @@ export class UpdateCompanyProfileDto {
   contactPhone?: string;
 
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsString()
   @MaxLength(1024)
   profilePhotoUrl?: string;
 
@@ -406,7 +455,7 @@ export class UpdateAccountProfileDto {
   contactPhone?: string;
 
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsString()
   @MaxLength(1024)
   profilePhotoUrl?: string;
 
@@ -432,4 +481,39 @@ export class UpdateAccountProfileDto {
   @ValidateNested()
   @Type(() => PaymentPreferencesDto)
   paymentPreferences?: PaymentPreferencesDto;
+}
+
+export class CreateReportDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  targetAccountId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  targetRideId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  targetBookingId?: string;
+
+  @IsString()
+  @IsIn(['ACCOUNT', 'RIDE', 'BOOKING', 'MESSAGE', 'OTHER'] as const)
+  category!: 'ACCOUNT' | 'RIDE' | 'BOOKING' | 'MESSAGE' | 'OTHER';
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(64)
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  message?: string;
+
+  @IsOptional()
+  @IsObject()
+  context?: Record<string, any>;
 }

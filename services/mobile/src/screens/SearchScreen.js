@@ -19,6 +19,8 @@ export function SearchScreen({ navigation }) {
   const [afterTime, setAfterTime] = useState(null);
   const [beforeTime, setBeforeTime] = useState(null);
   const [liveTracking, setLiveTracking] = useState(true);
+  const [driverVerified, setDriverVerified] = useState(false);
+  const [comfortLevel, setComfortLevel] = useState('');
   const [sort, setSort] = useState('soonest');
   const [prefs, setPrefs] = useState(null);
   const [errors, setErrors] = useState({});
@@ -35,6 +37,8 @@ export function SearchScreen({ navigation }) {
       setSeats(defaults.seats || '1');
       setBudget(defaults.budget || '');
       setLiveTracking(defaults.liveTracking ?? true);
+      setDriverVerified(defaults.driverVerified ?? false);
+      setComfortLevel(defaults.comfortLevel ?? '');
       setSort(defaults.sort || 'soonest');
     };
     hydrate();
@@ -54,12 +58,14 @@ export function SearchScreen({ navigation }) {
         seats,
         budget,
         liveTracking,
+        driverVerified,
+        comfortLevel,
         sort,
       },
     };
     setPrefs(next);
     savePreferences(next);
-  }, [fromCity, toCity, seats, budget, liveTracking, sort]);
+  }, [fromCity, toCity, seats, budget, liveTracking, driverVerified, comfortLevel, sort]);
 
   const validation = useMemo(() => {
     const next = {};
@@ -170,6 +176,7 @@ export function SearchScreen({ navigation }) {
               { id: 'soonest', label: 'Plus tot' },
               { id: 'cheapest', label: 'Moins cher' },
               { id: 'seats', label: 'Places' },
+              { id: 'smart', label: 'Intelligent' },
             ].map((option) => {
               const active = sort === option.id;
               return (
@@ -184,12 +191,40 @@ export function SearchScreen({ navigation }) {
             })}
           </View>
 
+          <View style={styles.sortRow}>
+            {[
+              { id: '', label: 'Confort' },
+              { id: 'STANDARD', label: 'Standard' },
+              { id: 'CONFORT', label: 'Confort +' },
+              { id: 'PREMIUM', label: 'Premium' },
+            ].map((option) => {
+              const active = comfortLevel === option.id;
+              return (
+                <Pressable
+                  key={option.id || 'comfort-any'}
+                  onPress={() => setComfortLevel(option.id)}
+                  style={[styles.sortChip, active && styles.sortChipActive]}
+                >
+                  <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <View style={styles.switchRow}>
             <View>
               <Text style={styles.switchTitle}>Suivi en direct</Text>
               <Text style={styles.switchText}>Afficher uniquement les trajets actives.</Text>
             </View>
             <Switch value={liveTracking} onValueChange={setLiveTracking} trackColor={{ true: colors.sky500 }} />
+          </View>
+
+          <View style={styles.switchRow}>
+            <View>
+              <Text style={styles.switchTitle}>Conducteur verifie</Text>
+              <Text style={styles.switchText}>Email + telephone confirmes.</Text>
+            </View>
+            <Switch value={driverVerified} onValueChange={setDriverVerified} trackColor={{ true: colors.sky500 }} />
           </View>
 
           <PrimaryButton
@@ -210,6 +245,8 @@ export function SearchScreen({ navigation }) {
                   ? beforeTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
                   : undefined,
                 liveTracking,
+                driverVerified,
+                comfortLevel,
                 sort,
               });
             }}

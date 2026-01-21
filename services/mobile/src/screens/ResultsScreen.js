@@ -4,11 +4,13 @@ import { colors, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { RideCard } from '../components/RideCard';
 import { searchRides } from '../api/search';
+import { saveSearch } from '../api/identity';
 import { getFirstName } from '../utils/name';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
+import { useAuth } from '../auth';
 
 const normalizeRide = (ride) => ({
   id: ride.rideId || ride.id,
@@ -18,14 +20,19 @@ const normalizeRide = (ride) => ({
   seats: `${ride.seatsAvailable}/${ride.seatsTotal}`,
   price: `${Number(ride.pricePerSeat).toLocaleString('fr-FR')} XOF`,
   driver: getFirstName(ride.driverLabel) || ride.driverLabel || 'Conducteur KariGo',
+  driverPhotoUrl: ride.driverPhotoUrl || null,
   liveTracking: Boolean(ride.liveTrackingEnabled),
 });
 
 export function ResultsScreen({ navigation, route }) {
   const params = route?.params || {};
+  const { token } = useAuth();
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [meta, setMeta] = useState(null);
+  const [saveNotice, setSaveNotice] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -44,9 +51,13 @@ export function ResultsScreen({ navigation, route }) {
           liveTracking: params.liveTracking,
           departureAfter: params.departureAfter,
           departureBefore: params.departureBefore,
+          comfortLevel: params.comfortLevel,
+          driverVerified: params.driverVerified,
         });
         if (active) {
-          setRides(Array.isArray(data) ? data.map(normalizeRide) : []);
+          const hits = data?.hits || [];
+          setRides(hits.map(normalizeRide));
+          setMeta(data?.meta || null);
         }
       } catch (err) {
         if (active) setError('Impossible de charger les trajets.');
@@ -85,6 +96,16 @@ export function ResultsScreen({ navigation, route }) {
       )}
 
       {error ? <Banner tone="error" message={error} /> : null}
+      {saveNotice ? <Banner tone="success" message={saveNotice} /> : null}
+      {meta?.from?.suggestions?.length || meta?.to?.suggestions?.length ? (
+        <Banner
+          tone="info"
+          message={`Suggestions: ${(meta.from?.suggestions || [])
+            .concat(meta.to?.suggestions || [])
+            .slice(0, 3)
+            .join(', ')}`}
+        />
+      ) : null}
 
       <View style={styles.summaryRow}>
         <SurfaceCard style={styles.summaryCard} tone="soft" delay={90}>
@@ -103,10 +124,48 @@ export function ResultsScreen({ navigation, route }) {
         <SectionHeader title="Filtres actifs" icon="filter-outline" />
         <View style={styles.filterRow}>
           <View>
-            <Text style={styles.filterText}>Tri: plus tot</Text>
-            <Text style={styles.filterMeta}>Suivi en direct active</Text>
+            <Text style={styles.filterText}>
+              Tri: {params.sort === 'cheapest' ? 'moins cher' : params.sort === 'seats' ? 'places' : params.sort === 'smart' ? 'intelligent' : 'plus tot'}
+            </Text>
+            <Text style={styles.filterMeta}>
+              {params.liveTracking ? 'Suivi en direct active' : 'Suivi en direct desactive'}
+              {params.driverVerified ? ' · Conducteur verifie' : ''}
+              {params.comfortLevel ? ` · Confort ${params.comfortLevel}` : ''}
+            </Text>
           </View>
-          <PrimaryButton label="Modifier" variant="ghost" onPress={() => navigation.navigate('Search')} />
+          <View style={{ gap: 8 }}>
+            <PrimaryButton label="Modifier" variant="ghost" onPress={() => navigation.navigate('Search')} />
+            {token ? (
+              <PrimaryButton
+                label={saving ? 'Sauvegarde...' : 'Sauvegarder'}
+                variant="ghost"
+                onPress={async () => {
+                  if (!token) return;
+                  setSaving(true);
+                  setSaveNotice('');
+                  try {
+                    await saveSearch(token, {
+                      originCity: params.from,
+                      destinationCity: params.to,
+                      date: params.date,
+                      seats: params.seats ? Number(params.seats) : undefined,
+                      priceMax: params.priceMax ? Number(String(params.priceMax).replace(/[^\d]/g, '')) : undefined,
+                      departureAfter: params.departureAfter,
+                      departureBefore: params.departureBefore,
+                      liveTracking: params.liveTracking,
+                      comfortLevel: params.comfortLevel,
+                      driverVerified: params.driverVerified,
+                    });
+                    setSaveNotice('Recherche sauvegardee.');
+                  } catch (err) {
+                    setSaveNotice('Sauvegarde impossible.');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              />
+            ) : null}
+          </View>
         </View>
       </SurfaceCard>
 

@@ -9,11 +9,15 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { InternalGuard } from './internal.guard';
+import { SavedSearchesService } from './saved-searches.service';
 
 @Controller('internal')
 @UseGuards(InternalGuard)
 export class InternalController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly searches: SavedSearchesService,
+  ) {}
 
   @Get('accounts/:id')
   async getAccount(@Param('id') id: string) {
@@ -43,5 +47,19 @@ export class InternalController {
     }
     const accounts = await this.auth.getProfiles(list);
     return { data: accounts };
+  }
+
+  @Get('saved-searches')
+  async listSavedSearches(
+    @Query('origin') origin?: string,
+    @Query('destination') destination?: string,
+  ) {
+    const originCity = origin?.trim();
+    const destinationCity = destination?.trim();
+    if (!originCity || !destinationCity) {
+      throw new BadRequestException('origin_and_destination_required');
+    }
+    const data = await this.searches.findForRoute(originCity, destinationCity);
+    return { data };
   }
 }

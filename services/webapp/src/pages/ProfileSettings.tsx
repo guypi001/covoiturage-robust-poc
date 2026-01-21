@@ -5,14 +5,53 @@ import {
   type AccountType,
   type FavoriteRoute,
   type HomePreferencesPayload,
+  deleteProfilePhoto,
+  resolveIdentityAssetUrl,
   updateCompanyProfile,
   updateIndividualProfile,
+  uploadProfilePhoto,
 } from '../api';
 import { HOME_THEME_OPTIONS, QUICK_ACTION_OPTIONS } from '../constants/homePreferences';
 
 type EditableRoute = { from: string; to: string };
 
 const MAX_ROUTES = 5;
+const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
+const MAX_PHOTO_DIMENSION = 512;
+
+const optimizeProfilePhoto = async (file: File) => {
+  if (!file.type.startsWith('image/')) return file;
+  if (typeof createImageBitmap === 'undefined') return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = Math.max(bitmap.width, bitmap.height);
+    const scale = maxSide > MAX_PHOTO_DIMENSION ? MAX_PHOTO_DIMENSION / maxSide : 1;
+    if (scale === 1 && file.size <= MAX_PHOTO_SIZE) return file;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.82),
+    );
+    if (!blob) return file;
+    const filename = file.name.replace(/\.\w+$/, '.jpg');
+    return new File([blob], filename, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' });
+};
 
 export default function ProfileSettings() {
   const token = useApp((state) => state.token);
@@ -23,6 +62,8 @@ export default function ProfileSettings() {
   const [comfort, setComfort] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [removePhoto, setRemovePhoto] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
   const [favoriteRoutes, setFavoriteRoutes] = useState<EditableRoute[]>([]);
   const [quickActions, setQuickActions] = useState<string[]>([]);
   const [theme, setTheme] = useState<'default' | 'sunset' | 'night'>('default');
@@ -44,6 +85,8 @@ export default function ProfileSettings() {
     }
     setPhotoUrl(account.profilePhotoUrl ?? '');
     setRemovePhoto(false);
+    setPhotoFile(null);
+    setPhotoPreview('');
 
     const prefs = account.homePreferences;
     setFavoriteRoutes(
@@ -58,6 +101,14 @@ export default function ProfileSettings() {
     setShowTips(prefs?.showTips ?? true);
   }, [account]);
 
+  useEffect(() => {
+    return () => {
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
   const comfortList = useMemo(
     () =>
       comfort
@@ -69,6 +120,17 @@ export default function ProfileSettings() {
 
   if (!token) return <Navigate to="/login" replace />;
   if (!account) return null;
+
+  const displayName = account.fullName || account.companyName || account.email;
+  const initials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+  const resolvedPhotoUrl = resolveIdentityAssetUrl(photoUrl || account.profilePhotoUrl);
+  const statusLabel = account.status === 'ACTIVE' ? 'Actif' : 'Suspendu';
+  const roleLabel = account.role === 'ADMIN' ? 'Administrateur' : 'Utilisateur';
+  const typeLabel = account.type === 'COMPANY' ? 'Entreprise' : 'Particulier';
 
   const handleRouteChange = (index: number, field: keyof EditableRoute, value: string) => {
     setFavoriteRoutes((prev) => {
@@ -120,17 +182,26 @@ export default function ProfileSettings() {
     setSuccess(undefined);
     try {
       const homePreferences = buildHomePreferences();
-      const trimmedPhoto = photoUrl.trim();
       const trimmedTagline = tagline.trim();
       const shouldRemoveTagline = trimmedTagline.length === 0;
       const commonPayload = {
-        profilePhotoUrl: removePhoto ? undefined : trimmedPhoto || undefined,
-        removeProfilePhoto: removePhoto || (!trimmedPhoto && Boolean(account.profilePhotoUrl)),
         removeTagline: shouldRemoveTagline,
         homePreferences,
       };
 
-      let updated;
+      let updated = account;
+      if (removePhoto) {
+        updated = await deleteProfilePhoto(token);
+        setPhotoUrl('');
+        setPhotoPreview('');
+        setPhotoFile(null);
+      } else if (photoFile) {
+        updated = await uploadProfilePhoto(token, photoFile);
+        setPhotoUrl(updated.profilePhotoUrl ?? '');
+        setPhotoPreview('');
+        setPhotoFile(null);
+      }
+
       if (account.type === 'INDIVIDUAL') {
         updated = await updateIndividualProfile(token, {
           comfortPreferences: comfortList,
@@ -154,69 +225,88 @@ export default function ProfileSettings() {
   };
 
   return (
-    <section className="max-w-4xl mx-auto px-4 py-10 space-y-8">
+    <section className="max-w-6xl mx-auto px-4 py-10 space-y-8">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-slate-900">Personnalisation du profil</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Profil</h1>
         <p className="text-sm text-slate-600">
-          Mets à jour ta photo, tes préférences de confort et l’expérience affichée sur ta page d’accueil.
+          Gère ton identité, tes préférences de trajet et la personnalisation de ton espace KariGo.
         </p>
       </header>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
-        <section className="grid gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-              {removePhoto ? (
-                <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-                  Photo supprimée
-                </div>
-              ) : account.profilePhotoUrl || photoUrl ? (
-                <img
-                  src={removePhoto ? '' : photoUrl || account.profilePhotoUrl || ''}
-                  alt="Photo de profil"
-                  className="h-full w-full object-cover"
-                  onError={() => setPhotoUrl('')}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-                  Pas de photo
-                </div>
-              )}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <form onSubmit={handleSubmit} className="space-y-10">
+          <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <header className="space-y-1">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Identité</h2>
+              <p className="text-xs text-slate-500">
+                Photo, signature et informations visibles dans tes trajets et conversations.
+              </p>
+            </header>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+              <div className="relative h-20 w-20 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                {removePhoto ? (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                    Photo supprimée
+                  </div>
+                ) : photoPreview || resolvedPhotoUrl ? (
+                  <img
+                    src={photoPreview || resolvedPhotoUrl || ''}
+                    alt="Photo de profil"
+                    className="h-full w-full object-cover"
+                    onError={() => setPhotoUrl('')}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                    Pas de photo
+                  </div>
+                )}
             </div>
             <div className="flex-1 space-y-3">
-              <div>
-                <label className="text-xs font-semibold uppercase text-slate-500">Photo (URL)</label>
-                <input
-                  type="url"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200"
-                  placeholder="https://…"
-                  value={photoUrl}
-                  onChange={(e) => {
-                    setPhotoUrl(e.target.value);
-                    setRemovePhoto(false);
-                  }}
-                />
-              </div>
               <div className="flex items-center gap-3 text-xs">
+                <label className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100 cursor-pointer">
+                  Importer une photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.currentTarget.files?.[0];
+                      if (!file) return;
+                      void (async () => {
+                        if (photoPreview) URL.revokeObjectURL(photoPreview);
+                        setError(undefined);
+                        const optimized = await optimizeProfilePhoto(file);
+                        if (optimized.size > MAX_PHOTO_SIZE) {
+                          setError('La photo est trop lourde. Maximum 2 Mo après compression.');
+                          return;
+                        }
+                        setPhotoFile(optimized);
+                        setPhotoPreview(URL.createObjectURL(optimized));
+                        setRemovePhoto(false);
+                      })();
+                    }}
+                  />
+                </label>
                 <button
                   type="button"
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100"
                   onClick={() => {
                     setRemovePhoto(true);
                     setPhotoUrl('');
+                    if (photoPreview) URL.revokeObjectURL(photoPreview);
+                    setPhotoPreview('');
+                    setPhotoFile(null);
                   }}
                 >
                   Retirer la photo
                 </button>
-                <span className="text-slate-500">
-                  Astuce : héberge ton image (600×600) sur un CDN ou un cloud public.
-                </span>
+                <span className="text-slate-500">Formats JPG, PNG, WebP. 2 Mo max, compression automatique.</span>
               </div>
             </div>
-          </div>
-        </section>
+            </div>
+          </section>
 
-        <section className="grid gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div>
             <label className="text-xs font-semibold uppercase text-slate-500">
               Accroche affichée sur ton profil
@@ -252,7 +342,7 @@ export default function ProfileSettings() {
           )}
         </section>
 
-        <section className="grid gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <header>
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
               Personnalisation de la page d’accueil
@@ -393,7 +483,57 @@ export default function ProfileSettings() {
             {saving ? 'Enregistrement…' : 'Sauvegarder'}
           </button>
         </div>
-      </form>
+        </form>
+
+        <aside className="space-y-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="h-14 w-14 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center text-lg font-semibold">
+                {initials || 'K'}
+              </div>
+              <div>
+                <p className="text-base font-semibold text-slate-900">{displayName}</p>
+                <p className="text-xs text-slate-500">{account.email}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase">
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">{statusLabel}</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{typeLabel}</span>
+              <span className="rounded-full bg-sky-100 px-3 py-1 text-sky-700">{roleLabel}</span>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase">
+              <span
+                className={`rounded-full px-3 py-1 ${
+                  account.emailVerifiedAt ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {account.emailVerifiedAt ? 'Email vérifié' : 'Email non vérifié'}
+              </span>
+              <span
+                className={`rounded-full px-3 py-1 ${
+                  account.phoneVerifiedAt ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {account.phoneVerifiedAt ? 'Téléphone vérifié' : 'Téléphone non vérifié'}
+              </span>
+            </div>
+            <div className="grid gap-2 text-sm text-slate-600">
+              <div className="flex items-center justify-between">
+                <span>Dernière connexion</span>
+                <span className="font-semibold text-slate-900">{formatDate(account.lastLoginAt)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Membre depuis</span>
+                <span className="font-semibold text-slate-900">{formatDate(account.createdAt)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Connexions</span>
+                <span className="font-semibold text-slate-900">{account.loginCount ?? 0}</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }

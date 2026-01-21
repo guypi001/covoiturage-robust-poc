@@ -1,6 +1,6 @@
-import type { Ride, SearchRequest } from '../api';
+import type { SearchRequest, SearchResponse } from '../api';
 
-const rideSearchCache = new Map<string, Ride[]>();
+const rideSearchCache = new Map<string, SearchResponse>();
 
 export function buildRideSearchKey(params: SearchRequest) {
   return JSON.stringify({
@@ -13,6 +13,10 @@ export function buildRideSearchKey(params: SearchRequest) {
     departureBefore: params.departureBefore ?? null,
     sort: params.sort ?? 'soonest',
     liveTracking: params.liveTracking ?? null,
+    comfortLevel: params.comfortLevel ?? null,
+    driverVerified: params.driverVerified ?? null,
+    emailVerified: params.emailVerified ?? null,
+    phoneVerified: params.phoneVerified ?? null,
   });
 }
 
@@ -20,8 +24,8 @@ export function getRideSearchCache(key: string) {
   return rideSearchCache.get(key);
 }
 
-export function setRideSearchCache(key: string, rides: Ride[]) {
-  rideSearchCache.set(key, rides);
+export function setRideSearchCache(key: string, response: SearchResponse) {
+  rideSearchCache.set(key, response);
 }
 
 export function clearRideSearchCache() {

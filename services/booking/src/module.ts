@@ -9,11 +9,10 @@ import { InternalGuard } from './internal.guard';
 import { PaymentListener } from './payment.listener';
 import { MetricsController, MetricsMiddleware } from './metrics';
 
-const isProd = process.env.NODE_ENV === 'production';
 const migrationsRun =
   process.env.MIGRATIONS_RUN !== undefined
     ? ['1', 'true', 'yes', 'on'].includes(process.env.MIGRATIONS_RUN.toLowerCase())
-    : isProd;
+    : true;
 
 @Module({
   imports: [

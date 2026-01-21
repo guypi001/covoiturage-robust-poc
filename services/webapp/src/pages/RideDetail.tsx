@@ -1,8 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowRight, Calendar, Clock, Shield, Phone, Mail, Star } from 'lucide-react';
+import {
+  ArrowRight,
+  Calendar,
+  CalendarPlus,
+  Clock,
+  Flag,
+  Mail,
+  Phone,
+  Share2,
+  Shield,
+  Star,
+} from 'lucide-react';
 import { useApp } from '../store';
-import { getRide, getPublicProfile, sendChatMessage, type Ride, type Account } from '../api';
+import {
+  createReport,
+  getRide,
+  getPublicProfile,
+  resolveIdentityAssetUrl,
+  sendChatMessage,
+  type Ride,
+  type Account,
+} from '../api';
+import { getRideStatusInfo } from '../constants/status';
 import { upsertPendingAcquisition } from '../utils/pendingAcquisitions';
 import { RouteMap } from '../components/RouteMap';
 import type { LocationMeta } from '../types/location';
@@ -14,6 +34,81 @@ const extractFirstName = (value?: string | null) => {
   if (!trimmed) return undefined;
   return trimmed.split(/\s+/)[0];
 };
+
+const toCalendarDate = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+};
+
+const addHours = (value?: string | null, hours = 2) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  date.setHours(date.getHours() + hours);
+  return date.toISOString();
+};
+
+const buildIcs = (payload: {
+  title: string;
+  description?: string;
+  location?: string;
+  start?: string;
+  end?: string;
+}) => {
+  const start = toCalendarDate(payload.start);
+  const end = toCalendarDate(payload.end);
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//KariGo//Trips//FR',
+    'BEGIN:VEVENT',
+    `UID:${Date.now()}@karigo`,
+    `DTSTAMP:${toCalendarDate(new Date().toISOString())}`,
+    start ? `DTSTART:${start}` : '',
+    end ? `DTEND:${end}` : '',
+    `SUMMARY:${payload.title}`,
+    payload.description ? `DESCRIPTION:${payload.description}` : '',
+    payload.location ? `LOCATION:${payload.location}` : '',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
+
+const downloadIcs = (filename: string, content: string) => {
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+};
+
+const copyText = async (value: string) => {
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+};
+
+const REPORT_REASONS = [
+  'Comportement inapproprié',
+  'Informations trompeuses',
+  'Tarif abusif',
+  'Autre',
+];
 
 export function RideDetail() {
   const { rideId } = useParams<{ rideId: string }>();
@@ -33,6 +128,11 @@ export function RideDetail() {
   const [messageDraft, setMessageDraft] = useState('');
   const [messageSending, setMessageSending] = useState(false);
   const [messageError, setMessageError] = useState<string>();
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
+  const [reportMessage, setReportMessage] = useState('');
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportFeedback, setReportFeedback] = useState<string>();
 
   useEffect(() => {
     if (storeRide) {
@@ -165,6 +265,7 @@ export function RideDetail() {
     setMessageError(undefined);
     setMessageSending(true);
     try {
+      const clientMessageId = `${currentAccount.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await sendChatMessage({
         senderId: currentAccount.id,
         senderType: currentAccount.type,
@@ -173,6 +274,7 @@ export function RideDetail() {
         recipientType: driver.type,
         recipientLabel: driver.fullName ?? driver.companyName ?? driver.email,
         body,
+        clientMessageId,
       });
       upsertPendingAcquisition(currentAccount.id ?? 'guest', {
         rideId: ride.rideId,
@@ -205,9 +307,74 @@ export function RideDetail() {
     }
   };
 
-  const profilePicture = driver?.profilePhotoUrl || undefined;
+  const profilePicture = resolveIdentityAssetUrl(driver?.profilePhotoUrl) || undefined;
   const driverName =
     extractFirstName(driver?.fullName ?? driver?.companyName ?? driver?.email) || 'Chauffeur KariGo';
+  const driverEmailVerified = Boolean(driver?.emailVerifiedAt);
+  const driverPhoneVerified = Boolean(driver?.phoneVerifiedAt);
+  const rideShareUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/ride/${ride?.rideId ?? ride?.id ?? ''}`
+      : '';
+
+  const handleShareRide = async () => {
+    if (!rideShareUrl) return;
+    try {
+      if (navigator?.share) {
+        await navigator.share({ title: 'Trajet KariGo', url: rideShareUrl });
+        return;
+      }
+      await copyText(rideShareUrl);
+    } catch {
+      // ignore share errors
+    }
+  };
+
+  const handleCalendar = () => {
+    if (!ride?.departureAt) return;
+    const ics = buildIcs({
+      title: `Trajet KariGo ${ride.originCity} → ${ride.destinationCity}`,
+      description: `Trajet partagé avec ${driverName}`,
+      location: `${ride.originCity} → ${ride.destinationCity}`,
+      start: ride.departureAt,
+      end: addHours(ride.departureAt, 2),
+    });
+    downloadIcs('trajet-karigo.ics', ics);
+  };
+
+  const handleReport = async () => {
+    if (!token || !driver?.id) {
+      setReportFeedback('Connecte-toi pour signaler ce trajet.');
+      return;
+    }
+    const rideIdentifier = ride?.rideId ?? ride?.id;
+    if (!rideIdentifier) {
+      setReportFeedback('Trajet indisponible pour le signalement.');
+      return;
+    }
+    setReportBusy(true);
+    setReportFeedback(undefined);
+    try {
+      await createReport(token, {
+        targetAccountId: driver.id,
+        targetRideId: rideIdentifier,
+        category: 'RIDE',
+        reason: reportReason,
+        message: reportMessage || undefined,
+        context: {
+          originCity: ride.originCity,
+          destinationCity: ride.destinationCity,
+        },
+      });
+      setReportFeedback('Signalement envoyé. Merci pour ton aide.');
+      setReportOpen(false);
+      setReportMessage('');
+    } catch (err: any) {
+      setReportFeedback(err?.response?.data?.message || err?.message || 'Signalement impossible.');
+    } finally {
+      setReportBusy(false);
+    }
+  };
 
   const goToProfile = () => {
     if (!canViewProfile || !driver?.id) return;
@@ -257,8 +424,8 @@ export function RideDetail() {
           <span className="inline-flex items-center gap-2 text-xs text-slate-900/60">
             <Clock size={14} /> {ride.seatsAvailable}/{ride.seatsTotal} sièges
           </span>
-          <span className="inline-flex items-center gap-2 text-xs text-slate-900/60 capitalize">
-            <Shield size={14} /> {ride.status.toLowerCase()}
+          <span className="inline-flex items-center gap-2 text-xs text-slate-900/60">
+            <Shield size={14} /> {getRideStatusInfo(ride.status).label}
           </span>
           {trackingEnabled && (
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
@@ -304,6 +471,22 @@ export function RideDetail() {
               <div className="text-xl font-semibold text-slate-900">
                 {driverName}
               </div>
+              <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase">
+                <span
+                  className={`rounded-full px-2.5 py-1 ${
+                    driverEmailVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {driverEmailVerified ? 'Email vérifié' : 'Email non vérifié'}
+                </span>
+                <span
+                  className={`rounded-full px-2.5 py-1 ${
+                    driverPhoneVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {driverPhoneVerified ? 'Téléphone vérifié' : 'Téléphone non vérifié'}
+                </span>
+              </div>
               {driver?.tagline && <p className="text-sm text-slate-900/70">{driver.tagline}</p>}
               {driver && (
                 <div className="flex flex-wrap gap-3 text-xs text-slate-900/70">
@@ -332,6 +515,30 @@ export function RideDetail() {
                   <ArrowRight size={14} />
                 </button>
               )}
+              <button
+                type="button"
+                onClick={handleShareRide}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-900/90 hover:bg-slate-100"
+              >
+                Partager
+                <Share2 size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={handleCalendar}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-900/90 hover:bg-slate-100"
+              >
+                Ajouter au calendrier
+                <CalendarPlus size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+              >
+                Signaler
+                <Flag size={14} />
+              </button>
               {canViewProfile && (
                 <button
                   type="button"
@@ -352,6 +559,48 @@ export function RideDetail() {
                   <Star size={11} /> {pref}
                 </span>
               ))}
+            </div>
+          )}
+
+          {reportOpen && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4 space-y-3 text-sm text-slate-700">
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Signaler ce trajet</p>
+              <div className="flex flex-wrap gap-2">
+                {REPORT_REASONS.map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setReportReason(reason)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                      reportReason === reason
+                        ? 'bg-rose-600 text-white'
+                        : 'border border-rose-200 text-rose-700 hover:bg-rose-100'
+                    }`}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={reportMessage}
+                onChange={(event) => setReportMessage(event.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-rose-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
+                placeholder="Ajoute des détails si nécessaire."
+              />
+              <button
+                type="button"
+                onClick={handleReport}
+                disabled={reportBusy}
+                className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                Envoyer le signalement
+              </button>
+            </div>
+          )}
+          {reportFeedback && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+              {reportFeedback}
             </div>
           )}
 

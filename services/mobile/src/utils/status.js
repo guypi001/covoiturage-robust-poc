@@ -20,3 +20,13 @@ export const formatBookingStatus = (status) =>
 
 export const formatRideStatus = (status) =>
   RIDE_STATUS_LABELS[status] || status || 'Inconnu';
+
+export const PAYMENT_STATUS_LABELS = {
+  PENDING: 'Paiement en attente',
+  CONFIRMED: 'Paiement confirme',
+  FAILED: 'Paiement echoue',
+  REFUNDED: 'Rembourse',
+};
+
+export const formatPaymentStatus = (status) =>
+  PAYMENT_STATUS_LABELS[status] || status || 'Paiement';

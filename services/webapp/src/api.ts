@@ -102,6 +102,27 @@ const MESSAGING_URL = resolveServiceUrl(
 );
 const BFF_URL = resolveServiceUrl(import.meta.env.VITE_BFF_URL, 3000, '/api/bff', true);
 
+const IDENTITY_ASSET_BASE_URL = (() => {
+  try {
+    const url = new URL(IDENTITY_URL);
+    url.pathname = url.pathname.replace(/\/api\/identity\/?$/, '');
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return IDENTITY_URL.replace(/\/api\/identity\/?$/, '');
+  }
+})();
+
+export function resolveIdentityAssetUrl(value?: string | null) {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/uploads/')) {
+    return `${IDENTITY_ASSET_BASE_URL}${trimmed}`;
+  }
+  return trimmed;
+}
+
 const api = axios.create();
 
 let authToken: string | undefined;
@@ -218,16 +239,42 @@ export type SearchRequest = {
   priceMax?: number;
   departureAfter?: string;
   departureBefore?: string;
-  sort?: 'soonest' | 'cheapest' | 'seats';
+  sort?: 'soonest' | 'cheapest' | 'seats' | 'smart';
   liveTracking?: boolean;
+  comfortLevel?: string;
+  driverVerified?: boolean;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
   fromMeta?: LocationMeta;
   toMeta?: LocationMeta;
+};
+
+export type SearchMeta = {
+  from?: {
+    input: string;
+    resolved: string | null;
+    matchType?: string | null;
+    suggestions?: string[];
+  };
+  to?: {
+    input: string;
+    resolved: string | null;
+    matchType?: string | null;
+    suggestions?: string[];
+  };
+  filters?: Record<string, any>;
+  error?: string;
+};
+
+export type SearchResponse = {
+  hits: Ride[];
+  meta?: SearchMeta;
 };
 
 export async function searchRides(
   params: SearchRequest,
   options: { signal?: AbortSignal } = {},
-) {
+): Promise<SearchResponse> {
   const { from, to, date, seats, priceMax, departureAfter, departureBefore, sort } = params;
   const search = new URLSearchParams({
     from,
@@ -242,6 +289,17 @@ export async function searchRides(
   if (typeof params.liveTracking === 'boolean') {
     search.set('liveTracking', params.liveTracking ? 'true' : 'false');
   }
+  if (params.comfortLevel) search.set('comfort', params.comfortLevel);
+  if (typeof params.driverVerified === 'boolean') {
+    search.set('driverVerified', params.driverVerified ? 'true' : 'false');
+  }
+  if (typeof params.emailVerified === 'boolean') {
+    search.set('emailVerified', params.emailVerified ? 'true' : 'false');
+  }
+  if (typeof params.phoneVerified === 'boolean') {
+    search.set('phoneVerified', params.phoneVerified ? 'true' : 'false');
+  }
+  search.set('meta', '1');
   const url = `${SEARCH_URL}/search?${search.toString()}`;
   let cancelSource: ReturnType<typeof axios.CancelToken.source> | undefined;
   let abortListener: (() => void) | undefined;
@@ -255,16 +313,36 @@ export async function searchRides(
     }
   }
   try {
-    const { data } = await api.get<Ride[]>(url, {
+    const { data } = await api.get<SearchResponse | Ride[]>(url, {
       withCredentials: false,
       cancelToken: cancelSource?.token,
     });
+    if (Array.isArray(data)) {
+      return { hits: data };
+    }
     return data;
   } finally {
     if (options.signal && abortListener) {
       options.signal.removeEventListener('abort', abortListener);
     }
   }
+}
+
+export async function saveSearch(params: SearchRequest) {
+  const payload = {
+    originCity: params.from,
+    destinationCity: params.to,
+    date: params.date,
+    seats: params.seats,
+    priceMax: params.priceMax,
+    departureAfter: params.departureAfter,
+    departureBefore: params.departureBefore,
+    liveTracking: params.liveTracking,
+    comfortLevel: params.comfortLevel,
+    driverVerified: params.driverVerified,
+  };
+  const { data } = await api.post(`${IDENTITY_URL}/saved-searches`, payload);
+  return data;
 }
 
 export async function getRide(rideId: string) {
@@ -303,6 +381,8 @@ export type SendChatMessagePayload = {
   recipientType: AccountType;
   recipientLabel?: string;
   body: string;
+  clientMessageId?: string;
+  messageType?: 'USER' | 'SYSTEM';
 };
 
 export async function sendChatMessage(payload: SendChatMessagePayload) {
@@ -332,6 +412,7 @@ export async function captureBookingPayment(payload: {
   paymentMethodType?: string;
   paymentMethodId?: string;
   paymentProvider?: string;
+  idempotencyKey?: string;
 }) {
   const { data } = await api.post(`${BFF_URL}/payments/capture`, payload);
   return data;
@@ -564,6 +645,23 @@ export type PaymentMethod = {
   updatedAt?: string;
 };
 
+export type Wallet = {
+  id: string;
+  ownerId: string;
+  balance: number;
+  createdAt: string;
+};
+
+export type WalletTransaction = {
+  id: string;
+  ownerId: string;
+  referenceId: string;
+  type: 'CREDIT' | 'DEBIT';
+  amount: number;
+  reason?: string | null;
+  createdAt: string;
+};
+
 export type AdminUpdateRidePayload = {
   originCity?: string;
   destinationCity?: string;
@@ -617,6 +715,9 @@ export type BookingAdminItem = {
   paymentMethod?: string | null;
   paymentProvider?: string | null;
   paymentMethodId?: string | null;
+  paymentStatus?: string | null;
+  paymentError?: string | null;
+  paymentRefundedAmount?: number | null;
   createdAt: string;
   ride?: RideAdminItem | null;
 };
@@ -863,6 +964,40 @@ export async function adminUpdateAccountProfile(
   return data;
 }
 
+export async function uploadProfilePhoto(token: string, file: File): Promise<Account> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post<Account>(`${IDENTITY_URL}/profiles/me/photo`, formData, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function deleteProfilePhoto(token: string): Promise<Account> {
+  const { data } = await api.delete<Account>(`${IDENTITY_URL}/profiles/me/photo`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function createReport(
+  token: string,
+  payload: {
+    targetAccountId?: string;
+    targetRideId?: string;
+    targetBookingId?: string;
+    category: 'ACCOUNT' | 'RIDE' | 'BOOKING' | 'MESSAGE' | 'OTHER';
+    reason: string;
+    message?: string;
+    context?: Record<string, any>;
+  },
+) {
+  const { data } = await api.post(`${IDENTITY_URL}/reports`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
 export async function adminGetAccountActivity(
   token: string,
   accountId: string,
@@ -983,6 +1118,21 @@ export async function addPaymentMethod(
 
 export async function deletePaymentMethod(token: string, methodId: string) {
   const { data } = await api.delete<{ ok: boolean }>(`${BFF_URL}/me/payment-methods/${methodId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function getMyWallet(token: string): Promise<Wallet> {
+  const { data } = await api.get<Wallet>(`${BFF_URL}/me/wallet`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function getMyWalletTransactions(token: string, limit = 50): Promise<WalletTransaction[]> {
+  const { data } = await api.get<WalletTransaction[]>(`${BFF_URL}/me/wallet/transactions`, {
+    params: { limit },
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;

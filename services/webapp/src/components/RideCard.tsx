@@ -3,6 +3,7 @@ import { Info, Heart, Link2 } from 'lucide-react';
 import { useApp } from '../store';
 import { useRideAvailability } from '../hooks/useRideAvailability';
 import { CityIcon } from '../utils/cityIcons';
+import { resolveIdentityAssetUrl } from '../api';
 
 type Props = {
   rideId?: string;
@@ -154,7 +155,8 @@ export default function RideCard({
     (rawName && rawName.length > 0 ? rawName : undefined) ||
     'Conducteur KariGo';
   const authorInitial = authorName.charAt(0).toUpperCase();
-  const showAvatarPhoto = Boolean(driverPhotoUrl && !photoError);
+  const resolvedDriverPhotoUrl = resolveIdentityAssetUrl(driverPhotoUrl);
+  const showAvatarPhoto = Boolean(resolvedDriverPhotoUrl && !photoError);
   const trackingEnabled = Boolean(liveTrackingEnabled);
   const trackingLabel = trackingEnabled
     ? liveTrackingMode === 'CITY_ALERTS'
@@ -260,7 +262,7 @@ export default function RideCard({
             <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-200 bg-white shadow-inner">
               {showAvatarPhoto ? (
                 <img
-                  src={driverPhotoUrl || ''}
+                  src={resolvedDriverPhotoUrl || ''}
                   alt={`Photo de ${authorName}`}
                   className="h-full w-full object-cover"
                   onError={() => setPhotoError(true)}

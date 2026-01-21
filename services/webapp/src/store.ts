@@ -27,8 +27,12 @@ type LastSearch = {
   priceMax?: number;
   departureAfter?: string;
   departureBefore?: string;
-  sort?: 'soonest' | 'cheapest' | 'seats';
+  sort?: 'soonest' | 'cheapest' | 'seats' | 'smart';
   liveTracking?: boolean;
+  comfortLevel?: string;
+  driverVerified?: boolean;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
   fromMeta?: LocationMeta;
   toMeta?: LocationMeta;
 };
@@ -46,6 +50,10 @@ export const buildSearchKey = (q?: LastSearch) => {
     q.departureBefore ?? '',
     q.sort ?? '',
     q.liveTracking ?? '',
+    q.comfortLevel ?? '',
+    q.driverVerified ?? '',
+    q.emailVerified ?? '',
+    q.phoneVerified ?? '',
   ].join('|');
 };
 

@@ -12,6 +12,16 @@ type PaymentCapturedEvent = {
   paymentMethodId?: string;
 };
 
+type PaymentFailedEvent = {
+  bookingId: string;
+  reason?: string;
+};
+
+type PaymentRefundedEvent = {
+  bookingId: string;
+  amount?: number;
+};
+
 const CARD_PROVIDERS = new Set(['VISA', 'MASTERCARD', 'CARTE']);
 const MOBILE_PROVIDERS = new Set(['MTN Money', 'Orange Money', 'Moov Money']);
 const METHOD_TYPES = new Set<PaymentMethodType>(['CARD', 'MOBILE_MONEY', 'CASH']);
@@ -28,6 +38,12 @@ export class PaymentListener implements OnModuleInit {
   async onModuleInit() {
     await this.bus.subscribe('booking-group', 'payment.captured', async (evt) => {
       await this.handlePaymentCaptured(evt as PaymentCapturedEvent);
+    });
+    await this.bus.subscribe('booking-group', 'payment.failed', async (evt) => {
+      await this.handlePaymentFailed(evt as PaymentFailedEvent);
+    });
+    await this.bus.subscribe('booking-group', 'payment.refunded', async (evt) => {
+      await this.handlePaymentRefunded(evt as PaymentRefundedEvent);
     });
   }
 
@@ -57,11 +73,32 @@ export class PaymentListener implements OnModuleInit {
       }
     }
     booking.status = 'PAID';
+    booking.paymentStatus = 'CONFIRMED';
+    booking.paymentError = null;
     if (evt.paymentMethodType) {
       booking.paymentMethod = evt.paymentMethodType as PaymentMethodType;
     }
     if (evt.provider) booking.paymentProvider = evt.provider;
     if (evt.paymentMethodId) booking.paymentMethodId = evt.paymentMethodId;
+    await this.bookings.save(booking);
+  }
+
+  private async handlePaymentFailed(evt: PaymentFailedEvent) {
+    if (!evt?.bookingId) return;
+    const booking = await this.bookings.findOne({ where: { id: evt.bookingId } });
+    if (!booking) return;
+    booking.paymentStatus = 'FAILED';
+    booking.paymentError = evt.reason?.slice(0, 160) || 'payment_failed';
+    await this.bookings.save(booking);
+  }
+
+  private async handlePaymentRefunded(evt: PaymentRefundedEvent) {
+    if (!evt?.bookingId) return;
+    const booking = await this.bookings.findOne({ where: { id: evt.bookingId } });
+    if (!booking) return;
+    const refundAmount = evt.amount ?? 0;
+    booking.paymentStatus = 'REFUNDED';
+    booking.paymentRefundedAmount = (booking.paymentRefundedAmount || 0) + refundAmount;
     await this.bookings.save(booking);
   }
 }

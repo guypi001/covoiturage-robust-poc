@@ -178,6 +178,34 @@ export class ProxyController {
     );
   }
 
+  @Get('me/wallet')
+  async getWallet(@Req() req: any) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+    return this.forward(
+      () => axios.get(`${WALLET}/wallets/${account.id}`, { headers: this.internalHeaders() }),
+      'wallet',
+    );
+  }
+
+  @Get('me/wallet/transactions')
+  async getWalletTransactions(@Req() req: any, @Query('limit') limit?: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+    return this.forward(
+      () =>
+        axios.get(`${WALLET}/wallets/${account.id}/transactions`, {
+          params: { limit },
+          headers: this.internalHeaders(),
+        }),
+      'wallet',
+    );
+  }
+
   @Get('search')
   async search(@Query() q: any) {
     return this.forward(() => axios.get(`${SEARCH}/search`, { params: q }), 'search');
@@ -294,9 +322,18 @@ export class ProxyController {
       paymentMethodType?: string;
       paymentMethodId?: string;
       paymentProvider?: string;
+      idempotencyKey?: string;
     },
+    @Req() req: any,
   ) {
-    return this.forward(() => axios.post(`${PAYMENT}/mock-capture`, body), 'payment');
+    const headers: Record<string, string> = {};
+    if (body.idempotencyKey) headers['Idempotency-Key'] = body.idempotencyKey;
+    const account = await this.fetchMyAccount(req).catch(() => null);
+    const payload = {
+      ...body,
+      payerId: account?.id,
+    };
+    return this.forward(() => axios.post(`${PAYMENT}/payments/capture`, payload, { headers }), 'payment');
   }
 
   @Get('me/bookings')

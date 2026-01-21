@@ -32,6 +32,7 @@ import {
   adminUpdateRide,
   adminCloseRide,
   adminShareRides,
+  resolveIdentityAssetUrl,
 } from '../api';
 import { HOME_THEME_OPTIONS, QUICK_ACTION_OPTIONS } from '../constants/homePreferences';
 
@@ -1208,7 +1209,7 @@ function SelectedAccountSummary({
         </div>
         {account.profilePhotoUrl && (
           <img
-            src={account.profilePhotoUrl}
+            src={resolveIdentityAssetUrl(account.profilePhotoUrl)}
             alt={account.fullName || account.companyName || account.email}
             className="h-14 w-14 rounded-2xl object-cover border border-slate-200"
           />
@@ -1465,7 +1466,7 @@ function ActivityPanel({
                 </div>
               ) : photoUrl || account.profilePhotoUrl ? (
                 <img
-                  src={removePhoto ? '' : photoUrl || account.profilePhotoUrl || ''}
+                  src={resolveIdentityAssetUrl(removePhoto ? '' : photoUrl || account.profilePhotoUrl || '')}
                   alt="Photo de profil"
                   className="h-full w-full object-cover"
                   onError={() => setPhotoUrl('')}

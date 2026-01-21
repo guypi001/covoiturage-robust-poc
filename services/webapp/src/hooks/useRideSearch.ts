@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useTransition } from 'react';
 import axios from 'axios';
-import { searchRides, type Ride, type SearchRequest } from '../api';
+import { searchRides, type Ride, type SearchRequest, type SearchMeta } from '../api';
 import { buildRideSearchKey, getRideSearchCache, setRideSearchCache } from '../utils/rideSearchCache';
 
-type SuccessHandler = (rides: Ride[], info: { fromCache: boolean }) => void;
+type SuccessHandler = (rides: Ride[], info: { fromCache: boolean; meta?: SearchMeta }) => void;
 type ErrorHandler = (message: string) => void;
 
 export function useRideSearch() {
@@ -17,7 +17,7 @@ export function useRideSearch() {
       const key = buildRideSearchKey(params);
       const cached = getRideSearchCache(key);
       if (cached) {
-        startTransition(() => handlers.onSuccess(cached, { fromCache: true }));
+        startTransition(() => handlers.onSuccess(cached.hits, { fromCache: true, meta: cached.meta }));
         return { fromCache: true, aborted: false };
       }
 
@@ -29,7 +29,7 @@ export function useRideSearch() {
         const data = await searchRides(params, { signal: controller.signal });
         startTransition(() => {
           setRideSearchCache(key, data);
-          handlers.onSuccess(data, { fromCache: false });
+          handlers.onSuccess(data.hits, { fromCache: false, meta: data.meta });
         });
         return { fromCache: false, aborted: false };
       } catch (err: any) {

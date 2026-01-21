@@ -104,3 +104,19 @@ export async function verifyPhoneOtp(token, payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function createReport(token, payload) {
+  return apiFetch(`${ENDPOINTS.identity}/reports`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function saveSearch(token, payload) {
+  return apiFetch(`${ENDPOINTS.identity}/saved-searches`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}

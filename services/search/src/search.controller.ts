@@ -10,8 +10,13 @@ type SearchQuery = {
   priceMax?: string;
   departureAfter?: string;
   departureBefore?: string;
-  sort?: 'soonest' | 'cheapest' | 'seats';
+  sort?: 'soonest' | 'cheapest' | 'seats' | 'smart';
   liveTracking?: string;
+  comfort?: string;
+  driverVerified?: string;
+  emailVerified?: string;
+  phoneVerified?: string;
+  meta?: string;
 };
 
 function normalizeDateRange(input: string): { start: string; end: string } | null {
@@ -61,14 +66,39 @@ export class SearchController {
   ) {}
 
   @Get()
-  async search(@Query() q: SearchQuery): Promise<RideDoc[]> {
+  async search(@Query() q: SearchQuery): Promise<RideDoc[] | { hits: RideDoc[]; meta: any }> {
     const from = q.from?.trim();
     const to = q.to?.trim();
     if (!from || !to) throw new BadRequestException('from & to requis');
 
-    const cFrom = this.geo.getCity(from);
-    const cTo = this.geo.getCity(to);
-    if (!cFrom || !cTo) throw new BadRequestException('Ville inconnue');
+    const wantMeta = parseBoolean(q.meta) === true;
+    const resolvedFrom = this.geo.resolveCity(from);
+    const resolvedTo = this.geo.resolveCity(to);
+    const cFrom = resolvedFrom.city;
+    const cTo = resolvedTo.city;
+    if (!cFrom || !cTo) {
+      if (wantMeta) {
+        return {
+          hits: [],
+          meta: {
+            from: {
+              input: from,
+              resolved: cFrom?.name ?? null,
+              matchType: resolvedFrom.matchType ?? null,
+              suggestions: resolvedFrom.suggestions ?? [],
+            },
+            to: {
+              input: to,
+              resolved: cTo?.name ?? null,
+              matchType: resolvedTo.matchType ?? null,
+              suggestions: resolvedTo.suggestions ?? [],
+            },
+            error: 'Ville inconnue',
+          },
+        };
+      }
+      throw new BadRequestException('Ville inconnue');
+    }
 
     const rawDateRange = q.date ? normalizeDateRange(q.date) : undefined;
     if (q.date && !rawDateRange) throw new BadRequestException('Date invalide');
@@ -102,8 +132,23 @@ export class SearchController {
       throw new BadRequestException('liveTracking invalide');
     }
 
+    const driverVerifiedOnly = parseBoolean(q.driverVerified);
+    if (q.driverVerified && driverVerifiedOnly === undefined) {
+      throw new BadRequestException('driverVerified invalide');
+    }
+    const emailVerifiedOnly = parseBoolean(q.emailVerified);
+    if (q.emailVerified && emailVerifiedOnly === undefined) {
+      throw new BadRequestException('emailVerified invalide');
+    }
+    const phoneVerifiedOnly = parseBoolean(q.phoneVerified);
+    if (q.phoneVerified && phoneVerifiedOnly === undefined) {
+      throw new BadRequestException('phoneVerified invalide');
+    }
+
+    const comfortLevel = q.comfort?.trim();
+
     let sort = q.sort ?? 'soonest';
-    if (!['soonest', 'cheapest', 'seats'].includes(sort)) {
+    if (!['soonest', 'cheapest', 'seats', 'smart'].includes(sort)) {
       sort = 'soonest';
     }
 
@@ -112,8 +157,8 @@ export class SearchController {
     const LIMIT = Number(process.env.SEARCH_LIMIT ?? 60);
 
     // 1) élargir l’espace Meili par proximité de villes
-    const nearFrom = this.geo.nearbyCities(from, RADIUS_KM);
-    const nearTo = this.geo.nearbyCities(to, RADIUS_KM);
+    const nearFrom = this.geo.nearbyCities(cFrom.name, RADIUS_KM);
+    const nearTo = this.geo.nearbyCities(cTo.name, RADIUS_KM);
 
     // 2) première passe Meili
     const hits = await this.meili.searchByCities(
@@ -124,8 +169,45 @@ export class SearchController {
       minSeats,
       maxPrice,
       liveTrackingOnly === true,
+      comfortLevel,
+      driverVerifiedOnly === true,
+      emailVerifiedOnly === true,
+      phoneVerifiedOnly === true,
     );
-    if (!hits.length) return [];
+    if (!hits.length) {
+      if (wantMeta) {
+        return {
+          hits: [],
+          meta: {
+            from: {
+              input: from,
+              resolved: cFrom.name,
+              matchType: resolvedFrom.matchType ?? null,
+              suggestions: resolvedFrom.suggestions ?? [],
+            },
+            to: {
+              input: to,
+              resolved: cTo.name,
+              matchType: resolvedTo.matchType ?? null,
+              suggestions: resolvedTo.suggestions ?? [],
+            },
+            filters: {
+              seats: minSeats,
+              priceMax: maxPrice,
+              departureAfterMinutes,
+              departureBeforeMinutes,
+              liveTracking: liveTrackingOnly === true,
+              comfort: comfortLevel ?? null,
+              driverVerified: driverVerifiedOnly === true,
+              emailVerified: emailVerifiedOnly === true,
+              phoneVerified: phoneVerifiedOnly === true,
+              sort,
+            },
+          },
+        };
+      }
+      return [];
+    }
 
     // 3) filtrage corridor (trajet qui passe “près de” les points from/to) + sens (a.t < b.t)
     const cityCache = new Map<string, ReturnType<GeoService['getCity']>>();
@@ -173,12 +255,58 @@ export class SearchController {
         }
         return y.seatsAvailable - x.seatsAvailable;
       }
+      if (sort === 'smart') {
+        const targetTime = dateRange?.start ? Date.parse(dateRange.start) : Date.now();
+        const score = (ride: RideDoc) => {
+          const dep = Date.parse(ride.departureAt);
+          const delta = Number.isFinite(dep) ? Math.abs(dep - targetTime) : 1e12;
+          const timeScore = Math.max(0, 1 - delta / (1000 * 60 * 60 * 24));
+          const seatsScore = Math.min(1, ride.seatsAvailable / 4);
+          const verifiedScore = ride.driverVerified ? 0.2 : 0;
+          const trackingScore = ride.liveTrackingEnabled ? 0.1 : 0;
+          return timeScore + seatsScore + verifiedScore + trackingScore;
+        };
+        const diff = score(y) - score(x);
+        if (Math.abs(diff) > 0.001) return diff > 0 ? 1 : -1;
+      }
       // default: soonest
       if (x.departureAt === y.departureAt) {
         return x.pricePerSeat - y.pricePerSeat;
       }
       return x.departureAt < y.departureAt ? -1 : 1;
     });
+
+    if (wantMeta) {
+      return {
+        hits: filtered,
+        meta: {
+          from: {
+            input: from,
+            resolved: cFrom.name,
+            matchType: resolvedFrom.matchType ?? null,
+            suggestions: resolvedFrom.suggestions ?? [],
+          },
+          to: {
+            input: to,
+            resolved: cTo.name,
+            matchType: resolvedTo.matchType ?? null,
+            suggestions: resolvedTo.suggestions ?? [],
+          },
+          filters: {
+            seats: minSeats,
+            priceMax: maxPrice,
+            departureAfterMinutes,
+            departureBeforeMinutes,
+            liveTracking: liveTrackingOnly === true,
+            comfort: comfortLevel ?? null,
+            driverVerified: driverVerifiedOnly === true,
+            emailVerified: emailVerifiedOnly === true,
+            phoneVerified: phoneVerifiedOnly === true,
+            sort,
+          },
+        },
+      };
+    }
 
     return filtered;
   }

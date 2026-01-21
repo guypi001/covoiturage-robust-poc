@@ -1,9 +1,11 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadows, spacing, text } from '../theme';
 import { getFirstName } from '../utils/name';
+import { resolveAssetUrl } from '../config';
 
 export function RideCard({ ride }) {
   const driverLabel = getFirstName(ride.driver) || ride.driver;
+  const showPhoto = Boolean(ride.driverPhotoUrl);
 
   return (
     <View style={styles.card}>
@@ -29,9 +31,18 @@ export function RideCard({ ride }) {
         </View>
       </View>
       <View style={styles.footerRow}>
-        <View>
-          <Text style={styles.price}>{ride.price}</Text>
-          <Text style={styles.driver}>Chauffeur: {driverLabel}</Text>
+        <View style={styles.driverRow}>
+          <View style={styles.avatar}>
+            {showPhoto ? (
+              <Image source={{ uri: resolveAssetUrl(ride.driverPhotoUrl) }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{driverLabel?.charAt(0) || 'K'}</Text>
+            )}
+          </View>
+          <View>
+            <Text style={styles.price}>{ride.price}</Text>
+            <Text style={styles.driver}>Chauffeur: {driverLabel}</Text>
+          </View>
         </View>
         <View style={styles.pill}>
           <Text style={styles.pillText}>Profil verifie</Text>
@@ -103,6 +114,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.slate100,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.slate600,
   },
   price: {
     fontSize: 16,

@@ -291,12 +291,16 @@ export function ConversationScreen({ route }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
+  const createClientMessageId = () =>
+    `${account?.id || 'guest'}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
   const handleSend = async () => {
     const trimmed = textValue.trim();
     if (!trimmed || !account?.id) return;
     sendTyping(false);
     try {
       setSending(true);
+      const clientMessageId = createClientMessageId();
       const res = await sendMessage({
         senderId: account.id,
         senderType: account.type || 'INDIVIDUAL',
@@ -305,6 +309,7 @@ export function ConversationScreen({ route }) {
         recipientType: otherParticipant?.type || 'INDIVIDUAL',
         recipientLabel: otherParticipant?.label,
         body: trimmed,
+        clientMessageId,
       });
       setTextValue('');
       sendTyping(false);
@@ -340,6 +345,7 @@ export function ConversationScreen({ route }) {
     try {
       setSending(true);
       const upload = await uploadMessageAttachment(file);
+      const clientMessageId = createClientMessageId();
       const res = await sendMessage({
         senderId: account.id,
         senderType: account.type || 'INDIVIDUAL',
@@ -350,6 +356,7 @@ export function ConversationScreen({ route }) {
         attachmentUrl: upload.url,
         attachmentName: upload.name,
         attachmentType: upload.type,
+        clientMessageId,
       });
       if (res?.message) {
         setMessages((prev) => [...prev, res.message]);

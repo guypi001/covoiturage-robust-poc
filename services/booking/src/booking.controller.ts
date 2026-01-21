@@ -106,7 +106,7 @@ export class BookingController {
     // 3) création réservation
     let saved: Booking;
     try {
-      const booking = this.bookings.create({ ...dto, amount, status: 'CONFIRMED' });
+      const booking = this.bookings.create({ ...dto, amount, status: 'CONFIRMED', paymentStatus: 'PENDING' });
       saved = await this.bookings.save(booking);
       bookingCreatedCounter.inc({ status: booking.status });
       bookingSeatsHistogram.observe(dto.seats);

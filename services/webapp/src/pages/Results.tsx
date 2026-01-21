@@ -5,7 +5,9 @@ import { buildSearchKey, useApp } from '../store';
 import RideCard, { RideCardSkeleton } from '../components/RideCard';
 import { HOME_THEME_STYLE } from '../constants/homePreferences';
 import { useRideContact } from '../hooks/useRideContact';
+import { saveSearch } from '../api';
 import { useRideSearch } from '../hooks/useRideSearch';
+import type { SearchMeta } from '../api';
 import { CityBadge } from '../utils/cityIcons';
 
 const RESULTS_STALE_MS = 60000;
@@ -27,6 +29,9 @@ export function Results() {
   const deferredResults = useDeferredValue(results);
   const currentSearchKey = useMemo(() => buildSearchKey(lastSearch), [lastSearch]);
   const [nowTick, setNowTick] = useState(Date.now());
+  const [searchMeta, setSearchMeta] = useState<SearchMeta | undefined>(undefined);
+  const [saveNotice, setSaveNotice] = useState<string | undefined>(undefined);
+  const [savingSearch, setSavingSearch] = useState(false);
 
   const draftFromSearch = useCallback(
     () => ({
@@ -36,6 +41,8 @@ export function Results() {
       seats: lastSearch?.seats ?? 1,
       sort: lastSearch?.sort ?? 'soonest',
       liveTracking: lastSearch?.liveTracking ?? false,
+      comfortLevel: lastSearch?.comfortLevel ?? '',
+      driverVerified: lastSearch?.driverVerified ?? false,
     }),
     [lastSearch],
   );
@@ -54,8 +61,14 @@ export function Results() {
       setLoading(true);
       setError(undefined);
       const result = await runRideSearch(nextSearch, {
-        onSuccess: (rides) => setResults(rides, queryKey),
-        onError: (message) => setError(message),
+        onSuccess: (rides, info) => {
+          setResults(rides, queryKey);
+          setSearchMeta(info.meta);
+        },
+        onError: (message) => {
+          setError(message);
+          setSearchMeta(undefined);
+        },
       });
       if (!result.aborted) {
         setLoading(false);
@@ -109,7 +122,9 @@ export function Results() {
       ? 'Tri : moins cher'
       : lastSearch.sort === 'seats'
         ? 'Tri : plus de places'
-        : 'Tri : plus tôt';
+        : lastSearch.sort === 'smart'
+          ? 'Tri : intelligent'
+          : 'Tri : plus tôt';
 
   const timeWindowChip = lastSearch.departureAfter || lastSearch.departureBefore;
   const totalResults = deferredResults.length;
@@ -151,7 +166,7 @@ export function Results() {
     return { cheapest, earliest, mostSeats };
   }, [deferredResults]);
 
-  const applyQuickSort = async (sort: 'soonest' | 'cheapest' | 'seats') => {
+  const applyQuickSort = async (sort: 'soonest' | 'cheapest' | 'seats' | 'smart') => {
     if (!lastSearch) return;
     await performSearch({ ...lastSearch, sort });
   };
@@ -165,6 +180,8 @@ export function Results() {
       seats: Math.max(1, filterDraft.seats || 1),
       sort: filterDraft.sort,
       liveTracking: Boolean(filterDraft.liveTracking),
+      comfortLevel: filterDraft.comfortLevel || undefined,
+      driverVerified: Boolean(filterDraft.driverVerified),
     };
   }, [filterDraft]);
 
@@ -176,7 +193,9 @@ export function Results() {
       (normalizedDraft.departureBefore || undefined) !== (lastSearch.departureBefore ?? undefined) ||
       normalizedDraft.seats !== (lastSearch.seats ?? 1) ||
       normalizedDraft.sort !== (lastSearch.sort ?? 'soonest') ||
-      normalizedDraft.liveTracking !== Boolean(lastSearch.liveTracking)
+      normalizedDraft.liveTracking !== Boolean(lastSearch.liveTracking) ||
+      (normalizedDraft.comfortLevel || undefined) !== (lastSearch.comfortLevel ?? undefined) ||
+      normalizedDraft.driverVerified !== Boolean(lastSearch.driverVerified)
     );
   }, [lastSearch, normalizedDraft]);
 
@@ -190,6 +209,8 @@ export function Results() {
       seats: normalizedDraft.seats,
       sort: normalizedDraft.sort,
       liveTracking: normalizedDraft.liveTracking,
+      comfortLevel: normalizedDraft.comfortLevel,
+      driverVerified: normalizedDraft.driverVerified,
     };
     await performSearch(nextSearch);
   };
@@ -199,10 +220,26 @@ export function Results() {
     setFilterDraft(draftFromSearch());
   };
 
-  const sortOptions: Array<{ value: 'soonest' | 'cheapest' | 'seats'; label: string }> = [
+  const handleSaveSearch = useCallback(async () => {
+    if (!lastSearch || !account) return;
+    setSavingSearch(true);
+    setSaveNotice(undefined);
+    try {
+      await saveSearch(lastSearch);
+      setSaveNotice('Recherche sauvegardee. Nous te notifierons des nouveaux trajets.');
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Impossible de sauvegarder.';
+      setSaveNotice(message);
+    } finally {
+      setSavingSearch(false);
+    }
+  }, [account, lastSearch]);
+
+  const sortOptions: Array<{ value: 'soonest' | 'cheapest' | 'seats' | 'smart'; label: string }> = [
     { value: 'soonest', label: 'Départ' },
     { value: 'cheapest', label: 'Moins cher' },
     { value: 'seats', label: 'Places' },
+    { value: 'smart', label: 'Intelligent' },
   ];
 
   return (
@@ -227,12 +264,61 @@ export function Results() {
               <RefreshCw size={14} />
               Actualiser
             </button>
+            {account && (
+              <button
+                type="button"
+                onClick={() => void handleSaveSearch()}
+                disabled={savingSearch}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-emerald-200 hover:text-emerald-600 disabled:opacity-50"
+              >
+                <Filter size={14} />
+                Sauvegarder
+              </button>
+            )}
             {lastUpdatedLabel && (
               <span className="text-xs text-slate-500">
                 Dernier rafraîchissement : {lastUpdatedLabel}
               </span>
             )}
           </div>
+
+          {searchMeta?.from?.suggestions?.length || searchMeta?.to?.suggestions?.length ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Did you mean</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                {searchMeta?.from?.suggestions?.map((suggestion) => (
+                  <button
+                    key={`from-${suggestion}`}
+                    type="button"
+                    onClick={() =>
+                      performSearch({
+                        ...lastSearch,
+                        from: suggestion,
+                      })
+                    }
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600 hover:border-slate-300"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+                {searchMeta?.to?.suggestions?.map((suggestion) => (
+                  <button
+                    key={`to-${suggestion}`}
+                    type="button"
+                    onClick={() =>
+                      performSearch({
+                        ...lastSearch,
+                        to: suggestion,
+                      })
+                    }
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600 hover:border-slate-300"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className={`mt-4 flex flex-wrap gap-2 text-xs ${baseTextClass}`}>
             <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
@@ -264,6 +350,16 @@ export function Results() {
             {lastSearch.liveTracking && (
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.accent}`}>
                 Suivi en direct
+              </span>
+            )}
+            {lastSearch.comfortLevel && (
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
+                Confort: {lastSearch.comfortLevel}
+              </span>
+            )}
+            {lastSearch.driverVerified && (
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.accent}`}>
+                Conducteur vérifié
               </span>
             )}
             <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.neutral}`}>
@@ -453,6 +549,41 @@ export function Results() {
                 </div>
               </div>
 
+              <div className="grid gap-3 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500">Confort</label>
+                  <select
+                    value={filterDraft.comfortLevel}
+                    onChange={(e) =>
+                      setFilterDraft((prev) => ({
+                        ...prev,
+                        comfortLevel: e.currentTarget.value,
+                      }))
+                    }
+                    className="h-12 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                  >
+                    <option value="">Indifférent</option>
+                    <option value="STANDARD">Standard</option>
+                    <option value="CONFORT">Confort</option>
+                    <option value="PREMIUM">Premium</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(filterDraft.driverVerified)}
+                    onChange={(e) =>
+                      setFilterDraft((prev) => ({
+                        ...prev,
+                        driverVerified: e.currentTarget.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+                  />
+                  <span className="text-xs font-semibold text-slate-500">Conducteur vérifié</span>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <input
                   type="checkbox"
@@ -484,6 +615,14 @@ export function Results() {
               </div>
             </form>
           </div>
+        )}
+
+        {saveNotice && (
+          <ErrorBanner
+            message={saveNotice}
+            tone={saveNotice.startsWith('Recherche') ? 'success' : 'warning'}
+            onDismiss={() => setSaveNotice(undefined)}
+          />
         )}
 
         {contactError && (
@@ -567,7 +706,7 @@ export function Results() {
   );
 }
 
-type BannerTone = 'error' | 'warning';
+type BannerTone = 'error' | 'warning' | 'success';
 
 function ErrorBanner({
   message,
@@ -581,6 +720,7 @@ function ErrorBanner({
   const toneMap: Record<BannerTone, string> = {
     error: 'border-rose-200 bg-rose-50 text-rose-700',
     warning: 'border-amber-200 bg-amber-50 text-amber-800',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   };
   return (
     <div className={`rounded-3xl border px-4 py-3 text-sm ${toneMap[tone]} flex items-start gap-3`}>

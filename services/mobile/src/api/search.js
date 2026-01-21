@@ -15,5 +15,14 @@ export async function searchRides(params) {
   if (typeof params.liveTracking === 'boolean') {
     search.set('liveTracking', params.liveTracking ? 'true' : 'false');
   }
-  return apiFetch(`${CONFIG.searchUrl}/search?${search.toString()}`);
+  if (params.comfortLevel) search.set('comfort', params.comfortLevel);
+  if (typeof params.driverVerified === 'boolean') {
+    search.set('driverVerified', params.driverVerified ? 'true' : 'false');
+  }
+  search.set('meta', '1');
+  const data = await apiFetch(`${CONFIG.searchUrl}/search?${search.toString()}`);
+  if (Array.isArray(data)) {
+    return { hits: data };
+  }
+  return data;
 }

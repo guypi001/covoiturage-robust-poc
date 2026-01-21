@@ -30,6 +30,31 @@ export class RideController {
     void this.refreshAggregates();
   }
 
+  private buildRideEvent(ride: Ride) {
+    return {
+      rideId: ride.id,
+      status: ride.status,
+      driverId: ride.driverId,
+      driverLabel: ride.driverLabel,
+      driverPhotoUrl: ride.driverPhotoUrl,
+      driverEmailVerified: ride.driverEmailVerified,
+      driverPhoneVerified: ride.driverPhoneVerified,
+      driverVerified: ride.driverVerified,
+      comfortLevel: ride.comfortLevel,
+      estimatedDurationMinutes: ride.estimatedDurationMinutes,
+      stops: ride.stops,
+      originCity: ride.originCity,
+      destinationCity: ride.destinationCity,
+      departureAt: ride.departureAt,
+      pricePerSeat: ride.pricePerSeat,
+      seatsTotal: ride.seatsTotal,
+      seatsAvailable: ride.seatsAvailable,
+      liveTrackingEnabled: ride.liveTrackingEnabled,
+      liveTrackingMode: ride.liveTrackingMode,
+      cancelledAt: ride.cancelledAt ?? null,
+    };
+  }
+
   private async refreshAggregates() {
     if (this.refreshInFlight) return;
     this.refreshInFlight = true;
@@ -56,6 +81,9 @@ export class RideController {
       let driverId = dto.driverId;
       let driverLabel = dto.driverLabel ?? null;
       let driverPhotoUrl = dto.driverPhotoUrl ?? null;
+      let driverEmailVerified = Boolean(dto.driverEmailVerified);
+      let driverPhoneVerified = Boolean(dto.driverPhoneVerified);
+      let driverVerified = Boolean(dto.driverVerified);
 
       if (!driverId) {
         const authHeader = req.headers['authorization'];
@@ -65,6 +93,9 @@ export class RideController {
             driverId = profile.id;
             driverLabel = driverLabel ?? profile.fullName ?? profile.companyName ?? profile.email ?? null;
             driverPhotoUrl = driverPhotoUrl ?? profile.profilePhotoUrl ?? null;
+            driverEmailVerified = Boolean(profile.emailVerifiedAt);
+            driverPhoneVerified = Boolean(profile.phoneVerifiedAt);
+            driverVerified = driverEmailVerified && driverPhoneVerified;
           }
         }
       }
@@ -78,6 +109,12 @@ export class RideController {
         driverId,
         driverLabel,
         driverPhotoUrl,
+        driverEmailVerified,
+        driverPhoneVerified,
+        driverVerified,
+        comfortLevel: dto.comfortLevel ?? null,
+        estimatedDurationMinutes: dto.estimatedDurationMinutes ?? null,
+        stops: dto.stops ?? null,
         originCity: dto.originCity!,
         destinationCity: dto.destinationCity!,
         departureAt: dto.departureAt!,
@@ -90,21 +127,7 @@ export class RideController {
       });
       const saved = await this.rides.save(ride);
 
-      const evt = {
-        rideId: saved.id,
-        status: saved.status,
-        driverId: saved.driverId,
-        driverLabel: saved.driverLabel,
-        driverPhotoUrl: saved.driverPhotoUrl,
-        originCity: saved.originCity,
-        destinationCity: saved.destinationCity,
-        departureAt: saved.departureAt,
-        pricePerSeat: saved.pricePerSeat,
-        seatsTotal: saved.seatsTotal,
-        seatsAvailable: saved.seatsAvailable,
-        liveTrackingEnabled: saved.liveTrackingEnabled,
-        liveTrackingMode: saved.liveTrackingMode,
-      };
+      const evt = this.buildRideEvent(saved);
 
       // Kafka
       await this.bus.publish('ride.published', evt, saved.id);
@@ -145,6 +168,13 @@ export class RideController {
       }
     }
     return undefined;
+  }
+
+  private async ensureDriverAccess(req: Request, ride: Ride) {
+    const driverId = await this.resolveDriverId(req, ride.driverId);
+    if (!driverId || driverId !== ride.driverId) {
+      throw new ForbiddenException('driver_required');
+    }
   }
 
   private summarizeRides(rides: Ride[]) {
@@ -221,6 +251,58 @@ export class RideController {
     return ride ?? { error: 'not_found' };
   }
 
+  @Post(':id/cancel')
+  async cancel(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: Request) {
+    const ride = await this.rides.findOne({ where: { id } });
+    if (!ride) {
+      return { error: 'not_found' };
+    }
+    await this.ensureDriverAccess(req, ride);
+    if (ride.status === 'CLOSED') {
+      return { ok: true, status: ride.status };
+    }
+    const reason = body?.reason?.trim();
+    ride.status = 'CLOSED';
+    ride.cancelledAt = new Date();
+    ride.cancellationReason = reason || null;
+    await this.rides.save(ride);
+    await this.bus.publish('ride.updated', this.buildRideEvent(ride), ride.id);
+    this.queueRefresh();
+
+    const windowMinutes = Number(process.env.CANCEL_PENALTY_WINDOW_MIN ?? 120);
+    const penaltyAmount = Number(process.env.CANCEL_PENALTY_AMOUNT ?? 0);
+    let penalty = 0;
+    if (windowMinutes > 0 && penaltyAmount > 0) {
+      const dep = Date.parse(ride.departureAt);
+      const diff = Number.isFinite(dep) ? (dep - Date.now()) / 60000 : Infinity;
+      if (diff <= windowMinutes) {
+        penalty = penaltyAmount;
+      }
+    }
+
+    return { ok: true, status: ride.status, penalty };
+  }
+
+  @Post(':id/reschedule')
+  async reschedule(@Param('id') id: string, @Body() body: { departureAt?: string }, @Req() req: Request) {
+    const ride = await this.rides.findOne({ where: { id } });
+    if (!ride) {
+      return { error: 'not_found' };
+    }
+    await this.ensureDriverAccess(req, ride);
+    if (!body?.departureAt) {
+      return { error: 'departure_required' };
+    }
+    ride.departureAt = body.departureAt;
+    ride.cancelledAt = null;
+    ride.cancellationReason = null;
+    ride.status = 'PUBLISHED';
+    await this.rides.save(ride);
+    await this.bus.publish('ride.updated', this.buildRideEvent(ride), ride.id);
+    this.queueRefresh();
+    return { ok: true, ride };
+  }
+
   // Utilisé par "booking" pour réserver des places
   @Post(':id/lock')
   async lock(@Param('id') id: string, @Body() body: { seats: number }, @Res() res: Response) {
@@ -244,6 +326,7 @@ export class RideController {
 
       ride.seatsAvailable -= n;
       await this.rides.save(ride);
+      await this.bus.publish('ride.updated', this.buildRideEvent(ride), ride.id);
       rideLockAttemptCounter.inc({ result: 'success' });
       this.queueRefresh();
       return res.status(HttpStatus.OK).json({ ok: true, seatsAvailable: ride.seatsAvailable });
