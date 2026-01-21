@@ -471,7 +471,9 @@ export default function Messages() {
                   <div>
                     <p className="text-xs uppercase text-slate-500">Discussion</p>
                     <h2 className="text-lg font-semibold text-slate-900">
-                      {selectedConversation.otherParticipant.label ?? selectedConversation.otherParticipant.id}
+                      <Link to={`/profile/${selectedConversation.otherParticipant.id}`}>
+                        {selectedConversation.otherParticipant.label ?? selectedConversation.otherParticipant.id}
+                      </Link>
                     </h2>
                     <p className="text-xs text-slate-500">
                       {selectedConversation.otherParticipant.type === 'COMPANY'

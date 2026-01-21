@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Info, Heart, Link2 } from 'lucide-react';
 import { useApp } from '../store';
 import { useRideAvailability } from '../hooks/useRideAvailability';
@@ -274,7 +275,13 @@ export default function RideCard({
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900">{authorName}</p>
+              {driverId ? (
+                <Link to={`/profile/${driverId}`} className="text-sm font-semibold text-slate-900">
+                  {authorName}
+                </Link>
+              ) : (
+                <p className="text-sm font-semibold text-slate-900">{authorName}</p>
+              )}
               <p className="text-[11px] text-slate-500 truncate">
                 {normalizedDriverLabel ? 'Conducteur vérifié' : 'Trajet KariGo'}
               </p>

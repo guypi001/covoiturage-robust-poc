@@ -40,8 +40,12 @@ export class MailerService {
 
   async sendOtpEmail(to: string, code: string, ttlMinutes: number) {
     if (!this.transporter) {
+      if (process.env.SMTP_LOG_ONLY === 'true') {
+        this.logger.warn(`sendOtpEmail log-only. OTP for ${to}: ${code}`);
+        return true;
+      }
       this.logger.warn(`sendOtpEmail skipped (no transporter). OTP for ${to}: ${code}`);
-      return true;
+      return false;
     }
 
     const subject = 'Votre code de connexion KariGo';
@@ -79,7 +83,7 @@ export class MailerService {
     const friendlyName = context.name?.trim() || 'nouvel utilisateur';
     if (!this.transporter) {
       this.logger.warn(`sendWelcomeEmail skipped (no transporter). Welcome for ${to}`);
-      return false;
+      return process.env.SMTP_LOG_ONLY === 'true';
     }
 
     const subject = 'Bienvenue chez KariGo';
@@ -154,6 +158,10 @@ export class MailerService {
     context: { name?: string | null; resetUrl: string; expiresAt: Date },
   ) {
     if (!this.transporter) {
+      if (process.env.SMTP_LOG_ONLY === 'true') {
+        this.logger.warn(`sendPasswordResetEmail log-only. Link for ${to}: ${context.resetUrl}`);
+        return true;
+      }
       this.logger.warn(`sendPasswordResetEmail skipped (no transporter). Link for ${to}: ${context.resetUrl}`);
       return false;
     }

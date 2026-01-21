@@ -120,3 +120,9 @@ export async function saveSearch(token, payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function getPublicProfile(token, accountId) {
+  return apiFetch(`${ENDPOINTS.identity}/profiles/${accountId}/public`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

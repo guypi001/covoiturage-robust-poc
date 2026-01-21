@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -138,6 +139,7 @@ function TypingPulse() {
 }
 
 export function ConversationScreen({ route }) {
+  const navigation = useNavigation();
   const { account } = useAuth();
   const { showToast } = useToast();
   const { conversationId, otherParticipant } = route.params || {};
@@ -383,6 +385,13 @@ export function ConversationScreen({ route }) {
           <Text style={styles.subtitle}>{otherTyping ? 'Ecrit...' : loading ? 'Sync...' : 'OK'}</Text>
           {otherTyping ? <TypingPulse /> : null}
         </View>
+        {otherParticipant?.id ? (
+          <PrimaryButton
+            label="Voir le profil"
+            variant="ghost"
+            onPress={() => navigation.navigate('PublicProfile', { accountId: otherParticipant.id })}
+          />
+        ) : null}
       </SurfaceCard>
 
       <ScrollView ref={scrollRef} style={styles.list} contentContainerStyle={styles.listContent}>

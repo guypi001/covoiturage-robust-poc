@@ -15,6 +15,7 @@ import { MessagesScreen } from './src/screens/MessagesScreen';
 import { TripsScreen } from './src/screens/TripsScreen';
 import { TripDetailScreen } from './src/screens/TripDetailScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
+import { PublicProfileScreen } from './src/screens/PublicProfileScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/auth';
@@ -156,6 +157,7 @@ function RootNavigator() {
         <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
         <Stack.Screen name="TripDetail" component={TripDetailScreen} options={{ title: 'Mes trajets' }} />
         <Stack.Screen name="Conversation" component={ConversationScreen} options={{ title: 'Conversation' }} />
+        <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ title: 'Profil conducteur' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Image,
@@ -42,6 +43,7 @@ const addHours = (value, hours = 2) => {
 };
 
 export function RideDetailScreen({ route }) {
+  const navigation = useNavigation();
   const { token } = useAuth();
   const { showToast } = useToast();
   const { showModal } = useModal();
@@ -214,6 +216,13 @@ export function RideDetailScreen({ route }) {
                 <Text style={styles.driverMeta}>Profil verifie · Support KariGo</Text>
               </View>
             </View>
+            {ride?.driverId ? (
+              <PrimaryButton
+                label="Voir le profil"
+                variant="ghost"
+                onPress={() => navigation.navigate('PublicProfile', { accountId: ride.driverId })}
+              />
+            ) : null}
           </SurfaceCard>
 
           <SurfaceCard style={styles.card} delay={210}>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, spacing, text } from '../theme';
+import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useAuth } from '../auth';
 import { cancelBooking } from '../api/bff';
