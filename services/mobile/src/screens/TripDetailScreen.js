@@ -11,6 +11,8 @@ import { SectionHeader } from '../components/SectionHeader';
 import { formatBookingStatus, formatPaymentStatus } from '../utils/status';
 import { createReport } from '../api/identity';
 import { CONFIG } from '../config';
+import { getConversations, sendMessage } from '../api/messaging';
+import { getDisplayName } from '../utils/name';
 
 const formatDate = (value) => {
   if (!value) return 'Date inconnue';
@@ -52,10 +54,11 @@ const addHours = (value, hours = 2) => {
 };
 
 export function TripDetailScreen({ navigation, route }) {
-  const { token } = useAuth();
+  const { token, account } = useAuth();
   const { showToast } = useToast();
   const { showModal } = useModal();
   const [busy, setBusy] = useState(false);
+  const [contactBusy, setContactBusy] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
   const { type, item } = route.params || {};
   const ride = item?.ride || item;
@@ -177,6 +180,67 @@ export function TripDetailScreen({ navigation, route }) {
     });
   };
 
+  const resolveContact = () => {
+    if (isBooking) {
+      return {
+        id: ride?.driverId,
+        type: ride?.driverType || 'INDIVIDUAL',
+        label: ride?.driverLabel,
+      };
+    }
+    return null;
+  };
+
+  const handleContact = async () => {
+    if (!token || !account?.id) {
+      showToast('Connecte-toi pour contacter.', 'error');
+      navigation.navigate('Tabs', { screen: 'Profile' });
+      return;
+    }
+    const target = resolveContact();
+    if (!target?.id) {
+      showToast('Contact indisponible pour ce trajet.', 'error');
+      return;
+    }
+    setContactBusy(true);
+    try {
+      const existing = await getConversations(account.id);
+      const conversation = Array.isArray(existing)
+        ? existing.find((item) => item?.otherParticipant?.id === target.id)
+        : null;
+      if (conversation?.id) {
+        navigation.navigate('Conversation', {
+          conversationId: conversation.id,
+          otherParticipant: conversation.otherParticipant,
+        });
+        return;
+      }
+      const payload = await sendMessage({
+        senderId: account.id,
+        senderType: account.type || 'INDIVIDUAL',
+        senderLabel: getDisplayName(account),
+        recipientId: target.id,
+        recipientType: target.type || 'INDIVIDUAL',
+        recipientLabel: target.label,
+        body: `Bonjour, je vous contacte a propos du trajet ${ride?.originCity || ''} → ${
+          ride?.destinationCity || ''
+        }.`,
+      });
+      if (payload?.conversation?.id) {
+        navigation.navigate('Conversation', {
+          conversationId: payload.conversation.id,
+          otherParticipant: payload.conversation.otherParticipant,
+        });
+      } else {
+        navigation.navigate('Messages');
+      }
+    } catch (err) {
+      showToast('Impossible d’ouvrir la conversation.', 'error');
+    } finally {
+      setContactBusy(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={text.title}>Details du trajet</Text>
@@ -220,14 +284,8 @@ export function TripDetailScreen({ navigation, route }) {
         <PrimaryButton
           label="Contacter"
           variant="ghost"
-          onPress={() => {
-            if (!token) {
-              showToast('Connecte-toi pour contacter.', 'error');
-              navigation.navigate('Tabs', { screen: 'Profile' });
-              return;
-            }
-            navigation.navigate('Tabs', { screen: 'MessagesTab' });
-          }}
+          onPress={handleContact}
+          disabled={contactBusy}
         />
         <PrimaryButton label="Partager" variant="ghost" onPress={handleShare} />
         <PrimaryButton label="Ajouter au calendrier" variant="ghost" onPress={handleCalendar} />
