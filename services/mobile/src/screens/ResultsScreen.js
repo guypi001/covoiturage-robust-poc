@@ -5,34 +5,43 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { RideCard } from '../components/RideCard';
 import { searchRides } from '../api/search';
 import { saveSearch } from '../api/identity';
+import { getMyBookings } from '../api/bff';
 import { getFirstName } from '../utils/name';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
 import { useAuth } from '../auth';
+import { useSavedRides } from '../savedRides';
 
 const normalizeRide = (ride) => ({
   id: ride.rideId || ride.id,
   origin: ride.originCity,
   destination: ride.destinationCity,
   departure: new Date(ride.departureAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' }),
+  departureRaw: ride.departureAt,
   seats: `${ride.seatsAvailable}/${ride.seatsTotal}`,
+  seatsRaw: ride.seatsAvailable,
+  seatsAvailable: ride.seatsAvailable,
   price: `${Number(ride.pricePerSeat).toLocaleString('fr-FR')} XOF`,
+  priceRaw: ride.pricePerSeat,
   driver: getFirstName(ride.driverLabel) || ride.driverLabel || 'Conducteur KariGo',
   driverPhotoUrl: ride.driverPhotoUrl || null,
+  driverLabel: ride.driverLabel,
   liveTracking: Boolean(ride.liveTrackingEnabled),
 });
 
 export function ResultsScreen({ navigation, route }) {
   const params = route?.params || {};
   const { token } = useAuth();
+  const { toggleSavedRide, isSaved } = useSavedRides();
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [meta, setMeta] = useState(null);
   const [saveNotice, setSaveNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [bookedRideIds, setBookedRideIds] = useState(new Set());
 
   useEffect(() => {
     let active = true;
@@ -71,6 +80,31 @@ export function ResultsScreen({ navigation, route }) {
     };
   }, [params]);
 
+  useEffect(() => {
+    let active = true;
+    const fetchBookings = async () => {
+      if (!token) {
+        setBookedRideIds(new Set());
+        return;
+      }
+      try {
+        const payload = await getMyBookings(token);
+        if (!active) return;
+        const list = Array.isArray(payload?.data) ? payload.data : payload?.items || [];
+        const ids = new Set(
+          list.map((booking) => booking?.rideId || booking?.ride?.id).filter(Boolean),
+        );
+        setBookedRideIds(ids);
+      } catch {
+        if (active) setBookedRideIds(new Set());
+      }
+    };
+    fetchBookings();
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
   const stats = useMemo(() => {
     if (!rides.length) return null;
     const cheapest = rides.reduce((best, ride) => {
@@ -80,6 +114,16 @@ export function ResultsScreen({ navigation, route }) {
     }, rides[0]);
     return { cheapest };
   }, [rides]);
+
+  const buildSavedRide = (ride) => ({
+    rideId: ride.id,
+    originCity: ride.origin,
+    destinationCity: ride.destination,
+    departureAt: ride.departureRaw || '',
+    pricePerSeat: Number(ride.priceRaw || 0),
+    seatsAvailable: Number(ride.seatsRaw || 0),
+    driverLabel: ride.driverLabel || ride.driver || null,
+  });
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -186,7 +230,13 @@ export function ResultsScreen({ navigation, route }) {
         ) : null}
         {rides.map((ride, index) => (
           <SurfaceCard key={ride.id} style={styles.rideCard} delay={180 + index * 40}>
-            <RideCard ride={ride} />
+            <RideCard
+              ride={ride}
+              saved={isSaved(ride.id)}
+              onToggleSave={() => toggleSavedRide(buildSavedRide(ride))}
+              isFull={Number(ride.seatsAvailable) <= 0}
+              isBooked={bookedRideIds.has(ride.id)}
+            />
             <View style={styles.cardActions}>
               <PrimaryButton
                 label="Voir le trajet"

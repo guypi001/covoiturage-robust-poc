@@ -17,11 +17,13 @@ import { TripDetailScreen } from './src/screens/TripDetailScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
 import { PublicProfileScreen } from './src/screens/PublicProfileScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
+import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/auth';
 import { ToastProvider } from './src/ui/ToastContext';
 import { ModalProvider } from './src/ui/ModalContext';
 import { getMessagingWsUrl, getNotifications } from './src/api/messaging';
+import { SavedRidesProvider } from './src/savedRides';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -158,6 +160,7 @@ function RootNavigator() {
         <Stack.Screen name="TripDetail" component={TripDetailScreen} options={{ title: 'Mes trajets' }} />
         <Stack.Screen name="Conversation" component={ConversationScreen} options={{ title: 'Conversation' }} />
         <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ title: 'Profil conducteur' }} />
+        <Stack.Screen name="Favorites" component={FavoritesScreen} options={{ title: 'Favoris' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -168,11 +171,13 @@ export default function App() {
     <>
       <StatusBar style="dark" />
       <AuthProvider>
-        <ModalProvider>
-          <ToastProvider>
-            <RootNavigator />
-          </ToastProvider>
-        </ModalProvider>
+        <SavedRidesProvider>
+          <ModalProvider>
+            <ToastProvider>
+              <RootNavigator />
+            </ToastProvider>
+          </ModalProvider>
+        </SavedRidesProvider>
       </AuthProvider>
     </>
   );

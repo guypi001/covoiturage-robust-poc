@@ -31,6 +31,21 @@ export async function getMyPaymentMethods(token) {
   });
 }
 
+export async function addPaymentMethod(token, payload) {
+  return apiFetch(`${ENDPOINTS.bff}/me/payment-methods`, {
+    method: 'POST',
+    headers: withAuth(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function removePaymentMethod(token, id) {
+  return apiFetch(`${ENDPOINTS.bff}/me/payment-methods/${id}`, {
+    method: 'DELETE',
+    headers: withAuth(token),
+  });
+}
+
 export async function getMyWallet(token) {
   return apiFetch(`${ENDPOINTS.bff}/me/wallet`, {
     headers: withAuth(token),
@@ -55,5 +70,13 @@ export async function createBooking(token, { rideId, seats, passengerName, passe
       passengerEmail,
       passengerPhone,
     }),
+  });
+}
+
+export async function capturePayment(token, payload) {
+  return apiFetch(`${ENDPOINTS.bff}/payments/capture`, {
+    method: 'POST',
+    headers: withAuth(token),
+    body: JSON.stringify(payload),
   });
 }

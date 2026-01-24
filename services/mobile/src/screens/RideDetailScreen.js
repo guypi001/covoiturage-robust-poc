@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -12,21 +13,26 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { InputField } from '../components/InputField';
 import { getRide } from '../api/ride';
-import { createBooking } from '../api/bff';
+import { addPaymentMethod, capturePayment, createBooking, getMyPaymentMethods } from '../api/bff';
 import { useAuth } from '../auth';
 import { useToast } from '../ui/ToastContext';
-import { useModal } from '../ui/ModalContext';
-import { getFirstName } from '../utils/name';
+import { getDisplayName, getFirstName } from '../utils/name';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
 import { CONFIG, resolveAssetUrl } from '../config';
 import { createReport } from '../api/identity';
+import { useSavedRides } from '../savedRides';
+import { getConversations, sendMessage } from '../api/messaging';
+import { RouteMiniMap } from '../components/RouteMiniMap';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import { buildRegionForCoords, resolveCityCoords } from '../utils/geo';
 
 const toCalendarDate = (value) => {
   if (!value) return '';
@@ -43,11 +49,14 @@ const addHours = (value, hours = 2) => {
   return date.toISOString();
 };
 
+const MOBILE_PROVIDERS = ['Orange Money', 'MTN Money', 'Moov Money'];
+const CARD_PROVIDERS = ['VISA', 'MASTERCARD', 'CARTE'];
+
 export function RideDetailScreen({ route }) {
   const navigation = useNavigation();
-  const { token } = useAuth();
+  const { token, account } = useAuth();
   const { showToast } = useToast();
-  const { showModal } = useModal();
+  const { toggleSavedRide, isSaved } = useSavedRides();
   const [ride, setRide] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +65,16 @@ export function RideDetailScreen({ route }) {
   const [thirdPartyName, setThirdPartyName] = useState('');
   const [thirdPartyEmail, setThirdPartyEmail] = useState('');
   const [thirdPartyPhone, setThirdPartyPhone] = useState('');
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [seatsCount, setSeatsCount] = useState(1);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [selectedMethodId, setSelectedMethodId] = useState('');
+  const [useNewMethod, setUseNewMethod] = useState(false);
+  const [newMethodType, setNewMethodType] = useState('MOBILE_MONEY');
+  const [newMethodProvider, setNewMethodProvider] = useState('Orange Money');
+  const [newMethodPhone, setNewMethodPhone] = useState('');
+  const [newMethodLast4, setNewMethodLast4] = useState('');
   const [reportReason, setReportReason] = useState('Comportement inapproprie');
   const [reportMessage, setReportMessage] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
@@ -82,6 +101,37 @@ export function RideDetailScreen({ route }) {
     };
   }, [rideId]);
 
+  useEffect(() => {
+    let active = true;
+    const loadMethods = async () => {
+      if (!paymentOpen || !token) return;
+      try {
+        const items = await getMyPaymentMethods(token);
+        if (!active) return;
+        const list = Array.isArray(items) ? items : [];
+        setPaymentMethods(list);
+        if (!list.length) {
+          setUseNewMethod(true);
+          setSelectedMethodId('');
+        } else if (!selectedMethodId) {
+          setSelectedMethodId(list[0]?.id || '');
+        }
+      } catch {
+        if (active) setPaymentMethods([]);
+      }
+    };
+    loadMethods();
+    return () => {
+      active = false;
+    };
+  }, [paymentOpen, token]);
+
+  useEffect(() => {
+    if (newMethodType === 'CARD') setNewMethodProvider(CARD_PROVIDERS[0]);
+    if (newMethodType === 'MOBILE_MONEY') setNewMethodProvider(MOBILE_PROVIDERS[0]);
+    if (newMethodType === 'CASH') setNewMethodProvider('CASH');
+  }, [newMethodType]);
+
   const title = ride ? `${ride.originCity} → ${ride.destinationCity}` : 'Trajet';
   const departureLabel = ride?.departureAt
     ? new Date(ride.departureAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' })
@@ -90,6 +140,23 @@ export function RideDetailScreen({ route }) {
   const seatsLabel = ride ? `${ride.seatsAvailable}/${ride.seatsTotal}` : '--';
   const driverLabel = getFirstName(ride?.driverLabel) || ride?.driverLabel || 'Conducteur KariGo';
   const shareUrl = rideId ? `${CONFIG.baseUrl}/ride/${rideId}` : CONFIG.baseUrl;
+  const maxSeats = Math.max(1, Number(ride?.seatsAvailable) || 1);
+  const totalAmount = (Number(ride?.pricePerSeat) || 0) * (Number(seatsCount) || 1);
+  const originCoord = resolveCityCoords(ride?.originCity || ride?.origin);
+  const destinationCoord = resolveCityCoords(ride?.destinationCity || ride?.destination);
+  const mapRegion = buildRegionForCoords(originCoord, destinationCoord);
+
+  const savedRide = ride
+    ? {
+        rideId: rideId,
+        originCity: ride.originCity,
+        destinationCity: ride.destinationCity,
+        departureAt: ride.departureAt,
+        pricePerSeat: Number(ride.pricePerSeat || 0),
+        seatsAvailable: Number(ride.seatsAvailable || 0),
+        driverLabel: ride.driverLabel || null,
+      }
+    : null;
 
   const handleShare = async () => {
     try {
@@ -116,6 +183,23 @@ export function RideDetailScreen({ route }) {
     }
   };
 
+  const handleOpenMap = async () => {
+    const origin = ride?.originCity || ride?.origin || '';
+    const destination = ride?.destinationCity || ride?.destination || '';
+    if (!origin || !destination) {
+      showToast('Itineraire indisponible.', 'error');
+      return;
+    }
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+      origin,
+    )}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showToast('Impossible d’ouvrir la carte.', 'error');
+    }
+  };
+
   const handleReport = async () => {
     if (!token) {
       showToast('Connecte-toi pour signaler.', 'error');
@@ -139,15 +223,175 @@ export function RideDetailScreen({ route }) {
     }
   };
 
+  const handleContact = async () => {
+    if (!token || !account?.id) {
+      showToast('Connecte-toi pour contacter.', 'error');
+      return;
+    }
+    if (!ride?.driverId) {
+      showToast('Contact indisponible pour ce trajet.', 'error');
+      return;
+    }
+    try {
+      const existing = await getConversations(account.id);
+      const conversation = Array.isArray(existing)
+        ? existing.find((item) => item?.otherParticipant?.id === ride.driverId)
+        : null;
+      if (conversation?.id) {
+        navigation.navigate('Conversation', {
+          conversationId: conversation.id,
+          otherParticipant: conversation.otherParticipant,
+        });
+        return;
+      }
+      const payload = await sendMessage({
+        senderId: account.id,
+        senderType: account.type || 'INDIVIDUAL',
+        senderLabel: getDisplayName(account),
+        recipientId: ride.driverId,
+        recipientType: ride.driverType || 'INDIVIDUAL',
+        recipientLabel: ride.driverLabel || driverLabel,
+        body: `Bonjour, je souhaite des infos sur le trajet ${ride?.originCity || ''} → ${
+          ride?.destinationCity || ''
+        }.`,
+      });
+      if (payload?.conversation?.id) {
+        navigation.navigate('Conversation', {
+          conversationId: payload.conversation.id,
+          otherParticipant: payload.conversation.otherParticipant,
+        });
+      } else {
+        navigation.navigate('Messages');
+      }
+    } catch {
+      showToast('Impossible d’ouvrir la conversation.', 'error');
+    }
+  };
+
+  const handlePaymentConfirm = async () => {
+    if (!token || !account?.id) {
+      showToast('Connecte-toi pour reserver.', 'error');
+      return;
+    }
+    if (!rideId) return;
+    if (thirdPartyEnabled && !thirdPartyName.trim()) {
+      showToast('Nom du passager requis.', 'error');
+      return;
+    }
+    if (!seatsCount || seatsCount < 1 || seatsCount > maxSeats) {
+      showToast('Nombre de places invalide.', 'error');
+      return;
+    }
+
+    setPaymentBusy(true);
+    try {
+      if (!useNewMethod && paymentMethods.length && !selectedMethodId) {
+        showToast('Selectionne un moyen de paiement.', 'error');
+        setPaymentBusy(false);
+        return;
+      }
+      let method = null;
+      let paymentMethodType = 'CASH';
+      let paymentProvider = 'CASH';
+      let paymentMethodId = undefined;
+
+      if (useNewMethod) {
+        if (newMethodType === 'MOBILE_MONEY') {
+          if (!newMethodPhone.trim()) {
+            showToast('Numero Mobile Money requis.', 'error');
+            setPaymentBusy(false);
+            return;
+          }
+          const created = await addPaymentMethod(token, {
+            type: 'MOBILE_MONEY',
+            provider: newMethodProvider,
+            phoneNumber: newMethodPhone.trim(),
+            label: newMethodProvider,
+          });
+          method = created;
+        } else if (newMethodType === 'CARD') {
+          if (!newMethodLast4.trim()) {
+            showToast('Les 4 derniers chiffres sont requis.', 'error');
+            setPaymentBusy(false);
+            return;
+          }
+          const created = await addPaymentMethod(token, {
+            type: 'CARD',
+            provider: newMethodProvider,
+            last4: newMethodLast4.trim(),
+            label: `Carte ${newMethodProvider}`,
+          });
+          method = created;
+        }
+      } else if (selectedMethodId) {
+        method = paymentMethods.find((item) => item.id === selectedMethodId) || null;
+      }
+
+      if (method) {
+        paymentMethodType = method.type || 'MOBILE_MONEY';
+        paymentProvider =
+          method.provider ||
+          (paymentMethodType === 'CARD' ? 'VISA' : paymentMethodType === 'CASH' ? 'CASH' : 'Orange Money');
+        paymentMethodId = method.id;
+      } else if (useNewMethod && newMethodType === 'CASH') {
+        paymentMethodType = 'CASH';
+        paymentProvider = 'CASH';
+      }
+
+      const saved = await createBooking(token, {
+        rideId,
+        seats: seatsCount,
+        passengerName: thirdPartyEnabled ? thirdPartyName.trim() : undefined,
+        passengerEmail: thirdPartyEnabled ? thirdPartyEmail.trim() || undefined : undefined,
+        passengerPhone: thirdPartyEnabled ? thirdPartyPhone.trim() || undefined : undefined,
+      });
+
+      const bookingAmount = Number(saved?.amount || totalAmount || 0);
+      await capturePayment(token, {
+        bookingId: saved.id,
+        amount: bookingAmount,
+        paymentMethodType,
+        paymentMethodId,
+        paymentProvider,
+        idempotencyKey: `mobile-${saved.id}-${account.id}`,
+      });
+
+      const reference = saved?.referenceCode || saved?.id || 'confirmée';
+      setBookingStatus(`Reservation ${reference} payee.`);
+      showToast('Paiement confirme.', 'success');
+      setPaymentOpen(false);
+    } catch (err) {
+      setBookingStatus('');
+      showToast('Paiement impossible. Reessaie.', 'error');
+    } finally {
+      setPaymentBusy(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.titleRow}>
         <Text style={text.title}>{title}</Text>
-        {ride?.liveTrackingEnabled ? (
-          <View style={styles.liveBadge}>
-            <Text style={styles.liveBadgeText}>Suivi en direct</Text>
-          </View>
-        ) : null}
+        <View style={styles.titleActions}>
+          {ride ? (
+            <Pressable
+              onPress={() => savedRide && toggleSavedRide(savedRide)}
+              style={styles.saveButton}
+              accessibilityLabel={isSaved(rideId) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            >
+              <Ionicons
+                name={isSaved(rideId) ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isSaved(rideId) ? colors.rose500 : colors.slate500}
+              />
+            </Pressable>
+          ) : null}
+          {ride?.liveTrackingEnabled ? (
+            <View style={styles.liveBadge}>
+              <Text style={styles.liveBadgeText}>Suivi en direct</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
       <Text style={text.subtitle}>Depart {departureLabel} · {seatsLabel} places</Text>
 
@@ -189,8 +433,53 @@ export function RideDetailScreen({ route }) {
         </View>
       ) : (
         <>
-          <SurfaceCard style={styles.mapPlaceholder} tone="accent" delay={90}>
-            <Text style={styles.mapText}>Carte du trajet</Text>
+          <SurfaceCard style={styles.mapCard} tone="soft" delay={90}>
+            <View style={styles.mapHeader}>
+              <Text style={styles.mapTitle}>Apercu du trajet</Text>
+              <Pressable onPress={handleOpenMap} style={styles.mapAction}>
+                <Ionicons name="map-outline" size={14} color={colors.slate700} />
+                <Text style={styles.mapActionText}>Ouvrir</Text>
+              </Pressable>
+            </View>
+            <View style={styles.mapWrapper}>
+              <MapView
+                key={`${rideId}-map`}
+                style={styles.mapView}
+                initialRegion={mapRegion}
+                loadingEnabled
+                toolbarEnabled={false}
+              >
+                {originCoord ? (
+                  <Marker coordinate={originCoord} title="Depart" description={ride?.originCity || ''} />
+                ) : null}
+                {destinationCoord ? (
+                  <Marker
+                    coordinate={destinationCoord}
+                    pinColor={colors.emerald500}
+                    title="Arrivee"
+                    description={ride?.destinationCity || ''}
+                  />
+                ) : null}
+                {originCoord && destinationCoord ? (
+                  <Polyline
+                    coordinates={[originCoord, destinationCoord]}
+                    strokeColor={colors.sky600}
+                    strokeWidth={3}
+                  />
+                ) : null}
+              </MapView>
+              {!originCoord || !destinationCoord ? (
+                <View style={styles.mapOverlay}>
+                  <Text style={styles.mapOverlayText}>
+                    Coordonnees indisponibles, affichage approximatif.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <RouteMiniMap
+              origin={ride?.originCity || ride?.origin}
+              destination={ride?.destinationCity || ride?.destination}
+            />
           </SurfaceCard>
 
           <View style={styles.cardRow}>
@@ -294,35 +583,10 @@ export function RideDetailScreen({ route }) {
               return;
             }
             if (!rideId) return;
-            showModal({
-              title: 'Confirmer la reservation',
-              message: 'Tu confirmes la reservation pour ce trajet ?',
-              confirmLabel: 'Reserver',
-              onConfirm: async () => {
-                try {
-                  if (thirdPartyEnabled && !thirdPartyName.trim()) {
-                    showToast('Nom du passager requis.', 'error');
-                    return;
-                  }
-                  const saved = await createBooking(token, {
-                    rideId,
-                    seats: 1,
-                    passengerName: thirdPartyEnabled ? thirdPartyName.trim() : undefined,
-                    passengerEmail: thirdPartyEnabled ? thirdPartyEmail.trim() || undefined : undefined,
-                    passengerPhone: thirdPartyEnabled ? thirdPartyPhone.trim() || undefined : undefined,
-                  });
-                  const reference = saved?.referenceCode || saved?.id || 'confirmée';
-                  setBookingStatus(`Reservation ${reference} enregistree.`);
-                  showToast('Reservation enregistree.', 'success');
-                } catch (err) {
-                  setBookingStatus('');
-                  showToast('Impossible de reserver.', 'error');
-                }
-              },
-            });
+            setPaymentOpen(true);
           }}
         />
-        <PrimaryButton label="Contacter" variant="ghost" />
+        <PrimaryButton label="Contacter" variant="ghost" onPress={handleContact} />
       </View>
       {bookingStatus ? <Banner tone="success" message={bookingStatus} /> : null}
 
@@ -349,6 +613,187 @@ export function RideDetailScreen({ route }) {
         />
         <PrimaryButton label="Envoyer le signalement" onPress={handleReport} disabled={reportBusy} />
       </SurfaceCard>
+
+      <Modal transparent visible={paymentOpen} animationType="slide" onRequestClose={() => setPaymentOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Paiement</Text>
+            <Text style={styles.modalSubtitle}>Choisis le nombre de places et ton moyen de paiement.</Text>
+
+            <View style={styles.stepperRow}>
+              <Pressable
+                style={[styles.stepperButton, seatsCount <= 1 && styles.stepperButtonDisabled]}
+                disabled={seatsCount <= 1}
+                onPress={() => setSeatsCount((prev) => Math.max(1, prev - 1))}
+              >
+                <Text style={styles.stepperText}>-</Text>
+              </Pressable>
+              <View style={styles.stepperValue}>
+                <Text style={styles.stepperNumber}>{seatsCount}</Text>
+                <Text style={styles.stepperLabel}>places</Text>
+              </View>
+              <Pressable
+                style={[styles.stepperButton, seatsCount >= maxSeats && styles.stepperButtonDisabled]}
+                disabled={seatsCount >= maxSeats}
+                onPress={() => setSeatsCount((prev) => Math.min(maxSeats, prev + 1))}
+              >
+                <Text style={styles.stepperText}>+</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.amountRow}>
+              <Text style={styles.amountLabel}>Total a payer</Text>
+              <Text style={styles.amountValue}>{totalAmount.toLocaleString('fr-FR')} XOF</Text>
+            </View>
+
+            <View style={styles.methodTabs}>
+              <Pressable
+                style={[styles.methodTab, !useNewMethod && styles.methodTabActive]}
+                onPress={() => setUseNewMethod(false)}
+              >
+                <Text style={[styles.methodTabText, !useNewMethod && styles.methodTabTextActive]}>
+                  Mes moyens
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.methodTab, useNewMethod && styles.methodTabActive]}
+                onPress={() => setUseNewMethod(true)}
+              >
+                <Text style={[styles.methodTabText, useNewMethod && styles.methodTabTextActive]}>
+                  Nouveau
+                </Text>
+              </Pressable>
+            </View>
+
+            {!useNewMethod ? (
+              <View style={styles.methodList}>
+                {paymentMethods.length === 0 ? (
+                  <Text style={styles.helperText}>Aucun moyen enregistre.</Text>
+                ) : null}
+                {paymentMethods.map((method) => {
+                  const active = selectedMethodId === method.id;
+                  const label = method.label || method.provider || method.type;
+                  return (
+                    <Pressable
+                      key={method.id}
+                      onPress={() => setSelectedMethodId(method.id)}
+                      style={[styles.methodItem, active && styles.methodItemActive]}
+                    >
+                      <Text style={[styles.methodItemTitle, active && styles.methodItemTitleActive]}>
+                        {label}
+                      </Text>
+                      <Text style={styles.methodItemMeta}>
+                        {method.type === 'CARD' && method.last4 ? `**** ${method.last4}` : method.type}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.methodForm}>
+                <View style={styles.methodTypeRow}>
+                  {['MOBILE_MONEY', 'CARD', 'CASH'].map((value) => (
+                    <Pressable
+                      key={value}
+                      onPress={() => setNewMethodType(value)}
+                      style={[styles.methodChip, newMethodType === value && styles.methodChipActive]}
+                    >
+                      <Text style={[styles.methodChipText, newMethodType === value && styles.methodChipTextActive]}>
+                        {value === 'MOBILE_MONEY' ? 'Mobile Money' : value === 'CARD' ? 'Carte' : 'Cash'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {newMethodType === 'MOBILE_MONEY' ? (
+                  <>
+                    <View style={styles.methodTypeRow}>
+                      {MOBILE_PROVIDERS.map((provider) => (
+                        <Pressable
+                          key={provider}
+                          onPress={() => setNewMethodProvider(provider)}
+                          style={[
+                            styles.methodChip,
+                            newMethodProvider === provider && styles.methodChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.methodChipText,
+                              newMethodProvider === provider && styles.methodChipTextActive,
+                            ]}
+                          >
+                            {provider}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <InputField
+                      label="Numero Mobile Money"
+                      value={newMethodPhone}
+                      onChangeText={setNewMethodPhone}
+                      keyboardType="phone-pad"
+                      placeholder="+225 01 23 45 67 89"
+                    />
+                  </>
+                ) : null}
+
+                {newMethodType === 'CARD' ? (
+                  <>
+                    <View style={styles.methodTypeRow}>
+                      {CARD_PROVIDERS.map((provider) => (
+                        <Pressable
+                          key={provider}
+                          onPress={() => setNewMethodProvider(provider)}
+                          style={[
+                            styles.methodChip,
+                            newMethodProvider === provider && styles.methodChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.methodChipText,
+                              newMethodProvider === provider && styles.methodChipTextActive,
+                            ]}
+                          >
+                            {provider}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <InputField
+                      label="4 derniers chiffres"
+                      value={newMethodLast4}
+                      onChangeText={setNewMethodLast4}
+                      keyboardType="number-pad"
+                      placeholder="1234"
+                    />
+                  </>
+                ) : null}
+
+                {newMethodType === 'CASH' ? (
+                  <Text style={styles.helperText}>Tu regleras sur place.</Text>
+                ) : null}
+              </View>
+            )}
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalGhost} onPress={() => setPaymentOpen(false)}>
+                <Text style={styles.modalGhostText}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalPrimary, paymentBusy && styles.modalPrimaryDisabled]}
+                disabled={paymentBusy}
+                onPress={handlePaymentConfirm}
+              >
+                <Text style={styles.modalPrimaryText}>
+                  {paymentBusy ? 'Paiement...' : 'Payer et confirmer'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -368,6 +813,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
+  titleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  saveButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.white,
+  },
   liveBadge: {
     backgroundColor: colors.emerald100,
     paddingHorizontal: 10,
@@ -380,14 +840,60 @@ const styles = StyleSheet.create({
     color: colors.emerald500,
     textTransform: 'uppercase',
   },
-  mapPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 180,
+  mapCard: {
+    gap: spacing.sm,
   },
-  mapText: {
-    color: colors.slate600,
+  mapWrapper: {
+    height: 180,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate100,
+  },
+  mapView: {
+    flex: 1,
+  },
+  mapOverlay: {
+    position: 'absolute',
+    left: spacing.sm,
+    right: spacing.sm,
+    bottom: spacing.sm,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+  },
+  mapOverlayText: {
+    fontSize: 11,
+    color: colors.white,
+    textAlign: 'center',
+  },
+  mapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mapTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  mapAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+  },
+  mapActionText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: colors.slate700,
   },
   loadingCard: {
     flexDirection: 'row',
@@ -544,6 +1050,194 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    gap: spacing.md,
+    maxHeight: '90%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.slate600,
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  stepperButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  stepperButtonDisabled: {
+    opacity: 0.4,
+  },
+  stepperText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.slate700,
+  },
+  stepperValue: {
+    alignItems: 'center',
+  },
+  stepperNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  stepperLabel: {
+    fontSize: 12,
+    color: colors.slate500,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.slate200,
+  },
+  amountLabel: {
+    fontSize: 12,
+    color: colors.slate500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  amountValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  methodTabs: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  methodTab: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    backgroundColor: colors.white,
+  },
+  methodTabActive: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky100,
+  },
+  methodTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  methodTabTextActive: {
+    color: colors.sky700,
+  },
+  methodList: {
+    gap: spacing.sm,
+  },
+  methodItem: {
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    backgroundColor: colors.white,
+  },
+  methodItemActive: {
+    borderColor: colors.brandPrimary,
+    backgroundColor: colors.sky50,
+  },
+  methodItemTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.slate900,
+  },
+  methodItemTitleActive: {
+    color: colors.sky700,
+  },
+  methodItemMeta: {
+    fontSize: 12,
+    color: colors.slate500,
+  },
+  methodForm: {
+    gap: spacing.sm,
+  },
+  methodTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  methodChip: {
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+  },
+  methodChipActive: {
+    borderColor: colors.brandPrimary,
+    backgroundColor: colors.sky100,
+  },
+  methodChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  methodChipTextActive: {
+    color: colors.sky700,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  modalGhost: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalGhostText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.slate700,
+  },
+  modalPrimary: {
+    flex: 2,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: colors.slate900,
+  },
+  modalPrimaryDisabled: {
+    opacity: 0.7,
+  },
+  modalPrimaryText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.white,
   },
   skeletonStack: {
     gap: spacing.md,

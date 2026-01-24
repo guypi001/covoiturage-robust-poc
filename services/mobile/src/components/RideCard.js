@@ -1,9 +1,10 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadows, spacing, text } from '../theme';
 import { getFirstName } from '../utils/name';
 import { resolveAssetUrl } from '../config';
 
-export function RideCard({ ride }) {
+export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
   const driverLabel = getFirstName(ride.driver) || ride.driver;
   const showPhoto = Boolean(ride.driverPhotoUrl);
 
@@ -13,6 +14,30 @@ export function RideCard({ ride }) {
         <View style={styles.badgeSoft}>
           <Text style={styles.badgeSoftText}>Depart proche</Text>
         </View>
+        {isFull ? (
+          <View style={styles.badgeFull}>
+            <Text style={styles.badgeFullText}>Complet</Text>
+          </View>
+        ) : null}
+        {isBooked ? (
+          <View style={styles.badgeBooked}>
+            <Text style={styles.badgeBookedText}>Deja reserve</Text>
+          </View>
+        ) : null}
+        {onToggleSave ? (
+          <Pressable
+            onPress={onToggleSave}
+            style={styles.saveButton}
+            hitSlop={8}
+            accessibilityLabel={saved ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+          >
+            <Ionicons
+              name={saved ? 'heart' : 'heart-outline'}
+              size={18}
+              color={saved ? colors.rose500 : colors.slate500}
+            />
+          </Pressable>
+        ) : null}
         {ride.liveTracking ? (
           <View style={styles.badgeLive}>
             <Text style={styles.badgeLiveText}>Suivi en direct</Text>
@@ -90,6 +115,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.emerald500,
     textTransform: 'uppercase',
+  },
+  badgeFull: {
+    backgroundColor: colors.rose100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+  },
+  badgeFullText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.rose600,
+    textTransform: 'uppercase',
+  },
+  badgeBooked: {
+    backgroundColor: colors.sky100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+  },
+  badgeBookedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.sky600,
+    textTransform: 'uppercase',
+  },
+  saveButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.white,
   },
   routeRow: {
     flexDirection: 'row',

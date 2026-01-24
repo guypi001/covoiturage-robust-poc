@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import * as Clipboard from 'expo-clipboard';
@@ -29,10 +30,12 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
+import { useSavedRides } from '../savedRides';
 
 export function ProfileScreen({ navigation }) {
   const { token, account, guest, login, logout, refreshProfile, applyAuth } = useAuth();
   const { showToast } = useToast();
+  const { savedRides } = useSavedRides();
   const [pushStatus, setPushStatus] = useState('Notifications desactivees');
   const [pushBusy, setPushBusy] = useState(false);
   const [email, setEmail] = useState('');
@@ -323,6 +326,7 @@ export function ProfileScreen({ navigation }) {
 
   const walletBalance = wallet?.balance ?? 0;
   const statsLabel = `${bookings.length} reservations · ${paymentMethods.length} moyens de paiement · Solde ${walletBalance} XOF`;
+  const favoritesCount = Object.keys(savedRides || {}).length;
 
   const comfortPreferences = comfortText
     .split(',')
@@ -389,40 +393,76 @@ export function ProfileScreen({ navigation }) {
 
       {token && (
         <SurfaceCard style={styles.profileCard} delay={90}>
-          <View style={styles.avatar}>
-            {photoPreview || photoUrl ? (
-              <Image source={{ uri: resolveAssetUrl(photoPreview || photoUrl) }} style={styles.avatarImage} />
-            ) : (
-              <Text style={styles.avatarText}>{profileLabel.charAt(0)}</Text>
-            )}
-          </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.name}>{profileLabel}</Text>
-            <Text style={styles.meta}>{account?.email || ''}</Text>
-            <View style={styles.tagRow}>
-              <Text style={styles.tag}>{statusLabel}</Text>
-              <Text style={styles.tag}>{typeLabel}</Text>
-              <Text style={styles.tag}>{roleLabel}</Text>
-              <Text style={emailVerified ? styles.tagSuccess : styles.tagWarning}>
-                {emailVerified ? 'Email verifie' : 'Email non verifie'}
-              </Text>
-              <Text style={phoneVerified ? styles.tagSuccess : styles.tagWarning}>
-                {phoneVerified ? 'Telephone verifie' : 'Telephone non verifie'}
-              </Text>
+          <View style={styles.profileHeader}>
+            <View style={styles.avatar}>
+              {photoPreview || photoUrl ? (
+                <Image source={{ uri: resolveAssetUrl(photoPreview || photoUrl) }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{profileLabel.charAt(0)}</Text>
+              )}
             </View>
-            <View style={styles.infoGrid}>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Derniere connexion</Text>
-                <Text style={styles.infoValue}>{formatShortDate(account?.lastLoginAt)}</Text>
+            <View style={styles.profileInfo}>
+              <Text style={styles.name}>{profileLabel}</Text>
+              <Text style={styles.meta}>{account?.email || ''}</Text>
+              {tagline ? <Text style={styles.tagline}>{tagline}</Text> : null}
+              <View style={styles.badgeRow}>
+                <View style={styles.badge}>
+                  <Ionicons name="ribbon-outline" size={12} color={colors.slate600} />
+                  <Text style={styles.badgeText}>{typeLabel}</Text>
+                </View>
+                <View style={styles.badge}>
+                  <Ionicons name="shield-outline" size={12} color={colors.slate600} />
+                  <Text style={styles.badgeText}>{statusLabel}</Text>
+                </View>
+                <View style={styles.badge}>
+                  <Ionicons name="briefcase-outline" size={12} color={colors.slate600} />
+                  <Text style={styles.badgeText}>{roleLabel}</Text>
+                </View>
+                <View style={emailVerified ? styles.badgeSuccess : styles.badgeWarning}>
+                  <Ionicons
+                    name={emailVerified ? 'mail-open-outline' : 'mail-outline'}
+                    size={12}
+                    color={emailVerified ? colors.emerald500 : colors.amber700}
+                  />
+                  <Text style={emailVerified ? styles.badgeTextSuccess : styles.badgeTextWarning}>
+                    {emailVerified ? 'Email verifie' : 'Email non verifie'}
+                  </Text>
+                </View>
+                <View style={phoneVerified ? styles.badgeSuccess : styles.badgeWarning}>
+                  <Ionicons
+                    name={phoneVerified ? 'call-outline' : 'call-outline'}
+                    size={12}
+                    color={phoneVerified ? colors.emerald500 : colors.amber700}
+                  />
+                  <Text style={phoneVerified ? styles.badgeTextSuccess : styles.badgeTextWarning}>
+                    {phoneVerified ? 'Telephone verifie' : 'Telephone non verifie'}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Inscrit le</Text>
-                <Text style={styles.infoValue}>{formatShortDate(account?.createdAt)}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Connexions</Text>
-                <Text style={styles.infoValue}>{account?.loginCount ?? 0}</Text>
-              </View>
+            </View>
+          </View>
+          <View style={styles.profileActions}>
+            <Pressable style={styles.profileAction} onPress={handlePickPhoto}>
+              <Ionicons name="image-outline" size={16} color={colors.slate700} />
+              <Text style={styles.profileActionText}>Importer</Text>
+            </Pressable>
+            <Pressable style={styles.profileAction} onPress={handleCapturePhoto}>
+              <Ionicons name="camera-outline" size={16} color={colors.slate700} />
+              <Text style={styles.profileActionText}>Camera</Text>
+            </Pressable>
+          </View>
+          <View style={styles.infoGrid}>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Derniere connexion</Text>
+              <Text style={styles.infoValue}>{formatShortDate(account?.lastLoginAt)}</Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Inscrit le</Text>
+              <Text style={styles.infoValue}>{formatShortDate(account?.createdAt)}</Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Connexions</Text>
+              <Text style={styles.infoValue}>{account?.loginCount ?? 0}</Text>
             </View>
           </View>
         </SurfaceCard>
@@ -447,13 +487,21 @@ export function ProfileScreen({ navigation }) {
 
       {token && (
         <View style={styles.quickActions}>
-          <Pressable style={styles.actionPill} onPress={() => navigation.navigate('Messages')}>
+          <Pressable style={styles.actionTile} onPress={() => navigation.navigate('Messages')}>
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.slate700} />
             <Text style={styles.actionText}>Messagerie</Text>
           </Pressable>
-          <Pressable style={styles.actionPill} onPress={() => navigation.navigate('Trips')}>
+          <Pressable style={styles.actionTile} onPress={() => navigation.navigate('Trips')}>
+            <Ionicons name="car-outline" size={18} color={colors.slate700} />
             <Text style={styles.actionText}>Mes trajets</Text>
           </Pressable>
-          <Pressable style={styles.actionPill} onPress={handleEnablePush} disabled={pushBusy}>
+          <Pressable style={styles.actionTile} onPress={() => navigation.navigate('Favorites')}>
+            <Ionicons name="heart-outline" size={18} color={colors.slate700} />
+            <Text style={styles.actionText}>Favoris</Text>
+            <Text style={styles.actionMeta}>{favoritesCount} trajet(s)</Text>
+          </Pressable>
+          <Pressable style={styles.actionTile} onPress={handleEnablePush} disabled={pushBusy}>
+            <Ionicons name="notifications-outline" size={18} color={colors.slate700} />
             <Text style={styles.actionText}>Notifications</Text>
           </Pressable>
         </View>
@@ -850,66 +898,36 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   profileCard: {
+    gap: spacing.md,
+  },
+  profileHeader: {
     flexDirection: 'row',
     gap: spacing.md,
     alignItems: 'center',
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.sky100,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.slate100,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.slate200,
   },
   avatarImage: {
     width: '100%',
     height: '100%',
   },
   avatarText: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
-    color: colors.sky600,
+    color: colors.slate600,
   },
   profileInfo: {
     flex: 1,
     gap: 6,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-  },
-  tag: {
-    backgroundColor: colors.emerald100,
-    color: colors.emerald500,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.md,
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  tagWarning: {
-    backgroundColor: colors.amber100,
-    color: colors.amber700,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.md,
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  tagSuccess: {
-    backgroundColor: colors.emerald100,
-    color: colors.emerald600,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.md,
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
   },
   name: {
     fontSize: 18,
@@ -919,6 +937,10 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     color: colors.slate500,
+  },
+  tagline: {
+    fontSize: 12,
+    color: colors.slate600,
   },
   infoGrid: {
     marginTop: 10,
@@ -947,18 +969,25 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     flexWrap: 'wrap',
   },
-  actionPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-    backgroundColor: colors.slate100,
+  actionTile: {
+    flex: 1,
     borderWidth: 1,
     borderColor: colors.slate200,
+    paddingVertical: 12,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.white,
   },
   actionText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.slate700,
+    textTransform: 'uppercase',
+  },
+  actionMeta: {
+    fontSize: 11,
+    color: colors.slate500,
   },
   statCard: {
     flex: 1,
@@ -1007,24 +1036,72 @@ const styles = StyleSheet.create({
     color: colors.slate600,
   },
   badgeRow: {
-    gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   badge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.slate100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   badgeSuccess: {
     backgroundColor: colors.emerald100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   badgeWarning: {
     backgroundColor: colors.amber100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
-    textTransform: 'uppercase',
+    color: colors.slate600,
+  },
+  badgeTextSuccess: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.emerald500,
+  },
+  badgeTextWarning: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.amber700,
+  },
+  profileActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  profileAction: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: colors.white,
+  },
+  profileActionText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.slate700,
   },
   docTypeRow: {
