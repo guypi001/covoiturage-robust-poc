@@ -53,6 +53,24 @@ export class BookingController {
     }, METRICS_REFRESH_DEBOUNCE_MS);
   }
 
+  private generateReferenceCode() {
+    return String(Math.floor(10000000 + Math.random() * 90000000));
+  }
+
+  private async buildUniqueReference(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const code = this.generateReferenceCode();
+      const existing = await this.bookings.findOne({ where: { referenceCode: code } });
+      if (!existing) return code;
+    }
+    const fallback = String(Date.now()).slice(-8);
+    const existing = await this.bookings.findOne({ where: { referenceCode: fallback } });
+    if (existing) {
+      throw new Error('reference_code_collision');
+    }
+    return fallback;
+  }
+
   @Get(':id')
   async get(@Param('id') id: string) {
     const b = await this.bookings.findOne({ where: { id } });
@@ -106,7 +124,14 @@ export class BookingController {
     // 3) création réservation
     let saved: Booking;
     try {
-      const booking = this.bookings.create({ ...dto, amount, status: 'CONFIRMED', paymentStatus: 'PENDING' });
+      const referenceCode = await this.buildUniqueReference();
+      const booking = this.bookings.create({
+        ...dto,
+        referenceCode,
+        amount,
+        status: 'CONFIRMED',
+        paymentStatus: 'PENDING',
+      });
       saved = await this.bookings.save(booking);
       bookingCreatedCounter.inc({ status: booking.status });
       bookingSeatsHistogram.observe(dto.seats);
@@ -149,6 +174,7 @@ export class BookingController {
         'booking.confirmed',
         {
           bookingId: saved.id,
+          referenceCode: saved.referenceCode,
           passengerId: saved.passengerId,
           rideId: saved.rideId,
           seats: saved.seats,

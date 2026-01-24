@@ -9,6 +9,7 @@ type MessageEmailPayload = {
 };
 
 type BookingEmailPayload = {
+  referenceCode?: string;
   passengerName: string;
   originCity?: string | null;
   destinationCity?: string | null;
@@ -20,6 +21,7 @@ type BookingEmailPayload = {
 
 type ReceiptEmailPayload = {
   bookingId: string;
+  referenceCode?: string;
   passengerName: string;
   passengerEmail?: string;
   originCity?: string;
@@ -30,6 +32,15 @@ type ReceiptEmailPayload = {
   paymentMethod?: string;
   issuedAt?: string;
   rideId?: string;
+};
+
+type CalendarPayload = {
+  bookingId?: string;
+  rideId?: string;
+  passengerName: string;
+  originCity?: string | null;
+  destinationCity?: string | null;
+  departureAt?: string | null;
 };
 
 @Injectable()
@@ -83,9 +94,10 @@ export class MailerService {
     const textLines = [
       `Bonjour ${payload.passengerName},`,
       `Ta réservation pour le trajet ${payload.originCity ?? '?'} → ${payload.destinationCity ?? '?'} est confirmée.`,
+      payload.referenceCode ? `Reference : ${payload.referenceCode}` : null,
       `Départ : ${departureLabel}`,
       `Places réservées : ${payload.seats ?? 1}`,
-    ];
+    ].filter((line): line is string => Boolean(line));
     if (amountLabel) textLines.push(`Montant : ${amountLabel}`);
     textLines.push('', `Consulte ta réservation : ${link}`, '', 'Bon voyage avec KariGo !');
 
@@ -93,6 +105,7 @@ export class MailerService {
       `<p>Bonjour ${payload.passengerName},</p>`,
       `<p>Ta réservation pour le trajet <strong>${payload.originCity ?? '?'}</strong> → <strong>${payload.destinationCity ?? '?'}</strong> est confirmée.</p>`,
       `<ul style="padding-left:18px;color:#333;">
+        ${payload.referenceCode ? `<li><strong>Reference :</strong> ${payload.referenceCode}</li>` : ''}
         <li><strong>Départ :</strong> ${departureLabel}</li>
         <li><strong>Places :</strong> ${payload.seats ?? 1}</li>
         ${amountLabel ? `<li><strong>Montant :</strong> ${amountLabel}</li>` : ''}
@@ -102,12 +115,21 @@ export class MailerService {
     ];
 
     try {
+      const calendarAttachment = buildCalendarAttachment({
+        bookingId: payload.referenceCode || undefined,
+        rideId: payload.rideId,
+        passengerName: payload.passengerName,
+        originCity: payload.originCity,
+        destinationCity: payload.destinationCity,
+        departureAt: payload.departureAt,
+      });
       await this.transporter.sendMail({
         from: this.from,
         to,
         subject,
         text: textLines.join('\n'),
         html: htmlParts.join(''),
+        attachments: calendarAttachment ? [calendarAttachment] : undefined,
       });
       return true;
     } catch (err) {
@@ -193,10 +215,11 @@ export class MailerService {
     const textLines = [
       `Bonjour ${payload.passengerName},`,
       `Voici ton recu pour la reservation ${payload.bookingId}.`,
+      payload.referenceCode ? `Reference : ${payload.referenceCode}` : null,
       `Trajet : ${payload.originCity ?? '?'} -> ${payload.destinationCity ?? '?'}`,
       `Depart : ${departureLabel}`,
       `Places : ${payload.seats ?? 1}`,
-    ];
+    ].filter((line): line is string => Boolean(line));
     if (amountLabel) textLines.push(`Montant : ${amountLabel}`);
     if (payload.paymentMethod) textLines.push(`Moyen : ${payload.paymentMethod}`);
     textLines.push(`Emis le : ${issuedLabel}`, '', `Voir mes reservations : ${link}`);
@@ -205,6 +228,7 @@ export class MailerService {
       `<p>Bonjour ${payload.passengerName},</p>`,
       `<p>Ton recu pour la reservation <strong>${payload.bookingId}</strong> est disponible.</p>`,
       `<ul style="padding-left:18px;color:#333;">
+        ${payload.referenceCode ? `<li><strong>Reference :</strong> ${payload.referenceCode}</li>` : ''}
         <li><strong>Trajet :</strong> ${payload.originCity ?? '?'} → ${payload.destinationCity ?? '?'}</li>
         <li><strong>Depart :</strong> ${departureLabel}</li>
         <li><strong>Places :</strong> ${payload.seats ?? 1}</li>
@@ -218,6 +242,7 @@ export class MailerService {
 
     const pdfBuffer = buildReceiptPdfBuffer({
       bookingId: payload.bookingId,
+      bookingReference: payload.referenceCode,
       passengerName: payload.passengerName,
       passengerEmail: payload.passengerEmail,
       originCity: payload.originCity,
@@ -228,6 +253,22 @@ export class MailerService {
       paymentMethod: payload.paymentMethod,
       issuedAt: payload.issuedAt,
     });
+    const calendarAttachment = buildCalendarAttachment({
+      bookingId: payload.referenceCode || payload.bookingId,
+      rideId: payload.rideId,
+      passengerName: payload.passengerName,
+      originCity: payload.originCity ?? null,
+      destinationCity: payload.destinationCity ?? null,
+      departureAt: payload.departureAt ?? null,
+    });
+    const attachments = [
+      {
+        filename: `recu-${payload.bookingId}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      },
+      ...(calendarAttachment ? [calendarAttachment] : []),
+    ];
 
     try {
       await this.transporter.sendMail({
@@ -236,13 +277,7 @@ export class MailerService {
         subject,
         text: textLines.join('\n'),
         html: htmlParts.join(''),
-        attachments: [
-          {
-            filename: `recu-${payload.bookingId}.pdf`,
-            content: pdfBuffer,
-            contentType: 'application/pdf',
-          },
-        ],
+        attachments,
       });
       return true;
     } catch (err) {
@@ -254,6 +289,7 @@ export class MailerService {
 
 type ReceiptPdfPayload = {
   bookingId: string;
+  bookingReference?: string;
   passengerName: string;
   passengerEmail?: string;
   originCity?: string;
@@ -285,7 +321,7 @@ const buildReceiptPdfBuffer = (payload: ReceiptPdfPayload) => {
 
   const lines = [
     'KariGo - Recu de paiement',
-    `Reference: ${payload.bookingId}`,
+    `Reference: ${payload.bookingReference || payload.bookingId}`,
     `Emis le: ${issuedLabel}`,
     '',
     `Client: ${payload.passengerName}`,
@@ -330,4 +366,45 @@ const buildReceiptPdfBuffer = (payload: ReceiptPdfPayload) => {
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
   return Buffer.from(pdf, 'binary');
+};
+
+const buildCalendarIcsBuffer = (payload: CalendarPayload) => {
+  if (!payload.departureAt) return null;
+  const startDate = new Date(payload.departureAt);
+  if (Number.isNaN(startDate.getTime())) return null;
+  const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+  const toIcsDate = (value: Date) =>
+    value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const summary = `KariGo ${payload.originCity ?? '?'} -> ${payload.destinationCity ?? '?'}`;
+  const location = `${payload.originCity ?? ''} -> ${payload.destinationCity ?? ''}`.trim();
+  const uid = payload.bookingId || payload.rideId || `ride-${startDate.getTime()}`;
+  const description = `Reservation KariGo pour ${payload.passengerName}`;
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//KariGo//Booking//FR',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${uid}@karigo`,
+    `DTSTAMP:${toIcsDate(new Date())}`,
+    `DTSTART:${toIcsDate(startDate)}`,
+    `DTEND:${toIcsDate(endDate)}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
+    `LOCATION:${location}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+  return Buffer.from(ics, 'utf8');
+};
+
+const buildCalendarAttachment = (payload: CalendarPayload) => {
+  const buffer = buildCalendarIcsBuffer(payload);
+  if (!buffer) return null;
+  const name = payload.bookingId || payload.rideId || 'trajet';
+  return {
+    filename: `karigo-${name}.ics`,
+    content: buffer,
+    contentType: 'text/calendar; charset=utf-8',
+  };
 };

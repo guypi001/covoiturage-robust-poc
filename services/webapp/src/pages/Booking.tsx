@@ -78,6 +78,10 @@ export function Booking() {
   }, [memoRide, rideId, setRideAvailability]);
 
   const [seats, setSeats] = useState(1);
+  const [thirdPartyEnabled, setThirdPartyEnabled] = useState(false);
+  const [thirdPartyName, setThirdPartyName] = useState('');
+  const [thirdPartyEmail, setThirdPartyEmail] = useState('');
+  const [thirdPartyPhone, setThirdPartyPhone] = useState('');
   useEffect(() => {
     if (!ride) return;
     if (ride.seatsAvailable > 0 && seats > ride.seatsAvailable) {
@@ -114,6 +118,46 @@ export function Booking() {
   const [instantPhoneTouched, setInstantPhoneTouched] = useState(false);
   const [copyRefFeedback, setCopyRefFeedback] = useState<'idle' | 'copied'>('idle');
   const [cashCommitmentOpen, setCashCommitmentOpen] = useState(false);
+
+  const buildCalendarIcs = useCallback(() => {
+    if (!ride?.departureAt) return null;
+    const start = new Date(ride.departureAt);
+    if (Number.isNaN(start.getTime())) return null;
+    const end = new Date(start);
+    end.setHours(end.getHours() + 2);
+    const toIcsDate = (date: Date) =>
+      date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    const title = `KariGo ${ride.originCity} → ${ride.destinationCity}`;
+    const description = `Réservation KariGo ${bookingResult?.referenceCode || bookingResult?.id || ''}`.trim();
+    const location = `${ride.originCity} → ${ride.destinationCity}`;
+    return [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//KariGo//Booking//FR',
+      'BEGIN:VEVENT',
+      `UID:${bookingResult?.referenceCode || bookingResult?.id || `ride-${ride.rideId}`}@karigo`,
+      `DTSTAMP:${toIcsDate(new Date())}`,
+      `DTSTART:${toIcsDate(start)}`,
+      `DTEND:${toIcsDate(end)}`,
+      `SUMMARY:${title}`,
+      `DESCRIPTION:${description}`,
+      `LOCATION:${location}`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+  }, [bookingResult?.id, bookingResult?.referenceCode, ride]);
+
+  const handleDownloadCalendar = useCallback(() => {
+    const ics = buildCalendarIcs();
+    if (!ics) return;
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `karigo-${bookingResult?.id || ride?.rideId || 'trajet'}.ics`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [bookingResult?.id, bookingResult?.referenceCode, buildCalendarIcs, ride?.rideId]);
 
   const createIdempotencyKey = useCallback(() => {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -257,7 +301,7 @@ export function Booking() {
       id: 'reservation',
       title: 'Réservation',
       status: reservationStepStatus,
-      description: bookingResult ? `Réf ${bookingResult.id}` : 'Choisis tes sièges et confirme.',
+      description: bookingResult ? `Réf ${bookingResult.referenceCode || bookingResult.id}` : 'Choisis tes sièges et confirme.',
     },
     {
       id: 'payment',
@@ -298,8 +342,13 @@ export function Booking() {
     if (!paymentMessage || !bookingResult) return null;
     return {
       bookingId: bookingResult.id,
-      passengerName: account?.fullName || account?.companyName || account?.email || 'Client KariGo',
-      passengerEmail: account?.email || '',
+      passengerName:
+        thirdPartyName ||
+        account?.fullName ||
+        account?.companyName ||
+        account?.email ||
+        'Client KariGo',
+      passengerEmail: thirdPartyEmail || account?.email || '',
       originCity: ride.originCity,
       destinationCity: ride.destinationCity,
       departureAt: ride.departureAt,
@@ -322,6 +371,8 @@ export function Booking() {
     seats,
     selectedMethod?.label,
     selectedMethod?.type,
+    thirdPartyEmail,
+    thirdPartyName,
   ]);
 
   async function submit() {
@@ -339,9 +390,22 @@ export function Booking() {
     }
     try {
       setLoading(true);
-      const saved = await createBooking({ rideId: ride.rideId, passengerId, seats });
+      if (thirdPartyEnabled && !thirdPartyName.trim()) {
+        setBookingError('Le nom du passager est requis pour une réservation tiers.');
+        setLoading(false);
+        return;
+      }
+      const saved = await createBooking({
+        rideId: ride.rideId,
+        passengerId,
+        seats,
+        passengerName: thirdPartyEnabled ? thirdPartyName.trim() : undefined,
+        passengerEmail: thirdPartyEnabled ? thirdPartyEmail.trim() || undefined : undefined,
+        passengerPhone: thirdPartyEnabled ? thirdPartyPhone.trim() || undefined : undefined,
+      });
       setBookingResult(saved);
-      setBookingMessage(`Réservation ${saved.id} confirmée (${saved.amount} XOF).`);
+      const referenceLabel = saved.referenceCode || saved.id;
+      setBookingMessage(`Réservation ${referenceLabel} confirmée (${saved.amount} XOF).`);
       const remaining = Math.max(0, (ride?.seatsAvailable ?? 0) - seats);
       setRide((prev) => (prev ? { ...prev, seatsAvailable: remaining } : prev));
       setSeats((prev) => (remaining > 0 ? Math.min(prev, remaining) : 1));
@@ -661,6 +725,48 @@ export function Booking() {
             </div>
           </section>
 
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Réserver pour une autre personne</p>
+                <p className="text-xs text-slate-500">
+                  Ajoute les informations du passager si tu réserves pour un proche.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={thirdPartyEnabled}
+                  onChange={(e) => setThirdPartyEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+                />
+                Activer
+              </label>
+            </div>
+            {thirdPartyEnabled && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <input
+                  className="input input-sm w-full"
+                  placeholder="Nom du passager"
+                  value={thirdPartyName}
+                  onChange={(e) => setThirdPartyName(e.target.value)}
+                />
+                <input
+                  className="input input-sm w-full"
+                  placeholder="Email (optionnel)"
+                  value={thirdPartyEmail}
+                  onChange={(e) => setThirdPartyEmail(e.target.value)}
+                />
+                <input
+                  className="input input-sm w-full"
+                  placeholder="Téléphone (optionnel)"
+                  value={thirdPartyPhone}
+                  onChange={(e) => setThirdPartyPhone(e.target.value)}
+                />
+              </div>
+            )}
+          </section>
+
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -711,7 +817,9 @@ export function Booking() {
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-700">Réservation confirmée</p>
-                  <p className="text-xs text-slate-500">Réf {bookingResult.id}</p>
+                  <p className="text-xs text-slate-500">
+                    Réf {bookingResult.referenceCode || bookingResult.id}
+                  </p>
                 </div>
                 {paymentStatusInfo ? (
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paymentStatusInfo.tone}`}>
@@ -737,7 +845,7 @@ export function Booking() {
                   type="button"
                   onClick={async () => {
                     if (!bookingResult?.id) return;
-                    await navigator.clipboard?.writeText?.(bookingResult.id);
+                    await navigator.clipboard?.writeText?.(bookingResult.referenceCode || bookingResult.id);
                     setCopyRefFeedback('copied');
                     if (copyRefTimerRef.current) {
                       window.clearTimeout(copyRefTimerRef.current);
@@ -757,6 +865,20 @@ export function Booking() {
                 )}
               </div>
               <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                {thirdPartyEnabled && (thirdPartyName || thirdPartyEmail || thirdPartyPhone) && (
+                  <div>
+                    Passager&nbsp;
+                    <span className="font-semibold text-slate-900">
+                      {thirdPartyName || '—'}
+                    </span>
+                    {thirdPartyEmail ? (
+                      <span className="block text-xs text-slate-500">{thirdPartyEmail}</span>
+                    ) : null}
+                    {thirdPartyPhone ? (
+                      <span className="block text-xs text-slate-500">{thirdPartyPhone}</span>
+                    ) : null}
+                  </div>
+                )}
                 <div>
                   Montant&nbsp;
                   <span className="font-semibold text-slate-900">
@@ -784,6 +906,15 @@ export function Booking() {
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
                   {paymentMessage}
                 </div>
+              )}
+              {ride?.departureAt && (
+                <button
+                  type="button"
+                  onClick={handleDownloadCalendar}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-slate-500"
+                >
+                  Ajouter au calendrier
+                </button>
               )}
               {paymentError && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700">

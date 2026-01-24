@@ -7,14 +7,27 @@ export type PaymentMethodType = 'CARD' | 'MOBILE_MONEY' | 'CASH';
 @Entity('bookings')
 @Index(['rideId', 'createdAt'])
 @Index(['passengerId', 'status', 'createdAt'])
+@Index(['referenceCode'], { unique: true })
 export class Booking {
   @PrimaryGeneratedColumn('uuid') id!: string;
 
   @Column() rideId!: string;
   @Column() passengerId!: string;
 
+  @Column({ name: 'reference_code', type: 'varchar', length: 8 })
+  referenceCode!: string;
+
   @Column('int') seats!: number;
   @Column('int') amount!: number;
+
+  @Column({ name: 'passenger_name', type: 'varchar', length: 160, nullable: true })
+  passengerName?: string | null;
+
+  @Column({ name: 'passenger_email', type: 'varchar', length: 200, nullable: true })
+  passengerEmail?: string | null;
+
+  @Column({ name: 'passenger_phone', type: 'varchar', length: 40, nullable: true })
+  passengerPhone?: string | null;
 
   // 👇 colonne SQL 'hold_id', propriété TS 'holdId'
   // Si l'ID du hold n’est pas un UUID, remplace 'uuid' par 'varchar'

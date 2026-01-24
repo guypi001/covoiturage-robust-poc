@@ -400,7 +400,14 @@ export async function getMessageNotifications(userId: string): Promise<MessageNo
   return data;
 }
 
-export async function createBooking(payload: { rideId: string; passengerId: string; seats: number }) {
+export async function createBooking(payload: {
+  rideId: string;
+  passengerId: string;
+  seats: number;
+  passengerName?: string;
+  passengerEmail?: string;
+  passengerPhone?: string;
+}) {
   const { data } = await api.post(`${BFF_URL}/bookings`, payload);
   return data; // { id, holdId?, amount, status, ... }
 }
@@ -683,8 +690,10 @@ export type RideReservation = {
   seats: number;
   amount: number;
   status: string;
+  referenceCode?: string | null;
   passengerName?: string | null;
   passengerEmail?: string | null;
+  passengerPhone?: string | null;
 };
 
 export type PaymentMethod = {
@@ -765,6 +774,10 @@ export type BookingAdminItem = {
   passengerId: string;
   seats: number;
   amount: number;
+  referenceCode?: string | null;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerPhone?: string | null;
   holdId: string | null;
   status: string;
   paymentMethod?: string | null;

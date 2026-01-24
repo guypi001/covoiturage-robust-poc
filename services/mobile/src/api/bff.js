@@ -44,10 +44,16 @@ export async function getMyWalletTransactions(token, limit = 50) {
   });
 }
 
-export async function createBooking(token, { rideId, seats }) {
+export async function createBooking(token, { rideId, seats, passengerName, passengerEmail, passengerPhone }) {
   return apiFetch(`${ENDPOINTS.bff}/bookings`, {
     method: 'POST',
     headers: withAuth(token),
-    body: JSON.stringify({ rideId, seats }),
+    body: JSON.stringify({
+      rideId,
+      seats,
+      passengerName,
+      passengerEmail,
+      passengerPhone,
+    }),
   });
 }

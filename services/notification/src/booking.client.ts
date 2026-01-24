@@ -3,10 +3,14 @@ import axios, { AxiosInstance } from 'axios';
 
 export type BookingSummary = {
   id: string;
+  referenceCode?: string | null;
   passengerId: string;
   rideId: string;
   seats?: number;
   amount?: number;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerPhone?: string | null;
   status?: string;
   createdAt?: string;
 };

@@ -449,7 +449,9 @@ export default function MyTrips() {
                     <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
                       <div>
                         <p className="text-xs uppercase tracking-wide text-slate-500">Réservation</p>
-                        <p className="font-semibold text-slate-900">{booking.id}</p>
+                        <p className="font-semibold text-slate-900">
+                          {booking.referenceCode || booking.id}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-wide text-slate-500">Sièges</p>
@@ -496,7 +498,7 @@ export default function MyTrips() {
                         onClick={() =>
                           handleCalendar({
                             title: `Trajet KariGo ${booking.originCity ?? ''} → ${booking.destinationCity ?? ''}`,
-                            description: `Reservation ${booking.id}`,
+                            description: `Reservation ${booking.referenceCode || booking.id}`,
                             location: `${booking.originCity ?? ''} → ${booking.destinationCity ?? ''}`,
                             start: booking.departureAt ?? booking.createdAt,
                           })

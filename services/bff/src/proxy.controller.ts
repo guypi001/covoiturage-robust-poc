@@ -70,8 +70,10 @@ type RideReservation = {
   seats: number;
   amount: number;
   status: string;
+  referenceCode?: string | null;
   passengerName?: string | null;
   passengerEmail?: string | null;
+  passengerPhone?: string | null;
 };
 
 type PaymentMethod = {
@@ -93,6 +95,10 @@ type BookingAdminItem = {
   passengerId: string;
   seats: number;
   amount: number;
+  referenceCode?: string | null;
+  passengerName?: string | null;
+  passengerEmail?: string | null;
+  passengerPhone?: string | null;
   holdId: string | null;
   status: string;
   createdAt: string;
@@ -274,7 +280,17 @@ export class ProxyController {
       );
     }
 
-    const payload = { rideId, seats: normalizedSeats, passengerId };
+    const passengerName = typeof body?.passengerName === 'string' ? body.passengerName.trim() : undefined;
+    const passengerEmail = typeof body?.passengerEmail === 'string' ? body.passengerEmail.trim() : undefined;
+    const passengerPhone = typeof body?.passengerPhone === 'string' ? body.passengerPhone.trim() : undefined;
+    const payload = {
+      rideId,
+      seats: normalizedSeats,
+      passengerId,
+      passengerName: passengerName || undefined,
+      passengerEmail: passengerEmail || undefined,
+      passengerPhone: passengerPhone || undefined,
+    };
     try {
       return await this.forward(() => axios.post(`${BOOKING}/bookings`, payload), 'booking');
     } catch (err: any) {
@@ -310,6 +326,81 @@ export class ProxyController {
       }
       throw err;
     }
+  }
+
+  @Get('booking-reference/:code')
+  async lookupBookingReference(@Req() req: any, @Param('code') code: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('auth_required');
+    }
+    const trimmed = code?.trim();
+    if (!trimmed || !/^\d{8}$/.test(trimmed)) {
+      throw new HttpException({ error: 'invalid_reference' }, HttpStatus.BAD_REQUEST);
+    }
+    const bookingRes = await axios.get(`${BOOKING}/admin/bookings/reference/${trimmed}`, {
+      headers: this.internalHeaders(),
+    });
+    const booking = bookingRes?.data;
+    if (!booking) {
+      throw new NotFoundException('booking_not_found');
+    }
+    const ride = booking.rideId
+      ? await axios
+          .get(`${RIDE}/rides/${booking.rideId}`, { headers: this.internalHeaders() })
+          .then((resp) => resp.data)
+          .catch(() => null)
+      : null;
+    const isAdmin = account.role === 'ADMIN';
+    const isPassenger = account.id === booking.passengerId;
+    const isDriver = ride?.driverId && account.id === ride.driverId;
+    if (!isAdmin && !isPassenger && !isDriver) {
+      throw new ForbiddenException('booking_forbidden');
+    }
+    const ids = [booking.passengerId, ride?.driverId].filter(Boolean).join(',');
+    let passengers: AccountProfile[] = [];
+    if (ids) {
+      try {
+        const res = await axios.get<{ data: AccountProfile[] }>(`${IDENTITY}/internal/accounts`, {
+          params: { ids },
+          headers: this.internalHeaders(),
+        });
+        passengers = Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch {
+        passengers = [];
+      }
+    }
+    const passengerProfile = passengers.find((item) => item.id === booking.passengerId);
+    const driverProfile = passengers.find((item) => item.id === ride?.driverId);
+    const passengerName =
+      booking.passengerName ||
+      passengerProfile?.fullName ||
+      passengerProfile?.companyName ||
+      passengerProfile?.email ||
+      'Passager';
+    const driverName =
+      driverProfile?.fullName || driverProfile?.companyName || driverProfile?.email || 'Conducteur';
+
+    return {
+      referenceCode: booking.referenceCode ?? trimmed,
+      status: booking.status,
+      seats: booking.seats,
+      amount: booking.amount,
+      passenger: {
+        name: passengerName,
+        email: isAdmin ? booking.passengerEmail || passengerProfile?.email : undefined,
+        phone: isAdmin ? booking.passengerPhone : undefined,
+      },
+      driver: {
+        name: driverName,
+      },
+      ride: {
+        originCity: ride?.originCity ?? null,
+        destinationCity: ride?.destinationCity ?? null,
+        departureAt: ride?.departureAt ?? null,
+        status: ride?.status ?? null,
+      },
+    };
   }
 
   @Post('payments/capture')
@@ -465,11 +556,17 @@ export class ProxyController {
         : booking.paymentMethod
       : 'Paiement';
     const passengerName =
-      account.fullName || account.companyName || account.email || 'Client KariGo';
+      booking?.passengerName ||
+      account.fullName ||
+      account.companyName ||
+      account.email ||
+      'Client KariGo';
+    const passengerEmail = booking?.passengerEmail || account.email;
     const pdfBuffer = buildReceiptPdfBuffer({
       bookingId: booking.id,
+      bookingReference: booking.referenceCode ?? undefined,
       passengerName,
-      passengerEmail: account.email,
+      passengerEmail,
       originCity: ride?.originCity ?? undefined,
       destinationCity: ride?.destinationCity ?? undefined,
       departureAt: ride?.departureAt ?? undefined,
@@ -1317,6 +1414,13 @@ export class ProxyController {
       const reservations = reservationsMap.get(ride.id) ?? [];
       const detailedReservations: RideReservation[] = reservations.map((booking) => {
         const passenger = passengerMap.get(booking.passengerId);
+        const passengerName =
+          booking?.passengerName ||
+          passenger?.fullName ||
+          passenger?.companyName ||
+          passenger?.email ||
+          null;
+        const passengerEmail = booking?.passengerEmail || passenger?.email || null;
         return {
           id: booking.id,
           rideId: booking.rideId,
@@ -1324,8 +1428,10 @@ export class ProxyController {
           seats: booking.seats,
           amount: booking.amount,
           status: booking.status,
-          passengerName: passenger?.fullName || passenger?.companyName || passenger?.email || null,
-          passengerEmail: passenger?.email || null,
+          referenceCode: booking.referenceCode ?? null,
+          passengerName,
+          passengerEmail,
+          passengerPhone: booking?.passengerPhone || null,
         };
       });
       return {

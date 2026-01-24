@@ -19,6 +19,7 @@ type MessageSentEvent = {
 
 type BookingConfirmedEvent = {
   bookingId: string;
+  referenceCode?: string;
   passengerId: string;
   rideId: string;
   seats?: number;
@@ -147,8 +148,11 @@ export class AppModule implements OnModuleInit {
       this.logger.warn(`Impossible d'envoyer la confirmation: email manquant pour ${evt.passengerId}`);
       return;
     }
+    const booking = evt.bookingId ? await this.bookings.getBooking(evt.bookingId) : null;
+    const passengerName = booking?.passengerName || this.resolveName(passenger);
     const sent = await this.mailer.sendBookingConfirmationEmail(passenger.email, {
-      passengerName: this.resolveName(passenger),
+      referenceCode: booking?.referenceCode ?? evt.referenceCode,
+      passengerName,
       originCity: evt.originCity,
       destinationCity: evt.destinationCity,
       departureAt: evt.departureAt,
@@ -250,10 +254,13 @@ export class AppModule implements OnModuleInit {
         ? `${evt.paymentMethodType} (${evt.provider})`
         : evt.paymentMethodType
       : evt.provider || 'Paiement';
+    const passengerName = booking?.passengerName || this.resolveName(passenger);
+    const passengerEmail = booking?.passengerEmail || passenger.email;
     const sent = await this.mailer.sendPaymentReceiptEmail(passenger.email, {
       bookingId: booking.id,
-      passengerName: this.resolveName(passenger),
-      passengerEmail: passenger.email,
+      referenceCode: booking.referenceCode ?? undefined,
+      passengerName,
+      passengerEmail,
       originCity: ride?.originCity ?? undefined,
       destinationCity: ride?.destinationCity ?? undefined,
       departureAt: ride?.departureAt ?? undefined,

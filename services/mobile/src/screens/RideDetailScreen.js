@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { InputField } from '../components/InputField';
 import { getRide } from '../api/ride';
 import { createBooking } from '../api/bff';
 import { useAuth } from '../auth';
@@ -51,6 +52,10 @@ export function RideDetailScreen({ route }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [bookingStatus, setBookingStatus] = useState('');
+  const [thirdPartyEnabled, setThirdPartyEnabled] = useState(false);
+  const [thirdPartyName, setThirdPartyName] = useState('');
+  const [thirdPartyEmail, setThirdPartyEmail] = useState('');
+  const [thirdPartyPhone, setThirdPartyPhone] = useState('');
   const [reportReason, setReportReason] = useState('Comportement inapproprie');
   const [reportMessage, setReportMessage] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
@@ -238,6 +243,45 @@ export function RideDetailScreen({ route }) {
             <PrimaryButton label="Partager" variant="ghost" onPress={handleShare} />
             <PrimaryButton label="Ajouter au calendrier" variant="ghost" onPress={handleCalendar} />
           </SurfaceCard>
+
+          <SurfaceCard style={styles.card} delay={260}>
+            <SectionHeader title="Reservation pour un proche" icon="people-outline" />
+            <View style={styles.toggleRow}>
+              <Text style={styles.helperText}>Activer pour reserver a un tiers.</Text>
+              <Pressable
+                onPress={() => setThirdPartyEnabled((prev) => !prev)}
+                style={[styles.toggleButton, thirdPartyEnabled && styles.toggleButtonActive]}
+              >
+                <Text style={[styles.toggleText, thirdPartyEnabled && styles.toggleTextActive]}>
+                  {thirdPartyEnabled ? 'Active' : 'Desactive'}
+                </Text>
+              </Pressable>
+            </View>
+            {thirdPartyEnabled ? (
+              <View style={styles.thirdPartyForm}>
+                <InputField
+                  label="Nom du passager"
+                  value={thirdPartyName}
+                  onChangeText={setThirdPartyName}
+                  placeholder="Ex: Konan Aya"
+                />
+                <InputField
+                  label="Email (optionnel)"
+                  value={thirdPartyEmail}
+                  onChangeText={setThirdPartyEmail}
+                  placeholder="passager@email.com"
+                  keyboardType="email-address"
+                />
+                <InputField
+                  label="Telephone (optionnel)"
+                  value={thirdPartyPhone}
+                  onChangeText={setThirdPartyPhone}
+                  placeholder="+225 01 23 45 67 89"
+                  keyboardType="phone-pad"
+                />
+              </View>
+            ) : null}
+          </SurfaceCard>
         </>
       )}
 
@@ -256,8 +300,19 @@ export function RideDetailScreen({ route }) {
               confirmLabel: 'Reserver',
               onConfirm: async () => {
                 try {
-                  await createBooking(token, { rideId, seats: 1 });
-                  setBookingStatus('Reservation enregistree.');
+                  if (thirdPartyEnabled && !thirdPartyName.trim()) {
+                    showToast('Nom du passager requis.', 'error');
+                    return;
+                  }
+                  const saved = await createBooking(token, {
+                    rideId,
+                    seats: 1,
+                    passengerName: thirdPartyEnabled ? thirdPartyName.trim() : undefined,
+                    passengerEmail: thirdPartyEnabled ? thirdPartyEmail.trim() || undefined : undefined,
+                    passengerPhone: thirdPartyEnabled ? thirdPartyPhone.trim() || undefined : undefined,
+                  });
+                  const reference = saved?.referenceCode || saved?.id || 'confirmée';
+                  setBookingStatus(`Reservation ${reference} enregistree.`);
                   showToast('Reservation enregistree.', 'success');
                 } catch (err) {
                   setBookingStatus('');
@@ -420,6 +475,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.slate500,
   },
+  helperText: {
+    fontSize: 12,
+    color: colors.slate600,
+  },
   reasonRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -443,6 +502,35 @@ const styles = StyleSheet.create({
   },
   reasonTextActive: {
     color: colors.rose600,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  toggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate100,
+  },
+  toggleButtonActive: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky100,
+  },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  toggleTextActive: {
+    color: colors.sky600,
+  },
+  thirdPartyForm: {
+    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
   reportInput: {
     minHeight: 90,

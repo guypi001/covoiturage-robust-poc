@@ -83,6 +83,15 @@ export class AdminBookingController {
     return { data: items };
   }
 
+  @Get('reference/:code')
+  async byReference(@Param('code') code: string) {
+    const trimmed = code?.trim();
+    if (!trimmed || !/^\d{8}$/.test(trimmed)) {
+      return null;
+    }
+    return this.bookings.findOne({ where: { referenceCode: trimmed } });
+  }
+
   @Get(':id')
   async detail(@Param('id') id: string) {
     return this.bookings.findOne({ where: { id } });

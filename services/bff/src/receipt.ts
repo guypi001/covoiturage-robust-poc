@@ -1,5 +1,6 @@
 type ReceiptPdfPayload = {
   bookingId: string;
+  bookingReference?: string;
   passengerName: string;
   passengerEmail?: string | null;
   originCity?: string;
@@ -31,7 +32,7 @@ export const buildReceiptPdfBuffer = (payload: ReceiptPdfPayload) => {
 
   const lines = [
     'KariGo - Recu de paiement',
-    `Reference: ${payload.bookingId}`,
+    `Reference: ${payload.bookingReference || payload.bookingId}`,
     `Emis le: ${issuedLabel}`,
     '',
     `Client: ${payload.passengerName}`,
