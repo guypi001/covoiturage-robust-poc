@@ -6,7 +6,7 @@ export class CreateMessagingSchema1768522000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
     await queryRunner.query(
-      `CREATE TABLE "conversations" (
+      `CREATE TABLE IF NOT EXISTS "conversations" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "pairKey" character varying NOT NULL,
         "participantAId" character varying NOT NULL,
@@ -23,10 +23,10 @@ export class CreateMessagingSchema1768522000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      'CREATE UNIQUE INDEX "IDX_conversations_pair_key" ON "conversations" ("pairKey")',
+      'CREATE UNIQUE INDEX IF NOT EXISTS "IDX_conversations_pair_key" ON "conversations" ("pairKey")',
     );
     await queryRunner.query(
-      `CREATE TABLE "messages" (
+      `CREATE TABLE IF NOT EXISTS "messages" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "conversationId" uuid NOT NULL,
         "senderId" character varying NOT NULL,
@@ -46,10 +46,10 @@ export class CreateMessagingSchema1768522000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      'CREATE INDEX "IDX_messages_conversation_created_at" ON "messages" ("conversationId", "createdAt")',
+      'CREATE INDEX IF NOT EXISTS "IDX_messages_conversation_created_at" ON "messages" ("conversationId", "createdAt")',
     );
     await queryRunner.query(
-      `CREATE TABLE "message_notifications" (
+      `CREATE TABLE IF NOT EXISTS "message_notifications" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "recipientId" character varying NOT NULL,
         "conversationId" character varying NOT NULL,
@@ -61,10 +61,10 @@ export class CreateMessagingSchema1768522000000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      'CREATE INDEX "IDX_message_notifications_recipient_conversation_message" ON "message_notifications" ("recipientId", "conversationId", "messageId")',
+      'CREATE INDEX IF NOT EXISTS "IDX_message_notifications_recipient_conversation_message" ON "message_notifications" ("recipientId", "conversationId", "messageId")',
     );
     await queryRunner.query(
-      'CREATE INDEX "IDX_message_notifications_recipient_ack_created_at" ON "message_notifications" ("recipientId", "ack", "createdAt")',
+      'CREATE INDEX IF NOT EXISTS "IDX_message_notifications_recipient_ack_created_at" ON "message_notifications" ("recipientId", "ack", "createdAt")',
     );
   }
 
