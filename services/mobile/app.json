@@ -36,8 +36,7 @@
       }
     },
     "plugins": [
-      "@react-native-community/datetimepicker",
-      "react-native-maps"
+      "@react-native-community/datetimepicker"
     ],
     "owner": "guypi"
   }
