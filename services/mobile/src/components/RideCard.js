@@ -7,9 +7,10 @@ import { resolveAssetUrl } from '../config';
 export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
   const driverLabel = getFirstName(ride.driver) || ride.driver;
   const showPhoto = Boolean(ride.driverPhotoUrl);
+  const isBlocked = Boolean(isFull || isBooked);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isBlocked && styles.cardMuted]}>
       <View style={styles.badgeRow}>
         <View style={styles.badgeSoft}>
           <Text style={styles.badgeSoftText}>Depart proche</Text>
@@ -55,6 +56,20 @@ export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
           <Text style={styles.meta}>{ride.seats} sièges</Text>
         </View>
       </View>
+      <View style={styles.infoRow}>
+        <View style={styles.infoItem}>
+          <Ionicons name="time-outline" size={14} color={colors.slate500} />
+          <Text style={styles.infoText}>{ride.departure?.split(' ')[0] || '—'}</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Ionicons name="cash-outline" size={14} color={colors.slate500} />
+          <Text style={styles.infoText}>{ride.price}</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Ionicons name="people-outline" size={14} color={colors.slate500} />
+          <Text style={styles.infoText}>{ride.seats}</Text>
+        </View>
+      </View>
       <View style={styles.footerRow}>
         <View style={styles.driverRow}>
           <View style={styles.avatar}>
@@ -73,6 +88,13 @@ export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
           <Text style={styles.pillText}>Profil verifie</Text>
         </View>
       </View>
+      {isBlocked ? (
+        <View style={styles.overlay}>
+          <Text style={styles.overlayText}>
+            {isFull ? 'Trajet complet' : 'Deja reserve'}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -86,6 +108,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     gap: 12,
     ...shadows.card,
+  },
+  cardMuted: {
+    opacity: 0.6,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -140,6 +165,23 @@ const styles = StyleSheet.create({
     color: colors.sky600,
     textTransform: 'uppercase',
   },
+  overlay: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    bottom: spacing.md,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.md,
+    alignItems: 'center',
+  },
+  overlayText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.white,
+    textTransform: 'uppercase',
+  },
   saveButton: {
     width: 32,
     height: 32,
@@ -154,6 +196,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.slate100,
+    borderRadius: radius.md,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  infoText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.slate600,
   },
   city: {
     fontSize: 16,

@@ -9,7 +9,7 @@ import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { InputField } from '../components/InputField';
 import { registerPushToken, sendTestNotification } from '../api/notifications';
-import { getMyBookings, getMyPaymentMethods, getMyWallet, getMyWalletTransactions } from '../api/bff';
+import { getMyBookings, getMyPaymentMethods, getMyWallet, getMyWalletTransactions, setDefaultPaymentMethod } from '../api/bff';
 import { useAuth } from '../auth';
 import {
   requestGmailOtp,
@@ -46,6 +46,7 @@ export function ProfileScreen({ navigation }) {
   const [wallet, setWallet] = useState(null);
   const [walletTransactions, setWalletTransactions] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState('');
   const [photoPreview, setPhotoPreview] = useState('');
@@ -528,6 +529,83 @@ export function ProfileScreen({ navigation }) {
           </View>
         ) : null}
       </SurfaceCard>
+
+      {token && (
+        <SurfaceCard style={styles.card} delay={195}>
+          <SectionHeader icon="card-outline" title="Paiements" meta="Portefeuille & moyens" />
+          <View style={styles.walletRow}>
+            <View>
+              <Text style={styles.walletLabel}>Solde disponible</Text>
+              <Text style={styles.walletValue}>{walletBalance} XOF</Text>
+            </View>
+            <View style={styles.walletBadge}>
+              <Text style={styles.walletBadgeText}>{paymentMethods.length} moyen(x)</Text>
+            </View>
+          </View>
+
+          <View style={styles.paymentList}>
+            {paymentMethods.length === 0 ? (
+              <Text style={styles.helperText}>Aucun moyen de paiement enregistre.</Text>
+            ) : null}
+            {paymentMethods.map((method) => (
+              <Pressable
+                key={method.id}
+                onPress={async () => {
+                  if (!token || paymentBusy) return;
+                  setPaymentBusy(true);
+                  try {
+                    await setDefaultPaymentMethod(token, method.id);
+                    const updated = paymentMethods.map((item) => ({
+                      ...item,
+                      isDefault: item.id === method.id,
+                    }));
+                    setPaymentMethods(updated);
+                    showToast('Moyen par defaut mis a jour.', 'success');
+                  } catch {
+                    showToast('Impossible de definir par defaut.', 'error');
+                  } finally {
+                    setPaymentBusy(false);
+                  }
+                }}
+                style={[styles.paymentItem, method.isDefault && styles.paymentItemActive]}
+              >
+                <View>
+                  <Text style={styles.paymentTitle}>
+                    {method.label || method.provider || method.type}
+                  </Text>
+                  <Text style={styles.paymentMeta}>
+                    {method.type === 'CARD' && method.last4 ? `**** ${method.last4}` : method.type}
+                  </Text>
+                </View>
+                <View style={method.isDefault ? styles.defaultBadge : styles.defaultBadgeInactive}>
+                  <Text style={method.isDefault ? styles.defaultBadgeText : styles.defaultBadgeTextInactive}>
+                    {method.isDefault ? 'Par defaut' : 'Definir'}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.transactionList}>
+            <Text style={styles.sectionLabel}>Historique recent</Text>
+            {walletTransactions.length === 0 ? (
+              <Text style={styles.helperText}>Aucune transaction recente.</Text>
+            ) : null}
+            {walletTransactions.slice(0, 5).map((tx) => (
+              <View key={tx.id} style={styles.transactionItem}>
+                <View>
+                  <Text style={styles.transactionTitle}>{tx.type === 'CREDIT' ? 'Credit' : 'Debit'}</Text>
+                  <Text style={styles.transactionMeta}>{tx.reason || 'Operation wallet'}</Text>
+                </View>
+                <Text style={styles.transactionAmount}>
+                  {tx.type === 'CREDIT' ? '+' : '-'}
+                  {tx.amount} XOF
+                </Text>
+              </View>
+            ))}
+          </View>
+        </SurfaceCard>
+      )}
 
       {token && (
         <SurfaceCard style={styles.card} delay={210}>
@@ -1034,6 +1112,111 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 13,
     color: colors.slate600,
+  },
+  walletRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  walletLabel: {
+    fontSize: 12,
+    color: colors.slate500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    fontWeight: '600',
+  },
+  walletValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  walletBadge: {
+    backgroundColor: colors.slate100,
+    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  walletBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  paymentList: {
+    gap: spacing.sm,
+  },
+  paymentItem: {
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    backgroundColor: colors.white,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  paymentItemActive: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky50,
+  },
+  paymentTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.slate900,
+  },
+  paymentMeta: {
+    fontSize: 12,
+    color: colors.slate500,
+  },
+  defaultBadge: {
+    backgroundColor: colors.emerald100,
+    borderRadius: radius.md,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  defaultBadgeInactive: {
+    backgroundColor: colors.slate100,
+    borderRadius: radius.md,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  defaultBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.emerald500,
+  },
+  defaultBadgeTextInactive: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  transactionList: {
+    gap: spacing.sm,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.slate600,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  transactionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  transactionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate900,
+  },
+  transactionMeta: {
+    fontSize: 11,
+    color: colors.slate500,
+  },
+  transactionAmount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.slate900,
   },
   badgeRow: {
     flexDirection: 'row',

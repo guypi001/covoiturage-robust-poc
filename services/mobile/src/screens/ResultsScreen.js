@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { RideCard } from '../components/RideCard';
@@ -35,6 +35,7 @@ export function ResultsScreen({ navigation, route }) {
   const params = route?.params || {};
   const { token } = useAuth();
   const { toggleSavedRide, isSaved } = useSavedRides();
+  const [localSort, setLocalSort] = useState(params.sort || 'soonest');
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -42,6 +43,7 @@ export function ResultsScreen({ navigation, route }) {
   const [saveNotice, setSaveNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [bookedRideIds, setBookedRideIds] = useState(new Set());
+  const [hideUnavailable, setHideUnavailable] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +58,7 @@ export function ResultsScreen({ navigation, route }) {
           date: params.date,
           seats: params.seats ? Number(params.seats) : undefined,
           priceMax: params.priceMax ? Number(String(params.priceMax).replace(/[^\d]/g, '')) : undefined,
-          sort: params.sort,
+          sort: localSort,
           liveTracking: params.liveTracking,
           departureAfter: params.departureAfter,
           departureBefore: params.departureBefore,
@@ -78,7 +80,13 @@ export function ResultsScreen({ navigation, route }) {
     return () => {
       active = false;
     };
-  }, [params]);
+  }, [params, localSort]);
+
+  useEffect(() => {
+    if (params.sort && params.sort !== localSort) {
+      setLocalSort(params.sort);
+    }
+  }, [params.sort]);
 
   useEffect(() => {
     let active = true;
@@ -125,6 +133,13 @@ export function ResultsScreen({ navigation, route }) {
     driverLabel: ride.driverLabel || ride.driver || null,
   });
 
+  const visibleRides = useMemo(() => {
+    if (!hideUnavailable) return rides;
+    return rides.filter(
+      (ride) => !(Number(ride.seatsAvailable) <= 0 || bookedRideIds.has(ride.id)),
+    );
+  }, [rides, hideUnavailable, bookedRideIds]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -169,7 +184,7 @@ export function ResultsScreen({ navigation, route }) {
         <View style={styles.filterRow}>
           <View>
             <Text style={styles.filterText}>
-              Tri: {params.sort === 'cheapest' ? 'moins cher' : params.sort === 'seats' ? 'places' : params.sort === 'smart' ? 'intelligent' : 'plus tot'}
+              Tri: {localSort === 'cheapest' ? 'moins cher' : localSort === 'seats' ? 'places' : localSort === 'smart' ? 'intelligent' : 'plus tot'}
             </Text>
             <Text style={styles.filterMeta}>
               {params.liveTracking ? 'Suivi en direct active' : 'Suivi en direct desactive'}
@@ -211,6 +226,33 @@ export function ResultsScreen({ navigation, route }) {
             ) : null}
           </View>
         </View>
+        <View style={styles.quickSortRow}>
+          {[
+            { id: 'soonest', label: 'Plus tot' },
+            { id: 'cheapest', label: 'Moins cher' },
+            { id: 'seats', label: 'Places' },
+            { id: 'smart', label: 'Smart' },
+          ].map((item) => {
+            const active = localSort === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => setLocalSort(item.id)}
+                style={[styles.quickSortChip, active && styles.quickSortChipActive]}
+              >
+                <Text style={[styles.quickSortText, active && styles.quickSortTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          onPress={() => setHideUnavailable((prev) => !prev)}
+          style={[styles.quickSortChip, hideUnavailable && styles.quickSortChipActive]}
+        >
+          <Text style={[styles.quickSortText, hideUnavailable && styles.quickSortTextActive]}>
+            Masquer complets / deja reserves
+          </Text>
+        </Pressable>
       </SurfaceCard>
 
       <View style={styles.list}>
@@ -228,7 +270,7 @@ export function ResultsScreen({ navigation, route }) {
             ))}
           </View>
         ) : null}
-        {rides.map((ride, index) => (
+        {visibleRides.map((ride, index) => (
           <SurfaceCard key={ride.id} style={styles.rideCard} delay={180 + index * 40}>
             <RideCard
               ride={ride}
@@ -245,7 +287,7 @@ export function ResultsScreen({ navigation, route }) {
             </View>
           </SurfaceCard>
         ))}
-        {!loading && rides.length === 0 && !error ? (
+        {!loading && visibleRides.length === 0 && !error ? (
           <SurfaceCard style={styles.emptyCard} tone="soft" delay={120}>
             <Text style={styles.emptyTitle}>Aucun trajet trouve</Text>
             <Text style={styles.emptyText}>Essaie d'ajuster les filtres ou de modifier l'horaire.</Text>
@@ -310,6 +352,32 @@ const styles = StyleSheet.create({
     color: colors.slate500,
     fontSize: 12,
     marginTop: 4,
+  },
+  quickSortRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  quickSortChip: {
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+  },
+  quickSortChipActive: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky100,
+  },
+  quickSortText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  quickSortTextActive: {
+    color: colors.sky700,
   },
   loadingCard: {
     flexDirection: 'row',

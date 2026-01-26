@@ -75,6 +75,21 @@ export function RideDetailScreen({ route }) {
   const [newMethodProvider, setNewMethodProvider] = useState('Orange Money');
   const [newMethodPhone, setNewMethodPhone] = useState('');
   const [newMethodLast4, setNewMethodLast4] = useState('');
+  const [newCardNumber, setNewCardNumber] = useState('');
+  const [newCardExpiry, setNewCardExpiry] = useState('');
+  const [newCardCvv, setNewCardCvv] = useState('');
+  const [saveNewMethod, setSaveNewMethod] = useState(true);
+
+  const formatCardNumber = (value) => {
+    const digits = value.replace(/\D+/g, '').slice(0, 16);
+    return digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+  };
+
+  const formatExpiry = (value) => {
+    const digits = value.replace(/\D+/g, '').slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  };
   const [reportReason, setReportReason] = useState('Comportement inapproprie');
   const [reportMessage, setReportMessage] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
@@ -302,26 +317,54 @@ export function RideDetailScreen({ route }) {
             setPaymentBusy(false);
             return;
           }
-          const created = await addPaymentMethod(token, {
-            type: 'MOBILE_MONEY',
-            provider: newMethodProvider,
-            phoneNumber: newMethodPhone.trim(),
-            label: newMethodProvider,
-          });
-          method = created;
+          if (saveNewMethod) {
+            const created = await addPaymentMethod(token, {
+              type: 'MOBILE_MONEY',
+              provider: newMethodProvider,
+              phoneNumber: newMethodPhone.trim(),
+              label: newMethodProvider,
+            });
+            method = created;
+          } else {
+            method = {
+              type: 'MOBILE_MONEY',
+              provider: newMethodProvider,
+            };
+          }
         } else if (newMethodType === 'CARD') {
-          if (!newMethodLast4.trim()) {
-            showToast('Les 4 derniers chiffres sont requis.', 'error');
+          const normalizedCard = newCardNumber.replace(/\s+/g, '');
+          if (!normalizedCard || normalizedCard.length < 12) {
+            showToast('Numero de carte invalide.', 'error');
             setPaymentBusy(false);
             return;
           }
-          const created = await addPaymentMethod(token, {
-            type: 'CARD',
-            provider: newMethodProvider,
-            last4: newMethodLast4.trim(),
-            label: `Carte ${newMethodProvider}`,
-          });
-          method = created;
+          if (!/^\d{2}\/\d{2}$/.test(newCardExpiry.trim())) {
+            showToast('Date d’expiration invalide (MM/AA).', 'error');
+            setPaymentBusy(false);
+            return;
+          }
+          if (!/^\d{3,4}$/.test(newCardCvv.trim())) {
+            showToast('CVV invalide.', 'error');
+            setPaymentBusy(false);
+            return;
+          }
+          const last4 = normalizedCard.slice(-4);
+          if (saveNewMethod) {
+            const created = await addPaymentMethod(token, {
+              type: 'CARD',
+              provider: newMethodProvider,
+              last4,
+              expiresAt: newCardExpiry.trim(),
+              label: `Carte ${newMethodProvider}`,
+            });
+            method = created;
+          } else {
+            method = {
+              type: 'CARD',
+              provider: newMethodProvider,
+              last4,
+            };
+          }
         }
       } else if (selectedMethodId) {
         method = paymentMethods.find((item) => item.id === selectedMethodId) || null;
@@ -525,6 +568,9 @@ export function RideDetailScreen({ route }) {
               {ride?.liveTrackingEnabled ? 'Actif 15 min avant le depart' : 'Non active par le chauffeur'}
             </Text>
             <Text style={styles.infoHint}>Disponible jusqu'a l'arrivee. Notification des grandes villes.</Text>
+            {ride?.liveTrackingEnabled ? (
+              <PrimaryButton label="Voir le suivi" variant="ghost" onPress={handleOpenMap} />
+            ) : null}
           </SurfaceCard>
 
           <SurfaceCard style={styles.card} delay={240}>
@@ -762,17 +808,60 @@ export function RideDetailScreen({ route }) {
                       ))}
                     </View>
                     <InputField
-                      label="4 derniers chiffres"
-                      value={newMethodLast4}
-                      onChangeText={setNewMethodLast4}
+                      label="Numero de carte"
+                      value={newCardNumber}
+                      onChangeText={(value) => setNewCardNumber(formatCardNumber(value))}
                       keyboardType="number-pad"
-                      placeholder="1234"
+                      placeholder="1234 5678 9012 3456"
                     />
+                    <View style={styles.cardRow}>
+                      <View style={styles.cardField}>
+                        <InputField
+                          label="Expiration (MM/AA)"
+                          value={newCardExpiry}
+                          onChangeText={(value) => setNewCardExpiry(formatExpiry(value))}
+                          keyboardType="number-pad"
+                          placeholder="08/27"
+                        />
+                      </View>
+                      <View style={styles.cardField}>
+                        <InputField
+                          label="CVV"
+                          value={newCardCvv}
+                          onChangeText={(value) => setNewCardCvv(value.replace(/\D+/g, '').slice(0, 4))}
+                          keyboardType="number-pad"
+                          placeholder="•••"
+                        />
+                      </View>
+                    </View>
+                    {!newCardNumber.trim() ? (
+                      <InputField
+                        label="4 derniers chiffres"
+                        value={newMethodLast4}
+                        onChangeText={setNewMethodLast4}
+                        keyboardType="number-pad"
+                        placeholder="1234"
+                      />
+                    ) : null}
                   </>
                 ) : null}
 
                 {newMethodType === 'CASH' ? (
                   <Text style={styles.helperText}>Tu regleras sur place.</Text>
+                ) : null}
+
+                {newMethodType !== 'CASH' ? (
+                  <Pressable
+                    onPress={() => setSaveNewMethod((prev) => !prev)}
+                    style={styles.saveRow}
+                  >
+                    <View style={[styles.checkbox, saveNewMethod && styles.checkboxActive]}>
+                      {saveNewMethod ? (
+                        <Ionicons name="checkmark" size={12} color={colors.white} />
+                      ) : null}
+                    </View>
+                    <Text style={styles.saveText}>Enregistrer ce moyen de paiement</Text>
+                  </Pressable>
                 ) : null}
               </View>
             )}
@@ -1210,6 +1299,37 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  cardField: {
+    flex: 1,
+  },
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.slate300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  checkboxActive: {
+    backgroundColor: colors.slate900,
+    borderColor: colors.slate900,
+  },
+  saveText: {
+    fontSize: 12,
+    color: colors.slate600,
+    fontWeight: '600',
   },
   modalGhost: {
     flex: 1,

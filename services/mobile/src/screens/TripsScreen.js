@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { useAuth } from '../auth';
@@ -52,28 +53,29 @@ export function TripsScreen({ navigation }) {
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      if (!token) return;
-      setLoading(true);
-      try {
-        const [bookingRes, rideRes] = await Promise.all([getMyBookings(token), getMyRides(token)]);
-        if (!active) return;
-        setBookings(Array.isArray(bookingRes?.data) ? bookingRes.data : bookingRes?.items || []);
-        setRides(Array.isArray(rideRes?.data) ? rideRes.data : rideRes?.items || []);
-      } catch (err) {
-        if (active) showToast('Impossible de charger les trajets.', 'error');
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
+  const loadTrips = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError('');
+    try {
+      const [bookingRes, rideRes] = await Promise.all([getMyBookings(token), getMyRides(token)]);
+      setBookings(Array.isArray(bookingRes?.data) ? bookingRes.data : bookingRes?.items || []);
+      setRides(Array.isArray(rideRes?.data) ? rideRes.data : rideRes?.items || []);
+    } catch (err) {
+      setError('Impossible de charger les trajets.');
+      showToast('Impossible de charger les trajets.', 'error');
+    } finally {
+      setLoading(false);
+    }
   }, [token, showToast]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadTrips();
+    }, [loadTrips]),
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
@@ -116,6 +118,11 @@ export function TripsScreen({ navigation }) {
 
       <View style={styles.section}>
         <SectionHeader title="En tant que passager" icon="person-outline" />
+        {error ? (
+          <Pressable style={styles.retryPill} onPress={loadTrips}>
+            <Text style={styles.retryText}>Recharger</Text>
+          </Pressable>
+        ) : null}
         {loading ? (
           <View style={styles.skeletonList}>
             {Array.from({ length: 2 }).map((_, index) => (
@@ -159,6 +166,11 @@ export function TripsScreen({ navigation }) {
 
       <View style={styles.section}>
         <SectionHeader title="En tant que conducteur" icon="car-outline" />
+        {error ? (
+          <Pressable style={styles.retryPill} onPress={loadTrips}>
+            <Text style={styles.retryText}>Recharger</Text>
+          </Pressable>
+        ) : null}
         {loading ? (
           <View style={styles.skeletonList}>
             {Array.from({ length: 2 }).map((_, index) => (
@@ -239,6 +251,20 @@ const styles = StyleSheet.create({
   helper: {
     fontSize: 12,
     color: colors.slate500,
+  },
+  retryPill: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+  },
+  retryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate700,
   },
   card: {
     gap: 6,

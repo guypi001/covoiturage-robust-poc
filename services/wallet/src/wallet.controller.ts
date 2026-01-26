@@ -117,4 +117,16 @@ export class WalletController {
     await this.paymentMethods.delete(method.id);
     return { ok: true };
   }
+
+  @Post('payment-methods/:id/default')
+  async setDefaultMethod(@Param('id') id: string, @Query('ownerId') ownerId: string) {
+    if (!ownerId) throw new BadRequestException('owner_required');
+    const method = await this.paymentMethods.findOne({ where: { id, ownerId } });
+    if (!method) {
+      throw new BadRequestException('method_not_found');
+    }
+    await this.paymentMethods.update({ ownerId }, { isDefault: false });
+    await this.paymentMethods.update({ id, ownerId }, { isDefault: true });
+    return { ok: true, id };
+  }
 }

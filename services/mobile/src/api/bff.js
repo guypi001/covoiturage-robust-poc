@@ -46,6 +46,13 @@ export async function removePaymentMethod(token, id) {
   });
 }
 
+export async function setDefaultPaymentMethod(token, id) {
+  return apiFetch(`${ENDPOINTS.bff}/me/payment-methods/${id}/default`, {
+    method: 'POST',
+    headers: withAuth(token),
+  });
+}
+
 export async function getMyWallet(token) {
   return apiFetch(`${ENDPOINTS.bff}/me/wallet`, {
     headers: withAuth(token),
