@@ -184,6 +184,27 @@ export class ProxyController {
     );
   }
 
+  @Post('me/payment-methods/:id/default')
+  async setDefaultPaymentMethod(@Req() req: any, @Param('id') id: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('account_not_found');
+    }
+
+    return this.forward(
+      () =>
+        axios.post(
+          `${WALLET}/payment-methods/${id}/default`,
+          {},
+          {
+            params: { ownerId: account.id },
+            headers: this.internalHeaders(),
+          },
+        ),
+      'wallet',
+    );
+  }
+
   @Get('me/wallet')
   async getWallet(@Req() req: any) {
     const account = await this.fetchMyAccount(req);
