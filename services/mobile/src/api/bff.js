@@ -25,6 +25,12 @@ export async function getMyRides(token) {
   });
 }
 
+export async function getRideBookings(token, rideId) {
+  return apiFetch(`${ENDPOINTS.bff}/me/rides/${rideId}/bookings`, {
+    headers: withAuth(token),
+  });
+}
+
 export async function getMyPaymentMethods(token) {
   return apiFetch(`${ENDPOINTS.bff}/me/payment-methods`, {
     headers: withAuth(token),
@@ -82,6 +88,32 @@ export async function createBooking(token, { rideId, seats, passengerName, passe
 
 export async function capturePayment(token, payload) {
   return apiFetch(`${ENDPOINTS.bff}/payments/capture`, {
+    method: 'POST',
+    headers: withAuth(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getPublicProfile(token, accountId) {
+  return apiFetch(`${ENDPOINTS.bff}/profiles/${accountId}/public`, {
+    headers: withAuth(token),
+  });
+}
+
+export async function getRatingSummary(token, accountId) {
+  return apiFetch(`${ENDPOINTS.bff}/ratings/summary/${accountId}`, {
+    headers: withAuth(token),
+  });
+}
+
+export async function getBookingRating(token, bookingId) {
+  return apiFetch(`${ENDPOINTS.bff}/ratings/booking/${bookingId}`, {
+    headers: withAuth(token),
+  });
+}
+
+export async function createRating(token, payload) {
+  return apiFetch(`${ENDPOINTS.bff}/ratings`, {
     method: 'POST',
     headers: withAuth(token),
     body: JSON.stringify(payload),

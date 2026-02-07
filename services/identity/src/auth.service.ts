@@ -19,6 +19,7 @@ import {
   PasswordResetToken,
   PaymentPreferences,
 } from './entities';
+import { PROFILE_QUESTION_KEYS } from './profile-questions';
 import {
   RegisterCompanyDto,
   RegisterIndividualDto,
@@ -306,6 +307,17 @@ export class AuthService implements OnModuleInit {
     const defaultPaymentMethodId = input.defaultPaymentMethodId?.trim();
     if (!defaultPaymentMethodId) return null;
     return { defaultPaymentMethodId };
+  }
+
+  private sanitizeProfileAnswersInput(
+    input?: Record<string, any> | null,
+  ): Record<string, boolean> | null {
+    if (!input || typeof input !== 'object') return null;
+    const entries = Object.entries(input)
+      .filter(([key, value]) => PROFILE_QUESTION_KEYS.has(key) && typeof value === 'boolean')
+      .slice(0, PROFILE_QUESTION_KEYS.size);
+    if (!entries.length) return null;
+    return Object.fromEntries(entries);
   }
 
   private async refreshAccountMetrics() {
@@ -645,6 +657,7 @@ export class AuthService implements OnModuleInit {
       fullName: dto.fullName.trim(),
       comfortPreferences: this.formatPreferences(dto.comfortPreferences),
       tagline: dto.tagline?.trim() || null,
+      profileAnswers: this.sanitizeProfileAnswersInput(dto.profileAnswers),
       role: 'USER',
       status: 'SUSPENDED',
       emailVerifiedAt: null,
@@ -917,6 +930,9 @@ export class AuthService implements OnModuleInit {
     if (dto.paymentPreferences !== undefined) {
       account.paymentPreferences = this.sanitizePaymentPreferencesInput(dto.paymentPreferences) ?? null;
     }
+    if (dto.profileAnswers !== undefined) {
+      account.profileAnswers = this.sanitizeProfileAnswersInput(dto.profileAnswers) ?? null;
+    }
     const saved = await this.accounts.save(account);
     accountProfileUpdateCounter.inc({ actor: 'self', type: 'INDIVIDUAL' });
     return this.sanitize(saved);
@@ -959,6 +975,9 @@ export class AuthService implements OnModuleInit {
     }
     if (dto.paymentPreferences !== undefined) {
       account.paymentPreferences = this.sanitizePaymentPreferencesInput(dto.paymentPreferences) ?? null;
+    }
+    if (dto.profileAnswers !== undefined) {
+      account.profileAnswers = this.sanitizeProfileAnswersInput(dto.profileAnswers) ?? null;
     }
     const saved = await this.accounts.save(account);
     accountProfileUpdateCounter.inc({ actor: 'self', type: 'COMPANY' });
@@ -1048,6 +1067,9 @@ export class AuthService implements OnModuleInit {
     }
     if (dto.paymentPreferences !== undefined) {
       account.paymentPreferences = this.sanitizePaymentPreferencesInput(dto.paymentPreferences) ?? null;
+    }
+    if (dto.profileAnswers !== undefined) {
+      account.profileAnswers = this.sanitizeProfileAnswersInput(dto.profileAnswers) ?? null;
     }
 
     const saved = await this.accounts.save(account);

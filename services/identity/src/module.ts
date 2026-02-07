@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { ProfileController } from './profile.controller';
+import { PublicProfileController } from './public-profile.controller';
 import { HealthController } from './health.controller';
 import { MetricsController, MetricsMiddleware } from './metrics';
 import { InternalController } from './internal.controller';
@@ -49,6 +50,7 @@ const migrationsRun =
   controllers: [
     AuthController,
     ProfileController,
+    PublicProfileController,
     HealthController,
     MetricsController,
     InternalController,

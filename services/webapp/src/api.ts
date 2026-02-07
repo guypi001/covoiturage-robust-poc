@@ -602,6 +602,17 @@ export type PaymentPreferences = {
   defaultPaymentMethodId?: string;
 };
 
+export type RatingSummary = {
+  accountId: string;
+  count: number;
+  averages: {
+    punctuality: number;
+    driving: number;
+    cleanliness: number;
+    overall: number;
+  };
+};
+
 export type Account = {
   id: string;
   email: string;
@@ -620,6 +631,8 @@ export type Account = {
   profilePhotoUrl?: string | null;
   homePreferences?: HomePreferences | null;
   paymentPreferences?: PaymentPreferences | null;
+  profileAnswers?: Record<string, boolean> | null;
+  ratingSummary?: RatingSummary | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1224,7 +1237,7 @@ export async function getMyProfile(token: string): Promise<Account> {
 }
 
 export async function getPublicProfile(accountId: string, token: string): Promise<Account> {
-  const { data } = await api.get<Account>(`${IDENTITY_URL}/profiles/${accountId}/public`, {
+  const { data } = await api.get<Account>(`${BFF_URL}/profiles/${accountId}/public`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;

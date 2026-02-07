@@ -100,6 +100,10 @@ export class RegisterIndividualDto {
   @IsString()
   @MinLength(4)
   tagline?: string;
+
+  @IsOptional()
+  @IsObject()
+  profileAnswers?: Record<string, boolean>;
 }
 
 export class RegisterCompanyDto {
@@ -237,6 +241,10 @@ export class UpdateIndividualProfileDto {
   @ValidateNested()
   @Type(() => PaymentPreferencesDto)
   paymentPreferences?: PaymentPreferencesDto;
+
+  @IsOptional()
+  @IsObject()
+  profileAnswers?: Record<string, boolean>;
 }
 
 export class UpdateCompanyProfileDto {
@@ -284,6 +292,10 @@ export class UpdateCompanyProfileDto {
   @ValidateNested()
   @Type(() => PaymentPreferencesDto)
   paymentPreferences?: PaymentPreferencesDto;
+
+  @IsOptional()
+  @IsObject()
+  profileAnswers?: Record<string, boolean>;
 }
 
 export class RequestPhoneOtpDto {
@@ -481,6 +493,10 @@ export class UpdateAccountProfileDto {
   @ValidateNested()
   @Type(() => PaymentPreferencesDto)
   paymentPreferences?: PaymentPreferencesDto;
+
+  @IsOptional()
+  @IsObject()
+  profileAnswers?: Record<string, boolean>;
 }
 
 export class CreateReportDto {

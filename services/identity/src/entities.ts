@@ -22,6 +22,8 @@ export type PaymentPreferences = {
   defaultPaymentMethodId?: string;
 };
 
+export type ProfileAnswers = Record<string, boolean>;
+
 @Entity('accounts')
 export class Account {
   @PrimaryGeneratedColumn('uuid')
@@ -81,6 +83,9 @@ export class Account {
 
   @Column({ name: 'payment_preferences', type: 'jsonb', nullable: true })
   paymentPreferences?: PaymentPreferences | null;
+
+  @Column({ name: 'profile_answers', type: 'jsonb', nullable: true })
+  profileAnswers?: ProfileAnswers | null;
 
   @Column({ name: 'phone_verified_at', type: 'timestamptz', nullable: true })
   phoneVerifiedAt?: Date | null;

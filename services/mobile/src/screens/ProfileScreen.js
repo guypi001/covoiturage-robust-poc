@@ -22,6 +22,7 @@ import {
   verifyGmailOtp,
   requestPhoneOtp,
   verifyPhoneOtp,
+  getProfileQuestions,
 } from '../api/identity';
 import { useToast } from '../ui/ToastContext';
 import { resolveAssetUrl } from '../config';
@@ -31,6 +32,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
 import { useSavedRides } from '../savedRides';
+import { PROFILE_QUESTIONS } from '../utils/profileQuestions';
 
 export function ProfileScreen({ navigation }) {
   const { token, account, guest, login, logout, refreshProfile, applyAuth } = useAuth();
@@ -66,6 +68,8 @@ export function ProfileScreen({ navigation }) {
   const [companyVerification, setCompanyVerification] = useState(null);
   const [companyDocBusy, setCompanyDocBusy] = useState(false);
   const [companyDocType, setCompanyDocType] = useState('legal');
+  const [profileQuestions, setProfileQuestions] = useState(PROFILE_QUESTIONS);
+  const [profileAnswers, setProfileAnswers] = useState({});
 
   const MAX_COMPANY_DOC_SIZE = 6 * 1024 * 1024;
 
@@ -102,7 +106,26 @@ export function ProfileScreen({ navigation }) {
     setContactPhone(account.contactPhone || '');
     setTagline(account.tagline || '');
     setComfortText((account.comfortPreferences || []).join(', '));
+    setProfileAnswers(account.profileAnswers || {});
   }, [account]);
+
+  useEffect(() => {
+    let active = true;
+    if (!token) return;
+    getProfileQuestions(token)
+      .then((res) => {
+        if (!active) return;
+        const items = Array.isArray(res?.items) ? res.items : PROFILE_QUESTIONS;
+        setProfileQuestions(items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfileQuestions(PROFILE_QUESTIONS);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   const ownerId = account?.id || 'demo-user';
   const projectId =
@@ -333,6 +356,21 @@ export function ProfileScreen({ navigation }) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+
+  const normalizedProfileAnswers = useMemo(() => {
+    const result = {};
+    profileQuestions.forEach((question) => {
+      const value = profileAnswers?.[question.key];
+      if (typeof value === 'boolean') {
+        result[question.key] = value;
+      }
+    });
+    return result;
+  }, [profileAnswers, profileQuestions]);
+
+  const setAnswer = (key, value) => {
+    setProfileAnswers((prev) => ({ ...prev, [key]: value }));
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -693,6 +731,56 @@ export function ProfileScreen({ navigation }) {
               />
             </>
           )}
+          <View style={styles.questionSection}>
+            <Text style={styles.sectionLabel}>Profil voyageur</Text>
+            <Text style={styles.helperText}>
+              Reponds a ces questions pour afficher des preferences claires.
+            </Text>
+            <View style={styles.questionList}>
+              {profileQuestions.map((question) => {
+                const current = profileAnswers?.[question.key];
+                return (
+                  <View key={question.key} style={styles.questionRow}>
+                    <Text style={styles.questionText}>{question.label}</Text>
+                    <View style={styles.questionActions}>
+                      <Pressable
+                        onPress={() => setAnswer(question.key, true)}
+                        style={[
+                          styles.questionChip,
+                          current === true && styles.questionChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.questionChipText,
+                            current === true && styles.questionChipTextActive,
+                          ]}
+                        >
+                          Oui
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setAnswer(question.key, false)}
+                        style={[
+                          styles.questionChip,
+                          current === false && styles.questionChipActiveAlt,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.questionChipText,
+                            current === false && styles.questionChipTextActiveAlt,
+                          ]}
+                        >
+                          Non
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
           <InputField
             label="Accroche affichee sur ton profil"
             value={tagline}
@@ -723,6 +811,7 @@ export function ProfileScreen({ navigation }) {
                   tagline: tagline || undefined,
                   profilePhotoUrl: photoUrl || undefined,
                   removeProfilePhoto: !photoUrl,
+                  profileAnswers: normalizedProfileAnswers,
                 };
                 let updated;
                 if (isCompany) {
@@ -1286,6 +1375,57 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.slate700,
+  },
+  questionSection: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.white,
+    gap: spacing.xs,
+  },
+  questionList: {
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  questionRow: {
+    gap: 8,
+  },
+  questionText: {
+    fontSize: 13,
+    color: colors.slate700,
+  },
+  questionActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  questionChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate50,
+  },
+  questionChipActive: {
+    borderColor: colors.emerald400,
+    backgroundColor: colors.emerald50,
+  },
+  questionChipActiveAlt: {
+    borderColor: colors.rose400,
+    backgroundColor: colors.rose50,
+  },
+  questionChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  questionChipTextActive: {
+    color: colors.emerald600,
+  },
+  questionChipTextActiveAlt: {
+    color: colors.rose600,
   },
   docTypeRow: {
     flexDirection: 'row',

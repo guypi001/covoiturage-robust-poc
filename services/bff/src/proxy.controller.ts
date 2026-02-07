@@ -132,6 +132,30 @@ export class ProxyController {
     return this.forward(() => axios.post(`${RIDE}/rides`, payload), 'ride');
   }
 
+  @Get('me/rides/:rideId/bookings')
+  async myRideBookings(@Req() req: any, @Param('rideId') rideId: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('auth_required');
+    }
+    if (!rideId?.trim()) {
+      throw new NotFoundException('ride_not_found');
+    }
+    const rideRes = await axios.get(`${RIDE}/rides/${rideId}`, { headers: this.internalHeaders() });
+    const ride = rideRes?.data;
+    if (!ride?.id || ride?.driverId !== account.id) {
+      throw new ForbiddenException('not_ride_owner');
+    }
+    return this.forward(
+      () =>
+        axios.get(`${BOOKING}/admin/bookings`, {
+          params: { rideId: rideId },
+          headers: this.internalHeaders(),
+        }),
+      'booking',
+    );
+  }
+
   @Get('me/payment-methods')
   async myPaymentMethods(@Req() req: any) {
     const account = await this.fetchMyAccount(req);
@@ -1015,12 +1039,66 @@ export class ProxyController {
     }
     const headers: Record<string, string> = {};
     if (req.headers?.authorization) headers['authorization'] = req.headers.authorization;
+    try {
+      const [profileRes, ratingRes] = await Promise.allSettled([
+        axios.get(`${IDENTITY}/profiles/${id}/public`, { headers }),
+        axios.get(`${BOOKING}/ratings/summary/${id}`),
+      ]);
+      if (profileRes.status === 'rejected') {
+        const err = profileRes.reason;
+        if (axios.isAxiosError(err)) {
+          const status = err.response?.status ?? HttpStatus.INTERNAL_SERVER_ERROR;
+          throw new HttpException(err.response?.data ?? { error: 'profile_failed' }, status);
+        }
+        throw new InternalServerErrorException('profile_failed');
+      }
+      const ratingSummary = ratingRes.status === 'fulfilled' ? ratingRes.value.data : null;
+      return {
+        ...profileRes.value.data,
+        ratingSummary,
+      };
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status ?? HttpStatus.INTERNAL_SERVER_ERROR;
+        throw new HttpException(err.response?.data ?? { error: 'profile_failed' }, status);
+      }
+      throw new InternalServerErrorException('profile_failed');
+    }
+  }
+
+  @Post('ratings')
+  async createRating(@Req() req: any, @Body() body: any) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('auth_required');
+    }
     return this.forward(
       () =>
-        axios.get(`${IDENTITY}/profiles/${id}/public`, {
-          headers,
+        axios.post(`${BOOKING}/ratings`, {
+          ...body,
+          raterId: account.id,
         }),
-      'identity',
+      'booking',
+    );
+  }
+
+  @Get('ratings/summary/:accountId')
+  async ratingSummary(@Param('accountId') accountId: string) {
+    return this.forward(() => axios.get(`${BOOKING}/ratings/summary/${accountId}`), 'booking');
+  }
+
+  @Get('ratings/booking/:bookingId')
+  async ratingForBooking(@Req() req: any, @Param('bookingId') bookingId: string) {
+    const account = await this.fetchMyAccount(req);
+    if (!account?.id) {
+      throw new ForbiddenException('auth_required');
+    }
+    return this.forward(
+      () =>
+        axios.get(`${BOOKING}/ratings/booking/${bookingId}`, {
+          params: { raterId: account.id },
+        }),
+      'booking',
     );
   }
 

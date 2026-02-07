@@ -127,6 +127,13 @@ export async function getPublicProfile(token, accountId) {
   });
 }
 
+export async function getProfileQuestions(token) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  return apiFetch(`${ENDPOINTS.identity}/profiles/questions`, {
+    headers,
+  });
+}
+
 export async function getCompanyVerification(token) {
   return apiFetch(`${ENDPOINTS.identity}/companies/me/verification`, {
     headers: { Authorization: `Bearer ${token}` },

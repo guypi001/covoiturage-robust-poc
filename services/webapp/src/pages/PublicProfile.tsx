@@ -23,6 +23,15 @@ const extractDisplayName = (account?: Account | null) => {
   return account.fullName || account.companyName || account.email || 'Conducteur KariGo';
 };
 
+const PROFILE_QUESTIONS = [
+  { key: 'smokeFree', label: 'Non-fumeur' },
+  { key: 'acceptsPets', label: 'Animaux acceptes' },
+  { key: 'likesConversation', label: 'Aime discuter' },
+  { key: 'musicOk', label: 'Musique ok' },
+  { key: 'luggageSpace', label: 'Place bagages' },
+  { key: 'acOk', label: 'Climatisation' },
+];
+
 export default function PublicProfile() {
   const { accountId } = useParams<{ accountId: string }>();
   const token = useApp((state) => state.token);
@@ -90,6 +99,9 @@ export default function PublicProfile() {
   const lastLogin = useMemo(() => formatDate(profile?.lastLoginAt || undefined), [profile?.lastLoginAt]);
   const isCompany = profile?.type === 'COMPANY';
   const canMessage = Boolean(profile && currentAccount?.id && profile.id !== currentAccount.id);
+  const ratingSummary = profile?.ratingSummary;
+  const ratingCount = ratingSummary?.count ?? 0;
+  const ratingAverage = ratingSummary?.averages?.overall ?? 0;
 
   if (!accountId) {
     return (
@@ -162,6 +174,31 @@ export default function PublicProfile() {
                     {phoneVerified ? 'Téléphone vérifié' : 'Téléphone non vérifié'}
                   </span>
                 </div>
+                <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Note globale</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: 5 }).map((_, index) => {
+                        const active = index + 1 <= Math.round(ratingAverage);
+                        return (
+                          <Star
+                            key={`star-${index}`}
+                            size={16}
+                            className={active ? 'text-amber-500 fill-amber-400' : 'text-slate-300'}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className="text-sm font-semibold text-slate-700">
+                      {ratingCount ? ratingAverage.toFixed(1) : '--'} ({ratingCount})
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                    <span>Ponctualite: {ratingCount ? ratingSummary?.averages?.punctuality?.toFixed?.(1) : '--'}</span>
+                    <span>Conduite: {ratingCount ? ratingSummary?.averages?.driving?.toFixed?.(1) : '--'}</span>
+                    <span>Proprete: {ratingCount ? ratingSummary?.averages?.cleanliness?.toFixed?.(1) : '--'}</span>
+                  </div>
+                </div>
                 {since && (
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
                     <Calendar size={12} />
@@ -205,6 +242,32 @@ export default function PublicProfile() {
                 </div>
               </div>
             ) : null}
+
+            {profile.profileAnswers && (
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Profil voyageur</p>
+                <div className="flex flex-wrap gap-2">
+                  {PROFILE_QUESTIONS.filter((q) => typeof profile.profileAnswers?.[q.key] === 'boolean').map(
+                    (q) => {
+                      const value = profile.profileAnswers?.[q.key];
+                      return (
+                        <span
+                          key={q.key}
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                            value
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-rose-200 bg-rose-50 text-rose-600'
+                          }`}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          {q.label}
+                        </span>
+                      );
+                    },
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4 space-y-3 text-sm text-slate-700">
               <div className="flex items-center justify-between">

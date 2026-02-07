@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useAuth } from '../auth';
-import { cancelBooking } from '../api/bff';
+import { cancelBooking, createRating, getBookingRating, getRideBookings } from '../api/bff';
 import { useToast } from '../ui/ToastContext';
 import { useModal } from '../ui/ModalContext';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -68,6 +69,17 @@ export function TripDetailScreen({ navigation, route }) {
   const [reportReason, setReportReason] = useState('Comportement inapproprie');
   const [reportMessage, setReportMessage] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [ratingScores, setRatingScores] = useState({
+    punctuality: 0,
+    driving: 0,
+    cleanliness: 0,
+  });
+  const [rideBookings, setRideBookings] = useState([]);
+  const [rideBookingsBusy, setRideBookingsBusy] = useState(false);
+  const [bookingRatings, setBookingRatings] = useState({});
+  const [bookingScores, setBookingScores] = useState({});
   const rideId = ride?.rideId || ride?.id;
 
   useEffect(() => {
@@ -79,6 +91,99 @@ export function TripDetailScreen({ navigation, route }) {
     () => computeLiveStatus(ride?.departureAt, isBooking ? item?.status : ride?.status),
     [ride?.departureAt, item?.status, ride?.status, isBooking, nowTick],
   );
+
+  const showRating = isBooking && liveStatus === 'Termine' && item?.status !== 'CANCELLED';
+  const ratingReady =
+    ratingScores.punctuality > 0 &&
+    ratingScores.driving > 0 &&
+    ratingScores.cleanliness > 0;
+
+  const isDriverView = !isBooking && account?.id && ride?.driverId === account.id;
+  const canRatePassengers = isDriverView && ride?.status === 'CLOSED';
+
+  const setPassengerScore = (bookingId, key, value) => {
+    setBookingScores((prev) => ({
+      ...prev,
+      [bookingId]: { ...prev[bookingId], [key]: value },
+    }));
+  };
+
+  const isPassengerRatingReady = (bookingId) => {
+    const scores = bookingScores[bookingId];
+    return scores?.punctuality > 0 && scores?.driving > 0 && scores?.cleanliness > 0;
+  };
+
+  const setScore = (key, value) => {
+    setRatingScores((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const renderStars = (value, onSelect) => (
+    <View style={styles.ratingStars}>
+      {Array.from({ length: 5 }).map((_, index) => {
+        const score = index + 1;
+        const active = score <= value;
+        return (
+          <Pressable key={`${index}`} onPress={() => onSelect(score)}>
+            <Ionicons
+              name={active ? 'star' : 'star-outline'}
+              size={20}
+              color={active ? colors.amber500 : colors.slate300}
+            />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!token || !isDriverView || !rideId) return;
+    setRideBookingsBusy(true);
+    getRideBookings(token, rideId)
+      .then((res) => {
+        if (!active) return;
+        const items = Array.isArray(res?.data) ? res.data : res?.items || [];
+        setRideBookings(items);
+        return Promise.all(
+          items.map((booking) =>
+            getBookingRating(token, booking.id)
+              .then((rating) => ({ bookingId: booking.id, rating }))
+              .catch(() => ({ bookingId: booking.id, rating: null })),
+          ),
+        );
+      })
+      .then((results) => {
+        if (!active || !results) return;
+        const next = {};
+        results.forEach(({ bookingId, rating }) => {
+          if (rating?.id) next[bookingId] = true;
+        });
+        setBookingRatings(next);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setRideBookingsBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, isDriverView, rideId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!token || !item?.id || !isBooking) return;
+    getBookingRating(token, item.id)
+      .then((res) => {
+        if (!active) return;
+        if (res?.id) {
+          setRatingSubmitted(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [token, item?.id, isBooking]);
 
   const timelineSteps = useMemo(() => {
     const steps = [
@@ -295,6 +400,142 @@ export function TripDetailScreen({ navigation, route }) {
         ) : null}
       </SurfaceCard>
 
+      {isDriverView && (
+        <SurfaceCard style={styles.card} delay={125}>
+          <SectionHeader title="Passagers" icon="people-outline" />
+          {rideBookingsBusy ? (
+            <Text style={styles.helper}>Chargement des reservations...</Text>
+          ) : null}
+          {!rideBookingsBusy && rideBookings.length === 0 ? (
+            <Text style={styles.helper}>Aucune reservation pour ce trajet.</Text>
+          ) : null}
+          {rideBookings.map((booking) => {
+            const label =
+              booking.passengerName ||
+              booking.passengerEmail ||
+              booking.passengerPhone ||
+              'Passager';
+            const rated = bookingRatings[booking.id];
+            const scores = bookingScores[booking.id] || {};
+            return (
+              <View key={booking.id} style={styles.passengerCard}>
+                <View style={styles.passengerHeader}>
+                  <Text style={styles.passengerName}>{label}</Text>
+                  <Text style={styles.passengerMeta}>
+                    {booking.seats ? `${booking.seats} place(s)` : 'Reservation'}
+                  </Text>
+                </View>
+                {canRatePassengers ? (
+                  rated ? (
+                    <Text style={styles.helper}>Note envoyee.</Text>
+                  ) : (
+                    <>
+                      <View style={styles.ratingRow}>
+                        <Text style={styles.ratingLabel}>Ponctualite</Text>
+                        {renderStars(scores.punctuality || 0, (value) =>
+                          setPassengerScore(booking.id, 'punctuality', value),
+                        )}
+                      </View>
+                      <View style={styles.ratingRow}>
+                        <Text style={styles.ratingLabel}>Conduite</Text>
+                        {renderStars(scores.driving || 0, (value) =>
+                          setPassengerScore(booking.id, 'driving', value),
+                        )}
+                      </View>
+                      <View style={styles.ratingRow}>
+                        <Text style={styles.ratingLabel}>Proprete</Text>
+                        {renderStars(scores.cleanliness || 0, (value) =>
+                          setPassengerScore(booking.id, 'cleanliness', value),
+                        )}
+                      </View>
+                      <PrimaryButton
+                        label="Noter ce passager"
+                        variant="ghost"
+                        onPress={async () => {
+                          if (!token) return;
+                          if (!isPassengerRatingReady(booking.id)) {
+                            showToast('Complete toutes les notes.', 'error');
+                            return;
+                          }
+                          setRatingBusy(true);
+                          try {
+                            await createRating(token, {
+                              bookingId: booking.id,
+                              raterRole: 'DRIVER',
+                              ...bookingScores[booking.id],
+                            });
+                            setBookingRatings((prev) => ({ ...prev, [booking.id]: true }));
+                            showToast('Note envoyee.', 'success');
+                          } catch (err) {
+                            showToast("Impossible d'envoyer la note.", 'error');
+                          } finally {
+                            setRatingBusy(false);
+                          }
+                        }}
+                        disabled={ratingBusy}
+                      />
+                    </>
+                  )
+                ) : (
+                  <Text style={styles.helper}>
+                    La notation est disponible une fois le trajet termine.
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </SurfaceCard>
+      )}
+
+      {showRating && (
+        <SurfaceCard style={styles.card} delay={130}>
+          <SectionHeader title="Noter le trajet" icon="star-outline" />
+          {ratingSubmitted ? (
+            <Text style={styles.helper}>Merci ! Ta note a deja ete envoyee.</Text>
+          ) : (
+            <>
+              <View style={styles.ratingRow}>
+                <Text style={styles.ratingLabel}>Ponctualite</Text>
+                {renderStars(ratingScores.punctuality, (value) => setScore('punctuality', value))}
+              </View>
+              <View style={styles.ratingRow}>
+                <Text style={styles.ratingLabel}>Conduite</Text>
+                {renderStars(ratingScores.driving, (value) => setScore('driving', value))}
+              </View>
+              <View style={styles.ratingRow}>
+                <Text style={styles.ratingLabel}>Proprete</Text>
+                {renderStars(ratingScores.cleanliness, (value) => setScore('cleanliness', value))}
+              </View>
+              <PrimaryButton
+                label="Envoyer ma note"
+                onPress={async () => {
+                  if (!token || !item?.id) return;
+                  if (!ratingReady) {
+                    showToast('Complete toutes les notes.', 'error');
+                    return;
+                  }
+                  setRatingBusy(true);
+                  try {
+                    await createRating(token, {
+                      bookingId: item.id,
+                      raterRole: 'PASSENGER',
+                      ...ratingScores,
+                    });
+                    setRatingSubmitted(true);
+                    showToast('Merci pour ta note.', 'success');
+                  } catch (err) {
+                    showToast("Impossible d'envoyer la note.", 'error');
+                  } finally {
+                    setRatingBusy(false);
+                  }
+                }}
+                disabled={ratingBusy}
+              />
+            </>
+          )}
+        </SurfaceCard>
+      )}
+
       <SurfaceCard style={styles.card} delay={140}>
         <SectionHeader title="Signalement" icon="alert-circle-outline" />
         <View style={styles.reasonRow}>
@@ -342,6 +583,45 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     color: colors.slate600,
+  },
+  helper: {
+    fontSize: 13,
+    color: colors.slate600,
+  },
+  ratingRow: {
+    gap: 6,
+  },
+  ratingLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.slate700,
+  },
+  ratingStars: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  passengerCard: {
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.white,
+    gap: spacing.sm,
+  },
+  passengerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  passengerName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.slate900,
+    flex: 1,
+  },
+  passengerMeta: {
+    fontSize: 12,
+    color: colors.slate500,
   },
   timeline: {
     gap: spacing.sm,

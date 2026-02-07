@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { colors, radius, spacing, text } from '../theme';
@@ -6,11 +6,12 @@ import { InputField } from '../components/InputField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { BrandMark } from '../components/BrandMark';
 import { useAuth } from '../auth';
-import { requestGmailOtp, requestPasswordReset, resetPassword, verifyGmailOtp } from '../api/identity';
+import { getProfileQuestions, requestGmailOtp, requestPasswordReset, resetPassword, verifyGmailOtp } from '../api/identity';
 import { useToast } from '../ui/ToastContext';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
+import { PROFILE_QUESTIONS } from '../utils/profileQuestions';
 
 export function AuthScreen() {
   const { login, register, continueAsGuest, applyAuth } = useAuth();
@@ -25,6 +26,9 @@ export function AuthScreen() {
   const [otpCode, setOtpCode] = useState('');
   const [otpBusy, setOtpBusy] = useState(false);
   const [errors, setErrors] = useState({});
+  const [registerStep, setRegisterStep] = useState('form');
+  const [profileQuestions, setProfileQuestions] = useState(PROFILE_QUESTIONS);
+  const [profileAnswers, setProfileAnswers] = useState({});
   const [forgotMode, setForgotMode] = useState(false);
   const [resetStep, setResetStep] = useState('email');
   const [resetEmail, setResetEmail] = useState('');
@@ -67,6 +71,45 @@ export function AuthScreen() {
     return next;
   }, [email, password, firstName, lastName, mode]);
 
+  useEffect(() => {
+    let active = true;
+    if (mode !== 'register') return;
+    getProfileQuestions()
+      .then((res) => {
+        if (!active) return;
+        const items = Array.isArray(res?.items) ? res.items : PROFILE_QUESTIONS;
+        setProfileQuestions(items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfileQuestions(PROFILE_QUESTIONS);
+      });
+    return () => {
+      active = false;
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'register') {
+      setRegisterStep('form');
+    }
+  }, [mode]);
+
+  const normalizedProfileAnswers = useMemo(() => {
+    const result = {};
+    profileQuestions.forEach((question) => {
+      const value = profileAnswers?.[question.key];
+      if (typeof value === 'boolean') {
+        result[question.key] = value;
+      }
+    });
+    return result;
+  }, [profileAnswers, profileQuestions]);
+
+  const setAnswer = (key, value) => {
+    setProfileAnswers((prev) => ({ ...prev, [key]: value }));
+  };
+
   const handleSubmit = async () => {
     setErrors(validation);
     if (Object.keys(validation).length) return;
@@ -75,7 +118,12 @@ export function AuthScreen() {
       const emailTrimmed = email.trim();
       if (mode === 'register') {
         const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-        const res = await register({ fullName, email: emailTrimmed, password });
+        const res = await register({
+          fullName,
+          email: emailTrimmed,
+          password,
+          profileAnswers: normalizedProfileAnswers,
+        });
         if (res?.pending) {
           setPendingEmail(emailTrimmed);
           showToast('Code OTP envoye.', 'success');
@@ -198,6 +246,84 @@ export function AuthScreen() {
       setResetBusy(false);
     }
   };
+
+  if (!forgotMode && !pendingEmail && mode === 'register' && registerStep === 'onboarding') {
+    return (
+      <View style={styles.onboardingContainer}>
+        <View style={styles.onboardingHeader}>
+          <BrandMark size="lg" />
+          <View style={styles.onboardingProgress}>
+            <Text style={styles.onboardingStepText}>Etape 2 / 2</Text>
+            <View style={styles.onboardingProgressTrack}>
+              <View style={styles.onboardingProgressFill} />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.onboardingIllustration}>
+          <View style={styles.onboardingCircle} />
+          <View style={styles.onboardingCard}>
+            <Text style={styles.onboardingTitle}>Ton profil voyageur</Text>
+            <Text style={styles.onboardingSubtitle}>
+              Quelques questions rapides pour harmoniser les trajets.
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView style={styles.onboardingScroll} contentContainerStyle={styles.onboardingContent}>
+          <View style={styles.questionList}>
+            {profileQuestions.map((question) => {
+              const current = profileAnswers?.[question.key];
+              return (
+                <View key={question.key} style={styles.questionRow}>
+                  <Text style={styles.questionText}>{question.label}</Text>
+                  <View style={styles.questionActions}>
+                    <Pressable
+                      onPress={() => setAnswer(question.key, true)}
+                      style={[
+                        styles.questionChip,
+                        current === true && styles.questionChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.questionChipText,
+                          current === true && styles.questionChipTextActive,
+                        ]}
+                      >
+                        Oui
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setAnswer(question.key, false)}
+                      style={[
+                        styles.questionChip,
+                        current === false && styles.questionChipActiveAlt,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.questionChipText,
+                          current === false && styles.questionChipTextActiveAlt,
+                        ]}
+                      >
+                        Non
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <View style={styles.onboardingActions}>
+          <PrimaryButton label="Retour" variant="ghost" onPress={() => setRegisterStep('form')} />
+          <PrimaryButton label="Creer mon compte" onPress={handleSubmit} disabled={busy} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -354,8 +480,16 @@ export function AuthScreen() {
               error={errors.password}
             />
             <PrimaryButton
-              label={mode === 'register' ? 'Creer mon compte' : 'Se connecter'}
-              onPress={handleSubmit}
+              label={mode === 'register' ? 'Continuer' : 'Se connecter'}
+              onPress={() => {
+                if (mode === 'register') {
+                  setErrors(validation);
+                  if (Object.keys(validation).length) return;
+                  setRegisterStep('onboarding');
+                  return;
+                }
+                handleSubmit();
+              }}
               disabled={busy}
             />
             {busy ? <SkeletonBlock width="40%" height={8} /> : null}
@@ -391,6 +525,77 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.slate50,
+  },
+  onboardingContainer: {
+    flex: 1,
+    backgroundColor: colors.slate50,
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  onboardingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  onboardingProgress: {
+    flex: 1,
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  onboardingStepText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate500,
+  },
+  onboardingProgressTrack: {
+    width: 140,
+    height: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.slate200,
+    overflow: 'hidden',
+  },
+  onboardingProgressFill: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.brandPrimary,
+  },
+  onboardingIllustration: {
+    position: 'relative',
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    overflow: 'hidden',
+  },
+  onboardingCircle: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    right: -40,
+    top: -50,
+    backgroundColor: colors.sky100,
+  },
+  onboardingCard: {
+    gap: spacing.xs,
+  },
+  onboardingTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  onboardingSubtitle: {
+    fontSize: 13,
+    color: colors.slate600,
+  },
+  onboardingScroll: {
+    flex: 1,
+  },
+  onboardingContent: {
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
   },
   content: {
     padding: spacing.lg,
@@ -456,6 +661,53 @@ const styles = StyleSheet.create({
   visitorText: {
     fontSize: 13,
     color: colors.slate600,
+  },
+  questionList: {
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  questionRow: {
+    gap: 8,
+  },
+  questionText: {
+    fontSize: 13,
+    color: colors.slate700,
+  },
+  questionActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  questionChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate50,
+  },
+  questionChipActive: {
+    borderColor: colors.emerald400,
+    backgroundColor: colors.emerald50,
+  },
+  questionChipActiveAlt: {
+    borderColor: colors.rose400,
+    backgroundColor: colors.rose50,
+  },
+  questionChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.slate600,
+  },
+  questionChipTextActive: {
+    color: colors.emerald600,
+  },
+  questionChipTextActiveAlt: {
+    color: colors.rose600,
+  },
+  onboardingActions: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   forgotLink: {
     alignSelf: 'flex-start',

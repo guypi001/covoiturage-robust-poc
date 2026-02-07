@@ -1,13 +1,14 @@
 // services/booking/src/module.ts
 import { Module, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Booking } from './entities';
+import { Booking, Rating } from './entities';
 import { BookingController } from './booking.controller';
 import { EventBus } from './event-bus';
 import { AdminBookingController } from './admin.controller';
 import { InternalGuard } from './internal.guard';
 import { PaymentListener } from './payment.listener';
 import { MetricsController, MetricsMiddleware } from './metrics';
+import { RatingsController } from './ratings.controller';
 
 const migrationsRun =
   process.env.MIGRATIONS_RUN !== undefined
@@ -19,14 +20,14 @@ const migrationsRun =
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL || 'postgres://app:app@postgres:5432/covoiturage',
-      entities: [Booking],
+      entities: [Booking, Rating],
       synchronize: false,
       migrationsRun,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
     }),
-    TypeOrmModule.forFeature([Booking]),
+    TypeOrmModule.forFeature([Booking, Rating]),
   ],
-  controllers: [BookingController, AdminBookingController, MetricsController],
+  controllers: [BookingController, AdminBookingController, MetricsController, RatingsController],
   providers: [EventBus, InternalGuard, PaymentListener],
 })
 export class AppModule {

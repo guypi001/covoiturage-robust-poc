@@ -3,6 +3,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'PAID' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REFUNDED';
 export type PaymentMethodType = 'CARD' | 'MOBILE_MONEY' | 'CASH';
+export type RatingRole = 'PASSENGER' | 'DRIVER';
 
 @Entity('bookings')
 @Index(['rideId', 'createdAt'])
@@ -55,4 +56,36 @@ export class Booking {
   paymentRefundedAmount!: number;
 
   @CreateDateColumn() createdAt!: Date;
+}
+
+@Entity('ratings')
+@Index(['bookingId', 'raterId'], { unique: true })
+@Index(['rateeId', 'createdAt'])
+@Index(['rideId', 'createdAt'])
+export class Rating {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+
+  @Column({ name: 'booking_id', type: 'uuid' })
+  bookingId!: string;
+
+  @Column({ name: 'ride_id', type: 'varchar', length: 64 })
+  rideId!: string;
+
+  @Column({ name: 'rater_id', type: 'uuid' })
+  raterId!: string;
+
+  @Column({ name: 'ratee_id', type: 'uuid' })
+  rateeId!: string;
+
+  @Column({ name: 'rater_role', type: 'varchar', length: 16 })
+  raterRole!: RatingRole;
+
+  @Column('int') punctuality!: number;
+
+  @Column('int') driving!: number;
+
+  @Column('int') cleanliness!: number;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
 }
