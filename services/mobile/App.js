@@ -59,7 +59,8 @@ function MainTabs() {
     if (account?.id) {
       socket = new WebSocket(getMessagingWsUrl());
       socket.onopen = () => {
-        socket.send(JSON.stringify({ type: 'subscribe', userId: account.id }));
+        if (!token) return;
+        socket.send(JSON.stringify({ type: 'subscribe', token }));
       };
       socket.onmessage = (event) => {
         try {
@@ -83,7 +84,7 @@ function MainTabs() {
       active = false;
       if (socket) socket.close();
     };
-  }, [account?.id]);
+  }, [account?.id, token]);
 
   return (
     <Tab.Navigator

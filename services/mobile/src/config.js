@@ -1,4 +1,4 @@
-const baseUrl = (process.env.EXPO_PUBLIC_BASE_URL || 'http://82.112.255.155:3006').replace(/\/$/, '');
+const baseUrl = (process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:3006').replace(/\/$/, '');
 const apiBase = `${baseUrl}/api`;
 
 export const CONFIG = {

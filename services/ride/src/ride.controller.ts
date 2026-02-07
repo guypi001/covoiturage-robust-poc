@@ -15,6 +15,7 @@ import axios from 'axios';
 
 const IDENTITY_URL = process.env.IDENTITY_URL || 'http://identity:3000';
 const METRICS_REFRESH_DEBOUNCE_MS = 5000;
+const INTERNAL_KEY = (process.env.INTERNAL_API_KEY || '').trim();
 
 @Controller('rides')
 export class RideController {
@@ -73,6 +74,14 @@ export class RideController {
       this.refreshTimer = undefined;
       void this.refreshAggregates();
     }, METRICS_REFRESH_DEBOUNCE_MS);
+  }
+
+  private hasValidInternalKey(req: Request) {
+    if (!INTERNAL_KEY) return true;
+    const header =
+      (req.headers['x-internal-key'] as string | undefined) ||
+      (req.headers['x-internal-api-key'] as string | undefined);
+    return Boolean(header && header === INTERNAL_KEY);
   }
 
   @Post()
@@ -322,13 +331,17 @@ export class RideController {
 
   // Utilisé par "booking" pour réserver des places
   @Post(':id/lock')
-  async lock(@Param('id') id: string, @Body() body: { seats: number }, @Res() res: Response) {
+  async lock(
+    @Param('id') id: string,
+    @Body() body: { seats: number },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
     const endTimer = rideLockLatencyHistogram.startTimer();
     try {
-      const ride = await this.rides.findOne({ where: { id } });
-      if (!ride) {
-        rideLockAttemptCounter.inc({ result: 'not_found' });
-        return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+      if (!this.hasValidInternalKey(req)) {
+        rideLockAttemptCounter.inc({ result: 'forbidden' });
+        return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'invalid_internal_key' });
       }
 
       const n = Number(body?.seats ?? 1);
@@ -336,13 +349,32 @@ export class RideController {
         rideLockAttemptCounter.inc({ result: 'invalid_request' });
         return res.status(HttpStatus.BAD_REQUEST).json({ error: 'invalid_seats' });
       }
-      if (ride.seatsAvailable < n) {
+
+      const update = await this.rides
+        .createQueryBuilder()
+        .update(Ride)
+        .set({
+          seatsAvailable: () => `"seatsAvailable" - ${n}`,
+        })
+        .where('id = :id', { id })
+        .andWhere('"seatsAvailable" >= :seats', { seats: n })
+        .execute();
+
+      if (!update.affected) {
+        const exists = await this.rides.findOne({ where: { id }, select: ['id'] });
+        if (!exists) {
+          rideLockAttemptCounter.inc({ result: 'not_found' });
+          return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+        }
         rideLockAttemptCounter.inc({ result: 'conflict' });
         return res.status(HttpStatus.CONFLICT).json({ error: 'not_enough_seats' });
       }
 
-      ride.seatsAvailable -= n;
-      await this.rides.save(ride);
+      const ride = await this.rides.findOne({ where: { id } });
+      if (!ride) {
+        rideLockAttemptCounter.inc({ result: 'not_found' });
+        return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+      }
       await this.bus.publish('ride.updated', this.buildRideEvent(ride), ride.id);
       rideLockAttemptCounter.inc({ result: 'success' });
       this.queueRefresh();
@@ -353,6 +385,48 @@ export class RideController {
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'lock_failed' });
     } finally {
       endTimer();
+    }
+  }
+
+  @Post(':id/unlock')
+  async unlock(
+    @Param('id') id: string,
+    @Body() body: { seats: number },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!this.hasValidInternalKey(req)) {
+        return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'invalid_internal_key' });
+      }
+
+      const n = Number(body?.seats ?? 1);
+      if (!Number.isFinite(n) || n <= 0) {
+        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'invalid_seats' });
+      }
+
+      const update = await this.rides
+        .createQueryBuilder()
+        .update(Ride)
+        .set({
+          seatsAvailable: () => `LEAST("seatsTotal", "seatsAvailable" + ${n})`,
+        })
+        .where('id = :id', { id })
+        .execute();
+      if (!update.affected) {
+        return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+      }
+
+      const ride = await this.rides.findOne({ where: { id } });
+      if (!ride) {
+        return res.status(HttpStatus.NOT_FOUND).json({ error: 'not_found' });
+      }
+      await this.bus.publish('ride.updated', this.buildRideEvent(ride), ride.id);
+      this.queueRefresh();
+      return res.status(HttpStatus.OK).json({ ok: true, seatsAvailable: ride.seatsAvailable });
+    } catch (err: any) {
+      this.logger.error(`Ride unlock failed: ${err?.message ?? err}`);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'unlock_failed' });
     }
   }
 }

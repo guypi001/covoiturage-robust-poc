@@ -9,6 +9,7 @@ declare module 'ws' {
     readyState: number;
     on(event: string, listener: (...args: any[]) => void): void;
     send(data: any): void;
+    close(code?: number, reason?: string): void;
   }
 }
 

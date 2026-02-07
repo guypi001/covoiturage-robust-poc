@@ -19,6 +19,7 @@ import {
 const RIDE_URL   = process.env.RIDE_URL   || 'http://ride:3000';
 const WALLET_URL = process.env.WALLET_URL || 'http://wallet:3000';
 const METRICS_REFRESH_DEBOUNCE_MS = 5000;
+const INTERNAL_KEY = process.env.INTERNAL_API_KEY || '';
 
 @Controller('bookings')
 export class BookingController {
@@ -71,6 +72,30 @@ export class BookingController {
     return fallback;
   }
 
+  private internalHeaders() {
+    return {
+      'x-internal-key': INTERNAL_KEY,
+      'x-internal-api-key': INTERNAL_KEY,
+    };
+  }
+
+  private async unlockRideSeats(rideId: string, seats: number) {
+    try {
+      await http({
+        method: 'POST',
+        url: `${RIDE_URL}/rides/${rideId}/unlock`,
+        data: { seats },
+        headers: this.internalHeaders(),
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(
+        `Seat unlock failed for ride ${rideId}: ${(err as Error)?.message ?? err}`,
+      );
+      return false;
+    }
+  }
+
   @Get(':id')
   async get(@Param('id') id: string) {
     const b = await this.bookings.findOne({ where: { id } });
@@ -95,6 +120,7 @@ export class BookingController {
     }
     booking.status = 'CANCELLED';
     const saved = await this.bookings.save(booking);
+    await this.unlockRideSeats(saved.rideId, saved.seats);
     this.queueRefresh();
     return res.status(HttpStatus.OK).json(saved);
   }
@@ -103,7 +129,12 @@ export class BookingController {
   async create(@Body() dto: CreateBookingDto, @Res() res: Response) {
     // 1) lock des sièges côté ride
     try {
-      await http({ method: 'POST', url: `${RIDE_URL}/rides/${dto.rideId}/lock`, data: { seats: dto.seats } });
+      await http({
+        method: 'POST',
+        url: `${RIDE_URL}/rides/${dto.rideId}/lock`,
+        data: { seats: dto.seats },
+        headers: this.internalHeaders(),
+      });
     } catch (e: any) {
       bookingFailureCounter.inc({ reason: 'seat_lock' });
       this.logger.warn(`Seat lock failed for ride ${dto.rideId}: ${e?.message ?? e}`);
@@ -139,6 +170,7 @@ export class BookingController {
     } catch (e: any) {
       bookingFailureCounter.inc({ reason: 'persist' });
       this.logger.error(`Persist booking failed: ${e?.message ?? e}`);
+      await this.unlockRideSeats(dto.rideId, dto.seats);
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'persist_failed', detail: e?.message });
     }
 
@@ -155,6 +187,14 @@ export class BookingController {
     } catch (e: any) {
       bookingFailureCounter.inc({ reason: 'wallet_hold' });
       this.logger.warn(`Wallet hold failed for booking ${saved.id}: ${e?.message ?? e}`);
+      saved.status = 'CANCELLED';
+      saved.paymentStatus = 'FAILED';
+      saved.paymentError = 'wallet_hold_failed';
+      await this.bookings.save(saved);
+      await this.unlockRideSeats(saved.rideId, saved.seats);
+      return res
+        .status(HttpStatus.BAD_GATEWAY)
+        .json({ error: 'wallet_hold_failed', detail: e?.message });
     }
 
     // 5) émission de l’intention de paiement
@@ -167,6 +207,14 @@ export class BookingController {
     } catch (e: any) {
       bookingFailureCounter.inc({ reason: 'event_bus' });
       this.logger.error(`Kafka publish failed for booking ${saved.id}: ${e?.message ?? e}`);
+      saved.status = 'CANCELLED';
+      saved.paymentStatus = 'FAILED';
+      saved.paymentError = 'payment_intent_publish_failed';
+      await this.bookings.save(saved);
+      await this.unlockRideSeats(saved.rideId, saved.seats);
+      return res
+        .status(HttpStatus.BAD_GATEWAY)
+        .json({ error: 'payment_intent_failed', detail: e?.message });
     }
 
     try {

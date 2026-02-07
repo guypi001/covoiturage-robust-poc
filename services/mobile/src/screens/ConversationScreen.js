@@ -140,7 +140,7 @@ function TypingPulse() {
 
 export function ConversationScreen({ route }) {
   const navigation = useNavigation();
-  const { account } = useAuth();
+  const { account, token } = useAuth();
   const { showToast } = useToast();
   const { conversationId, otherParticipant } = route.params || {};
   const [messages, setMessages] = useState([]);
@@ -178,7 +178,8 @@ export function ConversationScreen({ route }) {
       socket = new WebSocket(getMessagingWsUrl());
       socketRef.current = socket;
       socket.onopen = () => {
-        socket.send(JSON.stringify({ type: 'subscribe', userId: account.id }));
+        if (!token) return;
+        socket.send(JSON.stringify({ type: 'subscribe', token }));
       };
       socket.onmessage = (event) => {
         try {
@@ -244,7 +245,7 @@ export function ConversationScreen({ route }) {
     return () => {
       if (socket) socket.close();
     };
-  }, [account?.id, conversationId]);
+  }, [account?.id, conversationId, token]);
 
   useEffect(() => {
     let active = true;

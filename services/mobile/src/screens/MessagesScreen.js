@@ -47,7 +47,7 @@ function AnimatedListItem({ children, delay = 0 }) {
 }
 
 export function MessagesScreen({ navigation }) {
-  const { account } = useAuth();
+  const { account, token } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -85,7 +85,8 @@ export function MessagesScreen({ navigation }) {
     if (account?.id) {
       socket = new WebSocket(getMessagingWsUrl());
       socket.onopen = () => {
-        socket.send(JSON.stringify({ type: 'subscribe', userId: account.id }));
+        if (!token) return;
+        socket.send(JSON.stringify({ type: 'subscribe', token }));
       };
       socket.onmessage = (event) => {
         try {
@@ -108,7 +109,7 @@ export function MessagesScreen({ navigation }) {
       active = false;
       if (socket) socket.close();
     };
-  }, [account?.id]);
+  }, [account?.id, token]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

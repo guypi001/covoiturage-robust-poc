@@ -93,7 +93,7 @@ const fallbackPort =
   '3006';
 
 const DEFAULT_PUBLIC_URL = `${process.env.APP_PUBLIC_PROTOCOL || 'http'}://${
-  process.env.APP_PUBLIC_HOST || '192.168.0.50'
+  process.env.APP_PUBLIC_HOST || 'localhost'
 }${fallbackPort ? `:${fallbackPort}` : ''}`;
 
 const APP_PUBLIC_URL = (() => {

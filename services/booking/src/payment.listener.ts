@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Booking, PaymentMethodType } from './entities';
 import { EventBus } from './event-bus';
+import { http } from './utils';
 
 type PaymentCapturedEvent = {
   bookingId: string;
@@ -25,6 +26,8 @@ type PaymentRefundedEvent = {
 const CARD_PROVIDERS = new Set(['VISA', 'MASTERCARD', 'CARTE']);
 const MOBILE_PROVIDERS = new Set(['MTN Money', 'Orange Money', 'Moov Money']);
 const METHOD_TYPES = new Set<PaymentMethodType>(['CARD', 'MOBILE_MONEY', 'CASH']);
+const RIDE_URL = process.env.RIDE_URL || 'http://ride:3000';
+const INTERNAL_KEY = process.env.INTERNAL_API_KEY || '';
 
 @Injectable()
 export class PaymentListener implements OnModuleInit {
@@ -45,6 +48,28 @@ export class PaymentListener implements OnModuleInit {
     await this.bus.subscribe('booking-group', 'payment.refunded', async (evt) => {
       await this.handlePaymentRefunded(evt as PaymentRefundedEvent);
     });
+  }
+
+  private internalHeaders() {
+    return {
+      'x-internal-key': INTERNAL_KEY,
+      'x-internal-api-key': INTERNAL_KEY,
+    };
+  }
+
+  private async unlockRideSeats(rideId: string, seats: number) {
+    try {
+      await http({
+        method: 'POST',
+        url: `${RIDE_URL}/rides/${rideId}/unlock`,
+        data: { seats },
+        headers: this.internalHeaders(),
+      });
+    } catch (err) {
+      this.logger.error(
+        `payment.failed unlock seats failed for ride ${rideId}: ${(err as Error)?.message ?? err}`,
+      );
+    }
   }
 
   private async handlePaymentCaptured(evt: PaymentCapturedEvent) {
@@ -87,6 +112,10 @@ export class PaymentListener implements OnModuleInit {
     if (!evt?.bookingId) return;
     const booking = await this.bookings.findOne({ where: { id: evt.bookingId } });
     if (!booking) return;
+    if (booking.status !== 'CANCELLED') {
+      booking.status = 'CANCELLED';
+      await this.unlockRideSeats(booking.rideId, booking.seats);
+    }
     booking.paymentStatus = 'FAILED';
     booking.paymentError = evt.reason?.slice(0, 160) || 'payment_failed';
     await this.bookings.save(booking);
