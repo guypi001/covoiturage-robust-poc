@@ -14,6 +14,13 @@ docker compose up --build --detach
 # Administration métier: http://localhost:3006/admin/accounts (connecte-toi avec un compte ADMIN)
 ```
 
+### Premier démarrage après un `git pull` (serveur)
+```bash
+./ops/init-env.sh
+COMPOSE_PROFILES=proxy docker compose up -d --build
+```
+Le script crée automatiquement les fichiers `.env` manquants (copie depuis `.env.example` quand disponible, sinon fichier vide).
+
 ## HTTPS en prod + mode local
 
 - **Local** : rien à changer, continue d’utiliser `make up` (ou `docker compose up -d`). Le port `3006` reste exposé directement depuis `webapp`, et Traefik n’est pas démarré car il est derrière un profil Compose (`proxy`).

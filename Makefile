@@ -1,6 +1,10 @@
-.PHONY: up down logs
+.PHONY: init-env up down logs
+
+init-env:
+	./ops/init-env.sh
 
 up:
+	./ops/init-env.sh
 	docker compose up --build --detach
 
 down:
