@@ -16,6 +16,12 @@ const fallbackPrefs = {
     liveTracking: true,
     sort: 'soonest',
   },
+  appSettings: {
+    appearance: 'system',
+    haptics: true,
+    compactCards: false,
+    autoPlayAnimations: true,
+  },
 };
 
 export async function loadPreferences() {
@@ -28,6 +34,7 @@ export async function loadPreferences() {
       ...parsed,
       homeDefaults: { ...fallbackPrefs.homeDefaults, ...(parsed.homeDefaults || {}) },
       searchDefaults: { ...fallbackPrefs.searchDefaults, ...(parsed.searchDefaults || {}) },
+      appSettings: { ...fallbackPrefs.appSettings, ...(parsed.appSettings || {}) },
     };
   } catch {
     return fallbackPrefs;

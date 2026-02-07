@@ -33,6 +33,7 @@ import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
 import { useSavedRides } from '../savedRides';
 import { PROFILE_QUESTIONS } from '../utils/profileQuestions';
+import { loadPreferences, savePreferences } from '../preferences';
 
 export function ProfileScreen({ navigation }) {
   const { token, account, guest, login, logout, refreshProfile, applyAuth } = useAuth();
@@ -70,6 +71,12 @@ export function ProfileScreen({ navigation }) {
   const [companyDocType, setCompanyDocType] = useState('legal');
   const [profileQuestions, setProfileQuestions] = useState(PROFILE_QUESTIONS);
   const [profileAnswers, setProfileAnswers] = useState({});
+  const [appSettings, setAppSettings] = useState({
+    appearance: 'system',
+    haptics: true,
+    compactCards: false,
+    autoPlayAnimations: true,
+  });
 
   const MAX_COMPANY_DOC_SIZE = 6 * 1024 * 1024;
 
@@ -84,6 +91,17 @@ export function ProfileScreen({ navigation }) {
     } catch {
       // ignore clipboard errors
     }
+  };
+
+  const persistAppSettings = async (nextSettings) => {
+    const current = await loadPreferences();
+    await savePreferences({
+      ...current,
+      appSettings: {
+        ...(current.appSettings || {}),
+        ...nextSettings,
+      },
+    });
   };
 
   const isCompany = account?.type === 'COMPANY';
@@ -126,6 +144,24 @@ export function ProfileScreen({ navigation }) {
       active = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    const hydrateSettings = async () => {
+      const prefs = await loadPreferences();
+      if (!active) return;
+      setAppSettings({
+        appearance: prefs?.appSettings?.appearance || 'system',
+        haptics: prefs?.appSettings?.haptics ?? true,
+        compactCards: prefs?.appSettings?.compactCards ?? false,
+        autoPlayAnimations: prefs?.appSettings?.autoPlayAnimations ?? true,
+      });
+    };
+    hydrateSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const ownerId = account?.id || 'demo-user';
   const projectId =
@@ -372,6 +408,12 @@ export function ProfileScreen({ navigation }) {
     setProfileAnswers((prev) => ({ ...prev, [key]: value }));
   };
 
+  const setAppSetting = async (key, value) => {
+    const next = { ...appSettings, [key]: value };
+    setAppSettings(next);
+    await persistAppSettings(next);
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -553,12 +595,18 @@ export function ProfileScreen({ navigation }) {
           <Text style={styles.preferenceValue}>{pushStatus}</Text>
         </View>
         <View style={styles.preferenceRow}>
-          <Text style={styles.preferenceLabel}>Theme</Text>
-          <Text style={styles.preferenceValue}>Clair</Text>
+          <Text style={styles.preferenceLabel}>Apparence</Text>
+          <Text style={styles.preferenceValue}>
+            {appSettings.appearance === 'dark'
+              ? 'Sombre'
+              : appSettings.appearance === 'light'
+                ? 'Clair'
+                : 'Système'}
+          </Text>
         </View>
         <View style={styles.preferenceRow}>
           <Text style={styles.preferenceLabel}>Mode trajet</Text>
-          <Text style={styles.preferenceValue}>Passager</Text>
+          <Text style={styles.preferenceValue}>{isCompany ? 'Entreprise' : 'Particulier'}</Text>
         </View>
         {loadingData && token ? (
           <View style={styles.skeletonList}>
@@ -567,6 +615,88 @@ export function ProfileScreen({ navigation }) {
           </View>
         ) : null}
       </SurfaceCard>
+
+      {token && (
+        <SurfaceCard style={styles.card} delay={188}>
+          <SectionHeader icon="settings-outline" title="Parametres de l'application" meta="Experience & accessibilite" />
+          <View style={styles.appSettingRow}>
+            <Text style={styles.preferenceLabel}>Theme de l'app</Text>
+            <View style={styles.docTypeRow}>
+              {[
+                { id: 'system', label: 'Système' },
+                { id: 'light', label: 'Clair' },
+                { id: 'dark', label: 'Sombre' },
+              ].map((option) => (
+                <Pressable
+                  key={option.id}
+                  onPress={() => setAppSetting('appearance', option.id)}
+                  style={[
+                    styles.docTypeChip,
+                    appSettings.appearance === option.id && styles.docTypeChipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.docTypeChipText,
+                      appSettings.appearance === option.id && styles.docTypeChipTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Animations</Text>
+            <Pressable
+              onPress={() => setAppSetting('autoPlayAnimations', !appSettings.autoPlayAnimations)}
+              style={appSettings.autoPlayAnimations ? styles.badgeSuccess : styles.badgeWarning}
+            >
+              <Text style={appSettings.autoPlayAnimations ? styles.badgeTextSuccess : styles.badgeTextWarning}>
+                {appSettings.autoPlayAnimations ? 'Activees' : 'Reduites'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Retour haptique</Text>
+            <Pressable
+              onPress={() => setAppSetting('haptics', !appSettings.haptics)}
+              style={appSettings.haptics ? styles.badgeSuccess : styles.badgeWarning}
+            >
+              <Text style={appSettings.haptics ? styles.badgeTextSuccess : styles.badgeTextWarning}>
+                {appSettings.haptics ? 'Active' : 'Desactive'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Cartes compactes</Text>
+            <Pressable
+              onPress={() => setAppSetting('compactCards', !appSettings.compactCards)}
+              style={appSettings.compactCards ? styles.badgeSuccess : styles.badge}
+            >
+              <Text style={appSettings.compactCards ? styles.badgeTextSuccess : styles.badgeText}>
+                {appSettings.compactCards ? 'Oui' : 'Non'}
+              </Text>
+            </Pressable>
+          </View>
+          <PrimaryButton
+            label="Reinitialiser les parametres"
+            variant="ghost"
+            onPress={async () => {
+              const defaults = {
+                appearance: 'system',
+                haptics: true,
+                compactCards: false,
+                autoPlayAnimations: true,
+              };
+              setAppSettings(defaults);
+              await persistAppSettings(defaults);
+              showToast('Paramètres réinitialisés.', 'success');
+            }}
+          />
+        </SurfaceCard>
+      )}
 
       {token && (
         <SurfaceCard style={styles.card} delay={195}>
@@ -1194,6 +1324,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.slate900,
+  },
+  appSettingRow: {
+    gap: 8,
   },
   skeletonList: {
     gap: 8,

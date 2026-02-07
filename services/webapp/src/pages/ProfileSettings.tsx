@@ -20,6 +20,21 @@ type EditableRoute = { from: string; to: string };
 const MAX_ROUTES = 5;
 const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
 const MAX_PHOTO_DIMENSION = 512;
+const APP_PREFS_KEY = 'kari_app_settings';
+
+type AppSettings = {
+  appearance: 'system' | 'light' | 'dark';
+  reducedMotion: boolean;
+  compactCards: boolean;
+  soundsEnabled: boolean;
+};
+
+const APP_SETTINGS_DEFAULTS: AppSettings = {
+  appearance: 'system',
+  reducedMotion: false,
+  compactCards: false,
+  soundsEnabled: true,
+};
 
 const optimizeProfilePhoto = async (file: File) => {
   if (!file.type.startsWith('image/')) return file;
@@ -59,6 +74,7 @@ export default function ProfileSettings() {
   const token = useApp((state) => state.token);
   const account = useApp((state) => state.account);
   const setSession = useApp((state) => state.setSession);
+  const clearSession = useApp((state) => state.clearSession);
 
   const [tagline, setTagline] = useState('');
   const [comfort, setComfort] = useState('');
@@ -77,6 +93,7 @@ export default function ProfileSettings() {
   const [companyVerification, setCompanyVerification] = useState<any>(null);
   const [companyDocUploading, setCompanyDocUploading] = useState(false);
   const [companyDocType, setCompanyDocType] = useState('legal');
+  const [appSettings, setAppSettings] = useState<AppSettings>(APP_SETTINGS_DEFAULTS);
 
   const accountType = account?.type as AccountType | undefined;
 
@@ -113,6 +130,31 @@ export default function ProfileSettings() {
       }
     };
   }, [photoPreview]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(APP_PREFS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setAppSettings({
+        ...APP_SETTINGS_DEFAULTS,
+        ...(parsed || {}),
+      });
+    } catch {
+      setAppSettings(APP_SETTINGS_DEFAULTS);
+    }
+  }, []);
+
+  const persistAppSettings = (next: AppSettings) => {
+    setAppSettings(next);
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(APP_PREFS_KEY, JSON.stringify(next));
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   const loadCompanyVerification = async () => {
     if (!token || account?.type !== 'COMPANY') return;
@@ -447,6 +489,108 @@ export default function ProfileSettings() {
               </p>
             </div>
           )}
+        </section>
+
+        <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <header>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Paramètres de l’application
+            </h2>
+            <p className="text-xs text-slate-500">
+              Réglages de confort local pour cet appareil.
+            </p>
+          </header>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Apparence</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'system', label: 'Système' },
+                { id: 'light', label: 'Clair' },
+                { id: 'dark', label: 'Sombre' },
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() =>
+                    persistAppSettings({
+                      ...appSettings,
+                      appearance: option.id as AppSettings['appearance'],
+                    })
+                  }
+                  className={`rounded-xl border px-4 py-2 text-sm transition ${
+                    appSettings.appearance === option.id
+                      ? 'border-sky-400 bg-sky-50 text-sky-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-sky-600'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={appSettings.reducedMotion}
+                onChange={(e) =>
+                  persistAppSettings({ ...appSettings, reducedMotion: e.target.checked })
+                }
+                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+              />
+              Réduire les animations
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={appSettings.compactCards}
+                onChange={(e) =>
+                  persistAppSettings({ ...appSettings, compactCards: e.target.checked })
+                }
+                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+              />
+              Cartes compactes
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={appSettings.soundsEnabled}
+                onChange={(e) =>
+                  persistAppSettings({ ...appSettings, soundsEnabled: e.target.checked })
+                }
+                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+              />
+              Sons d’interface
+            </label>
+          </div>
+        </section>
+
+        <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <header>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Sécurité du compte
+            </h2>
+            <p className="text-xs text-slate-500">
+              Gestion de session et protection de l’accès.
+            </p>
+          </header>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Session active sur cet appareil</p>
+              <p className="text-xs text-slate-500">
+                Déconnecte-toi si tu utilises un appareil partagé.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={clearSession}
+              className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+            >
+              Se déconnecter
+            </button>
+          </div>
         </section>
 
         <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
