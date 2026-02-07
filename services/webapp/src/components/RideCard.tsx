@@ -5,6 +5,7 @@ import { useApp } from '../store';
 import { useRideAvailability } from '../hooks/useRideAvailability';
 import { CityIcon } from '../utils/cityIcons';
 import { resolveIdentityAssetUrl } from '../api';
+import { formatDateShort, formatMoneyXof, formatTimeShort } from '../utils/format';
 
 type Props = {
   rideId?: string;
@@ -66,9 +67,8 @@ export default function RideCard({
     if (!trimmed) return undefined;
     return trimmed.split(/\s+/)[0];
   };
-  const dt = new Date(departureAt);
-  const dateLabel = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-  const timeLabel = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const dateLabel = formatDateShort(departureAt);
+  const timeLabel = formatTimeShort(departureAt);
   const seatsLabel =
     typeof liveSeatsTotal === 'number' ? `${liveSeatsAvailable}/${liveSeatsTotal}` : `${liveSeatsAvailable}`;
   const seatsCount = Math.max(1, Number.isFinite(selectedSeats as number) ? Number(selectedSeats) : 1);
@@ -193,13 +193,13 @@ export default function RideCard({
           </div>
           <div className="flex items-center gap-4 text-right">
             <div className="text-sm">
-              <p className={`text-2xl font-bold ${palette.price}`}>{pricePerSeat.toLocaleString()} XOF</p>
+              <p className={`text-2xl font-bold ${palette.price}`}>{formatMoneyXof(pricePerSeat)}</p>
               <p className={`text-xs font-semibold ${palette.info}`}>
                 {soldOut ? 'Complet' : `${liveSeatsAvailable} pl. (${seatsLabel})`}
               </p>
               {seatsCount > 1 && (
                 <p className={`text-[11px] ${palette.subtitle}`}>
-                  Total pour {seatsCount} sièges : {totalPrice.toLocaleString()} XOF
+                  Total pour {seatsCount} sièges : {formatMoneyXof(totalPrice)}
                 </p>
               )}
             </div>

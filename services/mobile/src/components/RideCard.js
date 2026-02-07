@@ -3,17 +3,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadows, spacing, text } from '../theme';
 import { getFirstName } from '../utils/name';
 import { resolveAssetUrl } from '../config';
+import { formatDepartureBadge, formatXof } from '../utils/format';
 
 export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
   const driverLabel = getFirstName(ride.driver) || ride.driver;
   const showPhoto = Boolean(ride.driverPhotoUrl);
   const isBlocked = Boolean(isFull || isBooked);
+  const departureBadge = formatDepartureBadge(ride.departureRaw);
 
   return (
     <View style={[styles.card, isBlocked && styles.cardMuted]}>
       <View style={styles.badgeRow}>
         <View style={styles.badgeSoft}>
-          <Text style={styles.badgeSoftText}>Depart proche</Text>
+          <Text style={styles.badgeSoftText}>{departureBadge}</Text>
         </View>
         {isFull ? (
           <View style={styles.badgeFull}>
@@ -22,7 +24,7 @@ export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
         ) : null}
         {isBooked ? (
           <View style={styles.badgeBooked}>
-            <Text style={styles.badgeBookedText}>Deja reserve</Text>
+            <Text style={styles.badgeBookedText}>Déjà réservé</Text>
           </View>
         ) : null}
         {onToggleSave ? (
@@ -63,7 +65,7 @@ export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
         </View>
         <View style={styles.infoItem}>
           <Ionicons name="cash-outline" size={14} color={colors.slate500} />
-          <Text style={styles.infoText}>{ride.price}</Text>
+          <Text style={styles.infoText}>{formatXof(ride.priceRaw)}</Text>
         </View>
         <View style={styles.infoItem}>
           <Ionicons name="people-outline" size={14} color={colors.slate500} />
@@ -80,8 +82,8 @@ export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
             )}
           </View>
           <View>
-            <Text style={styles.price}>{ride.price}</Text>
-            <Text style={styles.driver}>Chauffeur: {driverLabel}</Text>
+            <Text style={styles.price}>{formatXof(ride.priceRaw)}</Text>
+            <Text style={styles.driver}>Conducteur: {driverLabel}</Text>
           </View>
         </View>
         <View style={styles.pill}>
@@ -91,7 +93,7 @@ export function RideCard({ ride, saved, onToggleSave, isFull, isBooked }) {
       {isBlocked ? (
         <View style={styles.overlay}>
           <Text style={styles.overlayText}>
-            {isFull ? 'Trajet complet' : 'Deja reserve'}
+            {isFull ? 'Trajet complet' : 'Déjà réservé'}
           </Text>
         </View>
       ) : null}

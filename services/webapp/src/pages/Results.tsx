@@ -9,6 +9,7 @@ import { saveSearch } from '../api';
 import { useRideSearch } from '../hooks/useRideSearch';
 import type { SearchMeta } from '../api';
 import { CityBadge } from '../utils/cityIcons';
+import { formatDateShort, formatMoneyXof, formatTimeShort } from '../utils/format';
 
 const RESULTS_STALE_MS = 60000;
 
@@ -284,7 +285,7 @@ export function Results() {
 
           {searchMeta?.from?.suggestions?.length || searchMeta?.to?.suggestions?.length ? (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Did you mean</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Suggestions de villes</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 {searchMeta?.from?.suggestions?.map((suggestion) => (
                   <button
@@ -337,7 +338,7 @@ export function Results() {
             )}
             {lastSearch.priceMax && (
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${chipsStyle.accent}`}>
-                Budget ≤ {lastSearch.priceMax.toLocaleString('fr-FR')} XOF
+                Budget ≤ {formatMoneyXof(lastSearch.priceMax)}
               </span>
             )}
             {timeWindowChip && (
@@ -382,10 +383,10 @@ export function Results() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Meilleur prix</p>
                   <p className="text-lg font-semibold text-slate-900">
-                    {insights.cheapest.pricePerSeat.toLocaleString()} XOF / siège
+                    {formatMoneyXof(insights.cheapest.pricePerSeat)} / siège
                   </p>
                   <p className="text-xs text-slate-500">
-                    Total pour {seatsCount} sièges : {(insights.cheapest.pricePerSeat * seatsCount).toLocaleString()} XOF
+                    Total pour {seatsCount} sièges : {formatMoneyXof(insights.cheapest.pricePerSeat * seatsCount)}
                   </p>
                 </div>
               </div>
@@ -403,10 +404,10 @@ export function Results() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Départ le plus tôt</p>
                   <p className="text-lg font-semibold text-slate-900">
-                    {new Date(insights.earliest.departureAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    {formatTimeShort(insights.earliest.departureAt)}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {new Date(insights.earliest.departureAt).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {formatDateShort(insights.earliest.departureAt)}
                   </p>
                 </div>
               </div>

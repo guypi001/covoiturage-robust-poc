@@ -143,7 +143,7 @@ export function ResultsScreen({ navigation, route }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={text.title}>Resultats</Text>
+        <Text style={text.title}>Résultats</Text>
         <Text style={text.subtitle}>Trajets disponibles pour {params.from || '?'} → {params.to || '?'}</Text>
       </View>
 
@@ -170,7 +170,7 @@ export function ResultsScreen({ navigation, route }) {
         <SurfaceCard style={styles.summaryCard} tone="soft" delay={90}>
           <Text style={styles.summaryLabel}>Meilleur prix</Text>
           <Text style={styles.summaryValue}>{stats?.cheapest?.price || '--'}</Text>
-          <Text style={styles.summaryMeta}>par siege</Text>
+          <Text style={styles.summaryMeta}>par siège</Text>
         </SurfaceCard>
         <SurfaceCard style={styles.summaryCard} tone="soft" delay={120}>
           <Text style={styles.summaryLabel}>Depart rapide</Text>
@@ -187,8 +187,8 @@ export function ResultsScreen({ navigation, route }) {
               Tri: {localSort === 'cheapest' ? 'moins cher' : localSort === 'seats' ? 'places' : localSort === 'smart' ? 'intelligent' : 'plus tot'}
             </Text>
             <Text style={styles.filterMeta}>
-              {params.liveTracking ? 'Suivi en direct active' : 'Suivi en direct desactive'}
-              {params.driverVerified ? ' · Conducteur verifie' : ''}
+              {params.liveTracking ? 'Suivi en direct activé' : 'Suivi en direct désactivé'}
+              {params.driverVerified ? ' · Conducteur vérifié' : ''}
               {params.comfortLevel ? ` · Confort ${params.comfortLevel}` : ''}
             </Text>
           </View>
@@ -250,7 +250,7 @@ export function ResultsScreen({ navigation, route }) {
           style={[styles.quickSortChip, hideUnavailable && styles.quickSortChipActive]}
         >
           <Text style={[styles.quickSortText, hideUnavailable && styles.quickSortTextActive]}>
-            Masquer complets / deja reserves
+            Masquer complets / déjà réservés
           </Text>
         </Pressable>
       </SurfaceCard>
@@ -289,7 +289,7 @@ export function ResultsScreen({ navigation, route }) {
         ))}
         {!loading && visibleRides.length === 0 && !error ? (
           <SurfaceCard style={styles.emptyCard} tone="soft" delay={120}>
-            <Text style={styles.emptyTitle}>Aucun trajet trouve</Text>
+            <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>Essaie d'ajuster les filtres ou de modifier l'horaire.</Text>
           </SurfaceCard>
         ) : null}

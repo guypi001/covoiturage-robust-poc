@@ -22,6 +22,7 @@ export function SearchScreen({ navigation }) {
   const [driverVerified, setDriverVerified] = useState(false);
   const [comfortLevel, setComfortLevel] = useState('');
   const [sort, setSort] = useState('soonest');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [prefs, setPrefs] = useState(null);
   const [errors, setErrors] = useState({});
 
@@ -89,12 +90,12 @@ export function SearchScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={text.title}>Recherche avancee</Text>
-      <Text style={text.subtitle}>Affiner l'horaire, le budget et le suivi en direct.</Text>
+      <Text style={text.title}>Recherche simplifiée</Text>
+      <Text style={text.subtitle}>Commence par départ, arrivée et date. Les filtres avancés sont optionnels.</Text>
 
       {prefs === null ? (
         <SurfaceCard style={styles.card} delay={80} animated={false}>
-          <SectionHeader title="Filtres principaux" icon="options-outline" />
+          <SectionHeader title="Recherche rapide" icon="options-outline" />
           <SkeletonBlock width="60%" height={12} />
           <SkeletonBlock width="80%" height={16} />
           <View style={styles.row}>
@@ -110,7 +111,7 @@ export function SearchScreen({ navigation }) {
         </SurfaceCard>
       ) : (
         <SurfaceCard style={styles.card} delay={80}>
-          <SectionHeader title="Filtres principaux" icon="options-outline" />
+          <SectionHeader title="Recherche rapide" icon="options-outline" />
           <CitySelect
             label="Depart"
             placeholder="Abidjan"
@@ -143,92 +144,105 @@ export function SearchScreen({ navigation }) {
               error={errors.seats}
             />
           </View>
-          <View style={styles.row}>
-            <InputField
-              label="Budget max"
-              placeholder="5000 XOF"
-              value={budget}
-              onChangeText={setBudget}
-              keyboardType="number-pad"
-              hint="Optionnel."
-              error={errors.budget}
-            />
-            <View style={styles.timeColumn}>
-              <DateTimeField
-                label="Apres"
-                mode="time"
-                value={afterTime}
-                onChange={setAfterTime}
-                error={errors.time}
-              />
-              <DateTimeField
-                label="Avant"
-                mode="time"
-                value={beforeTime}
-                onChange={setBeforeTime}
-                error={errors.time}
-              />
-            </View>
-          </View>
+          <Pressable
+            onPress={() => setShowAdvanced((prev) => !prev)}
+            style={[styles.advancedToggle, showAdvanced && styles.advancedToggleActive]}
+          >
+            <Text style={styles.advancedToggleLabel}>
+              {showAdvanced ? 'Masquer les filtres avancés' : 'Afficher les filtres avancés'}
+            </Text>
+          </Pressable>
 
-          <View style={styles.sortRow}>
-            {[
-              { id: 'soonest', label: 'Plus tot' },
-              { id: 'cheapest', label: 'Moins cher' },
-              { id: 'seats', label: 'Places' },
-              { id: 'smart', label: 'Intelligent' },
-            ].map((option) => {
-              const active = sort === option.id;
-              return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => setSort(option.id)}
-                  style={[styles.sortChip, active && styles.sortChipActive]}
-                >
-                  <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {showAdvanced ? (
+            <>
+              <View style={styles.row}>
+                <InputField
+                  label="Budget max"
+                  placeholder="5000 XOF"
+                  value={budget}
+                  onChangeText={setBudget}
+                  keyboardType="number-pad"
+                  hint="Optionnel."
+                  error={errors.budget}
+                />
+                <View style={styles.timeColumn}>
+                  <DateTimeField
+                    label="Après"
+                    mode="time"
+                    value={afterTime}
+                    onChange={setAfterTime}
+                    error={errors.time}
+                  />
+                  <DateTimeField
+                    label="Avant"
+                    mode="time"
+                    value={beforeTime}
+                    onChange={setBeforeTime}
+                    error={errors.time}
+                  />
+                </View>
+              </View>
 
-          <View style={styles.sortRow}>
-            {[
-              { id: '', label: 'Confort' },
-              { id: 'STANDARD', label: 'Standard' },
-              { id: 'CONFORT', label: 'Confort +' },
-              { id: 'PREMIUM', label: 'Premium' },
-            ].map((option) => {
-              const active = comfortLevel === option.id;
-              return (
-                <Pressable
-                  key={option.id || 'comfort-any'}
-                  onPress={() => setComfortLevel(option.id)}
-                  style={[styles.sortChip, active && styles.sortChipActive]}
-                >
-                  <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+              <View style={styles.sortRow}>
+                {[
+                  { id: 'soonest', label: 'Plus tôt' },
+                  { id: 'cheapest', label: 'Moins cher' },
+                  { id: 'seats', label: 'Places' },
+                  { id: 'smart', label: 'Intelligent' },
+                ].map((option) => {
+                  const active = sort === option.id;
+                  return (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => setSort(option.id)}
+                      style={[styles.sortChip, active && styles.sortChipActive]}
+                    >
+                      <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-          <View style={styles.switchRow}>
-            <View>
-              <Text style={styles.switchTitle}>Suivi en direct</Text>
-              <Text style={styles.switchText}>Afficher uniquement les trajets actives.</Text>
-            </View>
-            <Switch value={liveTracking} onValueChange={setLiveTracking} trackColor={{ true: colors.sky500 }} />
-          </View>
+              <View style={styles.sortRow}>
+                {[
+                  { id: '', label: 'Confort' },
+                  { id: 'STANDARD', label: 'Standard' },
+                  { id: 'CONFORT', label: 'Confort +' },
+                  { id: 'PREMIUM', label: 'Premium' },
+                ].map((option) => {
+                  const active = comfortLevel === option.id;
+                  return (
+                    <Pressable
+                      key={option.id || 'comfort-any'}
+                      onPress={() => setComfortLevel(option.id)}
+                      style={[styles.sortChip, active && styles.sortChipActive]}
+                    >
+                      <Text style={[styles.sortText, active && styles.sortTextActive]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-          <View style={styles.switchRow}>
-            <View>
-              <Text style={styles.switchTitle}>Conducteur verifie</Text>
-              <Text style={styles.switchText}>Email + telephone confirmes.</Text>
-            </View>
-            <Switch value={driverVerified} onValueChange={setDriverVerified} trackColor={{ true: colors.sky500 }} />
-          </View>
+              <View style={styles.switchRow}>
+                <View>
+                  <Text style={styles.switchTitle}>Suivi en direct</Text>
+                  <Text style={styles.switchText}>Afficher uniquement les trajets actifs.</Text>
+                </View>
+                <Switch value={liveTracking} onValueChange={setLiveTracking} trackColor={{ true: colors.sky500 }} />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View>
+                  <Text style={styles.switchTitle}>Conducteur vérifié</Text>
+                  <Text style={styles.switchText}>Email + téléphone confirmés.</Text>
+                </View>
+                <Switch value={driverVerified} onValueChange={setDriverVerified} trackColor={{ true: colors.sky500 }} />
+              </View>
+            </>
+          ) : null}
 
           <PrimaryButton
-            label="Afficher les resultats"
+            label="Afficher les résultats"
             onPress={() => {
               setErrors(validation);
               if (Object.keys(validation).length) return;
@@ -281,6 +295,24 @@ const styles = StyleSheet.create({
   sortRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  advancedToggle: {
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+  },
+  advancedToggleActive: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky100,
+  },
+  advancedToggleLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.slate700,
   },
   sortChip: {
     paddingHorizontal: spacing.md,
