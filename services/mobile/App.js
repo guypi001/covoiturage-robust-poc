@@ -18,6 +18,16 @@ import { ConversationScreen } from './src/screens/ConversationScreen';
 import { PublicProfileScreen } from './src/screens/PublicProfileScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { FavoritesScreen } from './src/screens/FavoritesScreen';
+import { AccountHomeScreen } from './src/screens/AccountHomeScreen';
+import { ProfilePhotoScreen } from './src/screens/ProfilePhotoScreen';
+import { AppSettingsScreen } from './src/screens/AppSettingsScreen';
+import { PreferencesHomeScreen } from './src/screens/PreferencesHomeScreen';
+import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
+import { HomeHubScreen } from './src/screens/HomeHubScreen';
+import { SearchHubScreen } from './src/screens/SearchHubScreen';
+import { TripsHubScreen } from './src/screens/TripsHubScreen';
+import { MessagesHubScreen } from './src/screens/MessagesHubScreen';
+import { HelpCenterScreen } from './src/screens/HelpCenterScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/auth';
 import { ToastProvider } from './src/ui/ToastContext';
@@ -35,6 +45,75 @@ Notifications.setNotificationHandler({
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+const ProfileStack = createNativeStackNavigator();
+const HomeStack = createNativeStackNavigator();
+const SearchStack = createNativeStackNavigator();
+const TripsStack = createNativeStackNavigator();
+const MessagesStack = createNativeStackNavigator();
+
+const sectionHeaderOptions = {
+  headerStyle: { backgroundColor: colors.white },
+  headerTitleStyle: { color: colors.slate900 },
+};
+
+function HomeStackNavigator() {
+  return (
+    <HomeStack.Navigator screenOptions={sectionHeaderOptions}>
+      <HomeStack.Screen name="HomeHub" component={HomeHubScreen} options={{ title: 'Accueil' }} />
+      <HomeStack.Screen name="HomeFeed" component={HomeScreen} options={{ title: 'Vue generale' }} />
+      <HomeStack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Aide' }} />
+    </HomeStack.Navigator>
+  );
+}
+
+function SearchStackNavigator() {
+  return (
+    <SearchStack.Navigator screenOptions={sectionHeaderOptions}>
+      <SearchStack.Screen name="SearchHub" component={SearchHubScreen} options={{ title: 'Explorer' }} />
+      <SearchStack.Screen name="SearchForm" component={SearchScreen} options={{ title: 'Rechercher' }} />
+      <SearchStack.Screen name="Favorites" component={FavoritesScreen} options={{ title: 'Favoris' }} />
+      <SearchStack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Aide' }} />
+    </SearchStack.Navigator>
+  );
+}
+
+function TripsStackNavigator() {
+  return (
+    <TripsStack.Navigator screenOptions={sectionHeaderOptions}>
+      <TripsStack.Screen name="TripsHub" component={TripsHubScreen} options={{ title: 'Mes trajets' }} />
+      <TripsStack.Screen name="TripsList" component={TripsScreen} options={{ title: 'Historique' }} />
+      <TripsStack.Screen name="Favorites" component={FavoritesScreen} options={{ title: 'Favoris' }} />
+      <TripsStack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Aide' }} />
+    </TripsStack.Navigator>
+  );
+}
+
+function MessagesStackNavigator() {
+  return (
+    <MessagesStack.Navigator screenOptions={sectionHeaderOptions}>
+      <MessagesStack.Screen name="MessagesHub" component={MessagesHubScreen} options={{ title: 'Messagerie' }} />
+      <MessagesStack.Screen name="MessagesInbox" component={MessagesScreen} options={{ title: 'Conversations' }} />
+      <MessagesStack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Aide' }} />
+    </MessagesStack.Navigator>
+  );
+}
+
+function ProfileStackNavigator() {
+  return (
+    <ProfileStack.Navigator
+      screenOptions={sectionHeaderOptions}
+    >
+      <ProfileStack.Screen name="AccountHome" component={AccountHomeScreen} options={{ title: 'Compte' }} />
+      <ProfileStack.Screen name="PreferencesHome" component={PreferencesHomeScreen} options={{ title: 'Preferences' }} />
+      <ProfileStack.Screen name="ProfileDetails" component={ProfileScreen} options={{ title: 'Mon profil' }} />
+      <ProfileStack.Screen name="ProfilePhoto" component={ProfilePhotoScreen} options={{ title: 'Photo de profil' }} />
+      <ProfileStack.Screen name="AppSettings" component={AppSettingsScreen} options={{ title: "Parametres de l'app" }} />
+      <ProfileStack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ title: 'Notifications' }} />
+      <ProfileStack.Screen name="Favorites" component={FavoritesScreen} options={{ title: 'Favoris' }} />
+      <ProfileStack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Aide' }} />
+    </ProfileStack.Navigator>
+  );
+}
 
 function MainTabs() {
   const { token, account } = useAuth();
@@ -112,20 +191,39 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Accueil' }} />
-      <Tab.Screen name="Search" component={SearchScreen} options={{ title: 'Recherche' }} />
-      {token ? <Tab.Screen name="Trips" component={TripsScreen} options={{ title: 'Mes trajets' }} /> : null}
+      <Tab.Screen
+        name="Home"
+        component={HomeStackNavigator}
+        options={{ title: 'Accueil', headerShown: false }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchStackNavigator}
+        options={{ title: 'Explorer', headerShown: false }}
+      />
+      {token ? (
+        <Tab.Screen
+          name="Trips"
+          component={TripsStackNavigator}
+          options={{ title: 'Trajets', headerShown: false }}
+        />
+      ) : null}
       {token ? (
         <Tab.Screen
           name="MessagesTab"
-          component={MessagesScreen}
+          component={MessagesStackNavigator}
           options={{
             title: 'Messagerie',
+            headerShown: false,
             tabBarBadge: messageBadge > 0 ? messageBadge : undefined,
           }}
         />
       ) : null}
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profil' }} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStackNavigator}
+        options={{ title: 'Compte', headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }

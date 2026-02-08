@@ -46,6 +46,14 @@ Le script crée automatiquement les fichiers `.env` manquants (copie depuis `.en
      ```
   5. Accède ensuite à `https://app.example.com`. Traefik écoute en 80/443, gère Let’s Encrypt via HTTP challenge et reverse-proxy l’app SPA (qui continue de router les `/api/...` vers les microservices internes).
 
+### Déploiement sur adresse publique
+
+- Le `webapp` est désormais buildé avec des URLs API relatives (`/api/...`) pour éviter les incohérences entre `localhost` et domaine public.
+- Après chaque `git pull` côté serveur, reconstruis au minimum le front :
+  ```bash
+  COMPOSE_PROFILES=proxy docker compose up -d --build webapp
+  ```
+
 > Besoin d’exposer d’autres services (Grafana, Prometheus, etc.) ? Ajoute-les au réseau `proxy`, configure les labels Traefik (`traefik.http.routers.*`) avec leurs sous-domaines, puis relance `docker compose --profile proxy up -d`.
 
 ## Gestion des comptes

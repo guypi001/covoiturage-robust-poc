@@ -17,11 +17,22 @@ export const colors = {
   sky500: '#0ea5e9',
   sky100: '#e0f2fe',
   emerald500: '#10b981',
+  emerald600: '#059669',
+  emerald400: '#34d399',
+  emerald50: '#ecfdf5',
   emerald100: '#d1fae5',
+  amber500: '#f59e0b',
   amber700: '#b45309',
   amber100: '#fef3c7',
+  rose500: '#f43f5e',
+  rose400: '#fb7185',
+  rose50: '#fff1f2',
   rose600: '#e11d48',
   rose100: '#ffe4e6',
+  sky700: '#0369a1',
+  sky50: '#f0f9ff',
+  slate400: '#94a3b8',
+  slate300: '#cbd5e1',
   white: '#ffffff',
 };
 
@@ -38,6 +49,7 @@ export const radius = {
   md: 16,
   lg: 22,
   xl: 28,
+  full: 999,
 };
 
 export const shadows = {

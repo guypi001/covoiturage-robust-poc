@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, text } from '../theme';
+import { colors, spacing, text } from '../theme';
 import { useSavedRides } from '../savedRides';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { RideCard } from '../components/RideCard';
 
 const formatDate = (value) => {
   if (!value) return 'Date inconnue';
@@ -50,23 +51,28 @@ export function FavoritesScreen({ navigation }) {
 
       {items.map((ride, index) => (
         <SurfaceCard key={ride.rideId} style={styles.card} delay={90 + index * 35}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>
-              {ride.originCity || 'Depart'} → {ride.destinationCity || 'Arrivee'}
-            </Text>
-            <Pressable onPress={() => toggleSavedRide(ride)} hitSlop={8}>
-              <Ionicons name="heart" size={18} color={colors.rose600} />
-            </Pressable>
-          </View>
-          <Text style={styles.cardMeta}>{formatDate(ride.departureAt)}</Text>
-          <Text style={styles.cardMeta}>
-            {ride.pricePerSeat ? `${ride.pricePerSeat} XOF` : '--'} ·{' '}
-            {ride.seatsAvailable != null ? `${ride.seatsAvailable} places` : '--'}
-          </Text>
-          {ride.driverLabel ? <Text style={styles.cardMeta}>Chauffeur: {ride.driverLabel}</Text> : null}
+          <RideCard
+            ride={{
+              id: ride.rideId,
+              origin: ride.originCity || 'Depart',
+              destination: ride.destinationCity || 'Arrivee',
+              departure: formatDate(ride.departureAt),
+              departureRaw: ride.departureAt,
+              seats: ride.seatsAvailable != null ? `${ride.seatsAvailable}/?` : '--',
+              seatsRaw: ride.seatsAvailable,
+              priceRaw: ride.pricePerSeat,
+              driver: ride.driverLabel || 'Conducteur KariGo',
+              driverPhotoUrl: ride.driverPhotoUrl || null,
+              liveTracking: false,
+            }}
+            saved
+            onToggleSave={() => toggleSavedRide(ride)}
+            isFull={Number(ride.seatsAvailable) <= 0}
+            isBooked={false}
+          />
           <PrimaryButton
             label="Voir le trajet"
-            variant="ghost"
+            variant="outline"
             onPress={() => navigation.navigate('RideDetail', { rideId: ride.rideId })}
           />
         </SurfaceCard>
@@ -103,20 +109,5 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: spacing.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.slate900,
-  },
-  cardMeta: {
-    fontSize: 12,
-    color: colors.slate500,
   },
 });

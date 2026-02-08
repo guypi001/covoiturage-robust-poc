@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   ArrowRight,
+  Ban,
   BarChart3,
   CalendarPlus,
   Clock,
+  Copy,
   MapPin,
   RefreshCw,
   Repeat,
@@ -14,8 +16,12 @@ import {
   User2,
 } from 'lucide-react';
 import {
+  cancelMyRide,
+  createRide,
   getMyBookings,
   getMyPublishedRides,
+  rescheduleMyRide,
+  resolveIdentityAssetUrl,
   type BookingAdminItem,
   type RideAdminItem,
   type RideAdminSummary,
@@ -160,6 +166,7 @@ const getTimelineSteps = (createdAt?: string | null, departureAt?: string | null
 };
 
 export default function MyTrips() {
+  const location = useLocation();
   const token = useApp((state) => state.token);
   const account = useApp((state) => state.account);
 
@@ -178,6 +185,10 @@ export default function MyTrips() {
     if (stored === null) return true;
     return stored === 'true';
   });
+  const [operationBusyByRide, setOperationBusyByRide] = useState<Record<string, string>>({});
+  const [operationFeedbackByRide, setOperationFeedbackByRide] = useState<
+    Record<string, { kind: 'success' | 'error'; message: string }>
+  >({});
 
   const refreshBookings = async () => {
     if (!token) return;
@@ -251,6 +262,110 @@ export default function MyTrips() {
     downloadIcs('trajet-karigo.ics', ics);
   };
 
+  const runRideOperation = async (
+    rideId: string,
+    action: 'duplicate' | 'reschedule' | 'close',
+    operation: () => Promise<void>,
+    successMessage: string,
+  ) => {
+    setOperationBusyByRide((prev) => ({ ...prev, [rideId]: action }));
+    setOperationFeedbackByRide((prev) => {
+      const next = { ...prev };
+      delete next[rideId];
+      return next;
+    });
+    try {
+      await operation();
+      setOperationFeedbackByRide((prev) => ({
+        ...prev,
+        [rideId]: { kind: 'success', message: successMessage },
+      }));
+      await refreshRides();
+    } catch (err: any) {
+      setOperationFeedbackByRide((prev) => ({
+        ...prev,
+        [rideId]: {
+          kind: 'error',
+          message: err?.response?.data?.message || err?.message || 'Action impossible pour ce trajet.',
+        },
+      }));
+    } finally {
+      setOperationBusyByRide((prev) => {
+        const next = { ...prev };
+        delete next[rideId];
+        return next;
+      });
+    }
+  };
+
+  const addHoursToDeparture = (value?: string | null, hours = 24) => {
+    const initial = value ? new Date(value) : new Date();
+    const base = Number.isNaN(initial.getTime()) ? new Date() : initial;
+    base.setHours(base.getHours() + hours);
+    return base.toISOString();
+  };
+
+  const duplicateRide = async (ride: RideWithDerived) => {
+    if (!account?.id) {
+      setOperationFeedbackByRide((prev) => ({
+        ...prev,
+        [ride.id]: { kind: 'error', message: 'Compte introuvable. Reconnecte-toi pour dupliquer.' },
+      }));
+      return;
+    }
+
+    const departureAt = addHoursToDeparture(ride.departureAt, 24);
+    await runRideOperation(
+      ride.id,
+      'duplicate',
+      async () => {
+        await createRide({
+          originCity: ride.originCity,
+          destinationCity: ride.destinationCity,
+          departureAt,
+          pricePerSeat: ride.pricePerSeat,
+          seatsTotal: ride.seatsTotal,
+          seatsAvailable: ride.seatsTotal,
+          driverId: account.id,
+          driverLabel: account.fullName || account.companyName || account.email || ride.driverLabel || null,
+          driverPhotoUrl: account.profilePhotoUrl ?? undefined,
+          liveTrackingEnabled: Boolean(ride.liveTrackingEnabled),
+          liveTrackingMode: ride.liveTrackingEnabled
+            ? ride.liveTrackingMode === 'CITY_ALERTS'
+              ? 'CITY_ALERTS'
+              : 'FULL'
+            : undefined,
+        });
+      },
+      'Trajet duplique et programme pour demain.',
+    );
+  };
+
+  const rescheduleRideQuick = async (ride: RideWithDerived) => {
+    if (!token) return;
+    const departureAt = addHoursToDeparture(ride.departureAt, 24);
+    await runRideOperation(
+      ride.id,
+      'reschedule',
+      async () => {
+        await rescheduleMyRide(token, ride.id, departureAt);
+      },
+      'Trajet reprogramme (+24h).',
+    );
+  };
+
+  const closeRideQuick = async (ride: RideWithDerived) => {
+    if (!token) return;
+    await runRideOperation(
+      ride.id,
+      'close',
+      async () => {
+        await cancelMyRide(token, ride.id, 'Cloture depuis espace operations');
+      },
+      'Trajet cloture.',
+    );
+  };
+
   const enrichedBookings = useMemo<BookingWithMeta[]>(() => {
     const now = Date.now();
     return bookings.map((booking) => {
@@ -315,9 +430,20 @@ export default function MyTrips() {
     };
   }, [derivedRides, ridesSummary]);
 
+  const publishSuccess = useMemo(
+    () => new URLSearchParams(location.search).get('published') === '1',
+    [location.search],
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900/5 via-white to-white">
       <div className="max-w-6xl mx-auto px-4 py-10 space-y-10">
+        {publishSuccess ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            Trajet publie avec succes. Retrouve-le ci-dessous dans la section \"Mes trajets publies\".
+          </div>
+        ) : null}
+
         <section className="rounded-3xl border border-slate-200 bg-white/95 shadow-xl shadow-sky-100/60 backdrop-blur p-6 lg:p-10 space-y-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3 max-w-2xl">
@@ -418,6 +544,9 @@ export default function MyTrips() {
                   : formatDate(booking.createdAt);
                 const bookingRideId =
                   booking.ride?.id || booking.ride?.rideId || booking.rideId || undefined;
+                const driverLabel = booking.ride?.driverLabel || 'Conducteur KariGo';
+                const driverInitial = extractFirstName(driverLabel)?.charAt(0)?.toUpperCase() || 'C';
+                const driverPhoto = resolveIdentityAssetUrl(booking.ride?.driverPhotoUrl);
                 const bookingSteps = getTimelineSteps(booking.createdAt, booking.departureAt);
                 return (
                   <article
@@ -462,6 +591,19 @@ export default function MyTrips() {
                         <p className="font-semibold text-slate-900">
                           {booking.amount?.toLocaleString?.() ?? booking.amount} XOF
                         </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-200 bg-white text-slate-600 grid place-items-center text-sm font-semibold">
+                        {driverPhoto ? (
+                          <img src={driverPhoto} alt={`Profil ${driverLabel}`} className="h-full w-full object-cover" />
+                        ) : (
+                          driverInitial
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Conducteur</p>
+                        <p className="truncate text-sm font-semibold text-slate-900">{driverLabel}</p>
                       </div>
                     </div>
                     <div className="mt-4 space-y-2">
@@ -529,9 +671,9 @@ export default function MyTrips() {
               <div className="inline-flex items-center gap-2 rounded-full bg-indigo-100 px-3 py-1 text-[11px] font-semibold text-indigo-700">
                 Mes trajets publiés
               </div>
-              <h2 className="text-2xl font-semibold text-slate-900">Surveille l’occupation de tes trajets.</h2>
+              <h2 className="text-2xl font-semibold text-slate-900">Vue operations: agis en un clic.</h2>
               <p className="text-sm text-slate-600">
-                Suis les places restantes, le tarif et l’état de publication de chaque trajet créé.
+                Duplique, reprogramme, ferme ou partage chaque trajet directement depuis cette page.
               </p>
             </div>
             <div className="flex flex-col gap-2 lg:items-end">
@@ -600,7 +742,11 @@ export default function MyTrips() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              {derivedRides.map((ride) => (
+              {derivedRides.map((ride) => {
+                const currentOperation = operationBusyByRide[ride.id];
+                const operationFeedback = operationFeedbackByRide[ride.id];
+                const isClosed = ride.status === 'CLOSED';
+                return (
                 <article
                   key={ride.id}
                   className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm shadow-slate-100 space-y-4"
@@ -705,7 +851,62 @@ export default function MyTrips() {
                     <p className="text-xs text-slate-400">Aucune réservation pour ce trajet.</p>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-3 border-t border-slate-100 pt-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Operations rapides
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void duplicateRide(ride)}
+                      disabled={Boolean(currentOperation)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-50"
+                    >
+                      <Copy size={14} />
+                      {currentOperation === 'duplicate' ? 'Duplication...' : 'Dupliquer (J+1)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void rescheduleRideQuick(ride)}
+                      disabled={Boolean(currentOperation)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
+                    >
+                      <Repeat size={14} />
+                      {currentOperation === 'reschedule' ? 'Reprogrammation...' : 'Reprogrammer (+24h)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void closeRideQuick(ride)}
+                      disabled={Boolean(currentOperation) || isClosed}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:text-rose-700 disabled:opacity-50"
+                    >
+                      <Ban size={14} />
+                      {isClosed ? 'Deja cloture' : currentOperation === 'close' ? 'Cloture...' : 'Fermer'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleShare(buildRideUrl(ride.id), 'Trajet KariGo')}
+                      disabled={Boolean(currentOperation)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-600 disabled:opacity-50"
+                    >
+                      <Share2 size={14} /> Partager
+                    </button>
+                  </div>
+
+                  {operationFeedback ? (
+                    <div
+                      className={`rounded-xl px-3 py-2 text-xs ${
+                        operationFeedback.kind === 'success'
+                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border border-rose-200 bg-rose-50 text-rose-700'
+                      }`}
+                    >
+                      {operationFeedback.message}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
                   <div className="flex flex-wrap gap-2">
                     <Link
                       to="/create"
@@ -729,15 +930,8 @@ export default function MyTrips() {
                       }}
                       className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
                     >
-                      <Repeat size={14} /> Reprogrammer
+                      <CalendarPlus size={14} /> Reprogrammer manuel
                     </Link>
-                    <button
-                      type="button"
-                      onClick={() => handleShare(buildRideUrl(ride.id), 'Trajet KariGo')}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
-                    >
-                      <Share2 size={14} /> Partager
-                    </button>
                     <button
                       type="button"
                       onClick={() =>
@@ -750,21 +944,22 @@ export default function MyTrips() {
                       }
                       className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
                     >
-                      <CalendarPlus size={14} /> Ajouter au calendrier
+                      <CalendarPlus size={14} /> Calendrier
                     </button>
                     <Link
                       to={`/ride/${ride.id}`}
                       className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-600"
                     >
-                      <ArrowRight size={14} /> Voir le détail
+                      <ArrowRight size={14} /> Detail
                     </Link>
                   </div>
                   <div className="text-xs text-slate-400">
-                    Mise à jour {ride.updatedAt ? formatDate(ride.updatedAt, false) : 'récente'}
+                    Mise a jour {ride.updatedAt ? formatDate(ride.updatedAt, false) : 'recente'}
                   </div>
                 </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

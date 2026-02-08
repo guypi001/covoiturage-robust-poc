@@ -674,6 +674,7 @@ export type RideAdminItem = {
   id: string;
   driverId: string;
   driverLabel?: string | null;
+  driverPhotoUrl?: string | null;
   originCity: string;
   destinationCity: string;
   departureAt: string;
@@ -681,6 +682,10 @@ export type RideAdminItem = {
   seatsAvailable: number;
   pricePerSeat: number;
   status: string;
+  liveTrackingEnabled?: boolean;
+  liveTrackingMode?: 'FULL' | 'CITY_ALERTS';
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   createdAt: string;
   reservations?: RideReservation[];
 };
@@ -1341,6 +1346,15 @@ export type CreateRidePayload = {
   liveTrackingMode?: 'FULL' | 'CITY_ALERTS';
 };
 
+type RideMutationResponse = {
+  ok?: boolean;
+  status?: string;
+  penalty?: number;
+  ride?: RideAdminItem;
+  error?: string;
+  detail?: string;
+};
+
 // --- Appel au service ride ---
 export async function createRide(payload: CreateRidePayload) {
   const body = {
@@ -1348,5 +1362,33 @@ export async function createRide(payload: CreateRidePayload) {
     seatsAvailable: payload.seatsAvailable ?? payload.seatsTotal,
   };
   const { data } = await api.post(`${RIDE_URL}/rides`, body);
+  return data;
+}
+
+export async function cancelMyRide(token: string, rideId: string, reason?: string) {
+  const { data } = await api.post<RideMutationResponse>(
+    `${RIDE_URL}/rides/${rideId}/cancel`,
+    { reason },
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (data?.error) {
+    throw new Error(data.detail || data.error);
+  }
+  return data;
+}
+
+export async function rescheduleMyRide(token: string, rideId: string, departureAt: string) {
+  const { data } = await api.post<RideMutationResponse>(
+    `${RIDE_URL}/rides/${rideId}/reschedule`,
+    { departureAt },
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (data?.error) {
+    throw new Error(data.detail || data.error);
+  }
   return data;
 }

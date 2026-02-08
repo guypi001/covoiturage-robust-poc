@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as Notifications from 'expo-notifications';
 import * as Clipboard from 'expo-clipboard';
-import Constants from 'expo-constants';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { InputField } from '../components/InputField';
-import { registerPushToken, sendTestNotification } from '../api/notifications';
 import { getMyBookings, getMyPaymentMethods, getMyWallet, getMyWalletTransactions, setDefaultPaymentMethod } from '../api/bff';
 import { useAuth } from '../auth';
 import {
@@ -29,18 +26,14 @@ import { resolveAssetUrl } from '../config';
 import { getDisplayName } from '../utils/name';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
-import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
 import { useSavedRides } from '../savedRides';
 import { PROFILE_QUESTIONS } from '../utils/profileQuestions';
-import { loadPreferences, savePreferences } from '../preferences';
 
 export function ProfileScreen({ navigation }) {
   const { token, account, guest, login, logout, refreshProfile, applyAuth } = useAuth();
   const { showToast } = useToast();
   const { savedRides } = useSavedRides();
-  const [pushStatus, setPushStatus] = useState('Notifications desactivees');
-  const [pushBusy, setPushBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -48,7 +41,6 @@ export function ProfileScreen({ navigation }) {
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [wallet, setWallet] = useState(null);
   const [walletTransactions, setWalletTransactions] = useState([]);
-  const [loadingData, setLoadingData] = useState(false);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState('');
@@ -71,12 +63,6 @@ export function ProfileScreen({ navigation }) {
   const [companyDocType, setCompanyDocType] = useState('legal');
   const [profileQuestions, setProfileQuestions] = useState(PROFILE_QUESTIONS);
   const [profileAnswers, setProfileAnswers] = useState({});
-  const [appSettings, setAppSettings] = useState({
-    appearance: 'system',
-    haptics: true,
-    compactCards: false,
-    autoPlayAnimations: true,
-  });
 
   const MAX_COMPANY_DOC_SIZE = 6 * 1024 * 1024;
 
@@ -91,17 +77,6 @@ export function ProfileScreen({ navigation }) {
     } catch {
       // ignore clipboard errors
     }
-  };
-
-  const persistAppSettings = async (nextSettings) => {
-    const current = await loadPreferences();
-    await savePreferences({
-      ...current,
-      appSettings: {
-        ...(current.appSettings || {}),
-        ...nextSettings,
-      },
-    });
   };
 
   const isCompany = account?.type === 'COMPANY';
@@ -144,30 +119,6 @@ export function ProfileScreen({ navigation }) {
       active = false;
     };
   }, [token]);
-
-  useEffect(() => {
-    let active = true;
-    const hydrateSettings = async () => {
-      const prefs = await loadPreferences();
-      if (!active) return;
-      setAppSettings({
-        appearance: prefs?.appSettings?.appearance || 'system',
-        haptics: prefs?.appSettings?.haptics ?? true,
-        compactCards: prefs?.appSettings?.compactCards ?? false,
-        autoPlayAnimations: prefs?.appSettings?.autoPlayAnimations ?? true,
-      });
-    };
-    hydrateSettings();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const ownerId = account?.id || 'demo-user';
-  const projectId =
-    Constants.easConfig?.projectId ||
-    Constants.expoConfig?.extra?.eas?.projectId ||
-    process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 
   const profileLabel = useMemo(() => getDisplayName(account), [account]);
   const formatShortDate = (value) => {
@@ -296,7 +247,6 @@ export function ProfileScreen({ navigation }) {
     let active = true;
     const load = async () => {
       if (!token) return;
-      setLoadingData(true);
       try {
         await refreshProfile();
         const [bookingRes, paymentRes, walletRes, txRes, verificationRes] = await Promise.all([
@@ -315,8 +265,6 @@ export function ProfileScreen({ navigation }) {
         }
       } catch (err) {
         if (active) setAuthError('Impossible de charger les donnees.');
-      } finally {
-        if (active) setLoadingData(false);
       }
     };
     load();
@@ -325,67 +273,7 @@ export function ProfileScreen({ navigation }) {
     };
   }, [token, refreshProfile, isCompany]);
 
-  const handleEnablePush = async () => {
-    try {
-      if (Platform.OS === 'android' && Constants.appOwnership === 'expo') {
-        setPushStatus('Indisponible sur Expo Go (Android)');
-        return;
-      }
-      setPushBusy(true);
-      const settings = await Notifications.getPermissionsAsync();
-      let status = settings.status;
-      if (status !== 'granted') {
-        const req = await Notifications.requestPermissionsAsync();
-        status = req.status;
-      }
-      if (status !== 'granted') {
-        setPushStatus('Autorisation refusee');
-        return;
-      }
-
-      let tokenResponse;
-      try {
-        tokenResponse = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-      } catch (err) {
-        const message = String(err?.message || err);
-        if (message.toLowerCase().includes('projectid')) {
-          setPushStatus('ProjectId Expo manquant. Configure EXPO_PUBLIC_EAS_PROJECT_ID.');
-          return;
-        }
-        throw err;
-      }
-      await registerPushToken({
-        ownerId,
-        token: tokenResponse.data,
-        platform: Platform.OS,
-      });
-      setPushStatus('Notifications actives');
-      showToast('Notifications actives.', 'success');
-    } catch (err) {
-      const message = err?.message ? String(err.message) : 'Erreur activation.';
-      setPushStatus(message);
-      showToast(message, 'error');
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const handleTestPush = async () => {
-    try {
-      setPushBusy(true);
-      await sendTestNotification({ ownerId, title: 'KariGo', body: 'Test notification mobile.' });
-      setPushStatus('Notification test envoyee');
-      showToast('Notification test envoyee.', 'success');
-    } catch (err) {
-      setPushStatus('Echec notification test');
-      showToast('Echec notification test.', 'error');
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
   const walletBalance = wallet?.balance ?? 0;
-  const statsLabel = `${bookings.length} reservations · ${paymentMethods.length} moyens de paiement · Solde ${walletBalance} XOF`;
   const favoritesCount = Object.keys(savedRides || {}).length;
 
   const comfortPreferences = comfortText
@@ -406,12 +294,6 @@ export function ProfileScreen({ navigation }) {
 
   const setAnswer = (key, value) => {
     setProfileAnswers((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const setAppSetting = async (key, value) => {
-    const next = { ...appSettings, [key]: value };
-    setAppSettings(next);
-    await persistAppSettings(next);
   };
 
   return (
@@ -581,122 +463,36 @@ export function ProfileScreen({ navigation }) {
             <Text style={styles.actionText}>Favoris</Text>
             <Text style={styles.actionMeta}>{favoritesCount} trajet(s)</Text>
           </Pressable>
-          <Pressable style={styles.actionTile} onPress={handleEnablePush} disabled={pushBusy}>
-            <Ionicons name="notifications-outline" size={18} color={colors.slate700} />
-            <Text style={styles.actionText}>Notifications</Text>
+          <Pressable style={styles.actionTile} onPress={() => navigation.navigate('PreferencesHome')}>
+            <Ionicons name="settings-outline" size={18} color={colors.slate700} />
+            <Text style={styles.actionText}>Preferences</Text>
           </Pressable>
         </View>
       )}
 
       <SurfaceCard style={styles.card} delay={180}>
-        <SectionHeader icon="pulse-outline" title="Preferences du compte" meta={statsLabel} />
-        <View style={styles.preferenceRow}>
-          <Text style={styles.preferenceLabel}>Notifications</Text>
-          <Text style={styles.preferenceValue}>{pushStatus}</Text>
-        </View>
-        <View style={styles.preferenceRow}>
-          <Text style={styles.preferenceLabel}>Apparence</Text>
-          <Text style={styles.preferenceValue}>
-            {appSettings.appearance === 'dark'
-              ? 'Sombre'
-              : appSettings.appearance === 'light'
-                ? 'Clair'
-                : 'Système'}
-          </Text>
-        </View>
-        <View style={styles.preferenceRow}>
-          <Text style={styles.preferenceLabel}>Mode trajet</Text>
-          <Text style={styles.preferenceValue}>{isCompany ? 'Entreprise' : 'Particulier'}</Text>
-        </View>
-        {loadingData && token ? (
-          <View style={styles.skeletonList}>
-            <SkeletonBlock width="55%" height={12} />
-            <SkeletonBlock width="40%" height={12} />
-          </View>
-        ) : null}
-      </SurfaceCard>
-
-      {token && (
-        <SurfaceCard style={styles.card} delay={188}>
-          <SectionHeader icon="settings-outline" title="Parametres de l'application" meta="Experience & accessibilite" />
-          <View style={styles.appSettingRow}>
-            <Text style={styles.preferenceLabel}>Theme de l'app</Text>
-            <View style={styles.docTypeRow}>
-              {[
-                { id: 'system', label: 'Système' },
-                { id: 'light', label: 'Clair' },
-                { id: 'dark', label: 'Sombre' },
-              ].map((option) => (
-                <Pressable
-                  key={option.id}
-                  onPress={() => setAppSetting('appearance', option.id)}
-                  style={[
-                    styles.docTypeChip,
-                    appSettings.appearance === option.id && styles.docTypeChipActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.docTypeChipText,
-                      appSettings.appearance === option.id && styles.docTypeChipTextActive,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-          <View style={styles.preferenceRow}>
-            <Text style={styles.preferenceLabel}>Animations</Text>
-            <Pressable
-              onPress={() => setAppSetting('autoPlayAnimations', !appSettings.autoPlayAnimations)}
-              style={appSettings.autoPlayAnimations ? styles.badgeSuccess : styles.badgeWarning}
-            >
-              <Text style={appSettings.autoPlayAnimations ? styles.badgeTextSuccess : styles.badgeTextWarning}>
-                {appSettings.autoPlayAnimations ? 'Activees' : 'Reduites'}
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.preferenceRow}>
-            <Text style={styles.preferenceLabel}>Retour haptique</Text>
-            <Pressable
-              onPress={() => setAppSetting('haptics', !appSettings.haptics)}
-              style={appSettings.haptics ? styles.badgeSuccess : styles.badgeWarning}
-            >
-              <Text style={appSettings.haptics ? styles.badgeTextSuccess : styles.badgeTextWarning}>
-                {appSettings.haptics ? 'Active' : 'Desactive'}
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.preferenceRow}>
-            <Text style={styles.preferenceLabel}>Cartes compactes</Text>
-            <Pressable
-              onPress={() => setAppSetting('compactCards', !appSettings.compactCards)}
-              style={appSettings.compactCards ? styles.badgeSuccess : styles.badge}
-            >
-              <Text style={appSettings.compactCards ? styles.badgeTextSuccess : styles.badgeText}>
-                {appSettings.compactCards ? 'Oui' : 'Non'}
-              </Text>
-            </Pressable>
-          </View>
+        <SectionHeader icon="settings-outline" title="Parametres et preferences" meta="Organisation par pages" />
+        <Text style={styles.helperText}>
+          Les reglages sont centralises dans des pages dediees pour eviter les doublons.
+        </Text>
+        <View style={styles.settingsNav}>
           <PrimaryButton
-            label="Reinitialiser les parametres"
-            variant="ghost"
-            onPress={async () => {
-              const defaults = {
-                appearance: 'system',
-                haptics: true,
-                compactCards: false,
-                autoPlayAnimations: true,
-              };
-              setAppSettings(defaults);
-              await persistAppSettings(defaults);
-              showToast('Paramètres réinitialisés.', 'success');
-            }}
+            label="Ouvrir le centre preferences"
+            variant="secondary"
+            onPress={() => navigation.navigate('PreferencesHome')}
           />
-        </SurfaceCard>
-      )}
+          <PrimaryButton
+            label="Parametres de l'application"
+            variant="ghost"
+            onPress={() => navigation.navigate('AppSettings')}
+          />
+          <PrimaryButton
+            label="Notifications"
+            variant="ghost"
+            onPress={() => navigation.navigate('NotificationSettings')}
+          />
+        </View>
+      </SurfaceCard>
 
       {token && (
         <SurfaceCard style={styles.card} delay={195}>
@@ -1168,8 +964,11 @@ export function ProfileScreen({ navigation }) {
       )}
 
       <View style={styles.actions}>
-        <PrimaryButton label="Activer les notifications" onPress={handleEnablePush} disabled={pushBusy} />
-        <PrimaryButton label="Envoyer un test" variant="ghost" onPress={handleTestPush} disabled={pushBusy} />
+        <PrimaryButton
+          label="Gerer mes preferences"
+          variant="secondary"
+          onPress={() => navigation.navigate('PreferencesHome')}
+        />
         {token ? (
           <>
             <PrimaryButton label="Se deconnecter" onPress={logout} />
@@ -1312,24 +1111,8 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
   },
-  preferenceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  preferenceLabel: {
-    fontSize: 13,
-    color: colors.slate500,
-  },
-  preferenceValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.slate900,
-  },
-  appSettingRow: {
-    gap: 8,
-  },
-  skeletonList: {
-    gap: 8,
+  settingsNav: {
+    gap: spacing.sm,
   },
   helperText: {
     fontSize: 13,

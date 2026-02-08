@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, text } from '../theme';
 import { useAuth } from '../auth';
+import { getPublicProfile } from '../api/bff';
 import {
   getMessages,
   getMessagingWsUrl,
@@ -150,6 +151,8 @@ export function ConversationScreen({ route }) {
   const [presenceMap, setPresenceMap] = useState({});
   const [typingMap, setTypingMap] = useState({});
   const [lastSentId, setLastSentId] = useState('');
+  const [otherPhotoUrl, setOtherPhotoUrl] = useState(otherParticipant?.profilePhotoUrl || '');
+  const [otherPhotoError, setOtherPhotoError] = useState(false);
   const scrollRef = useRef(null);
   const socketRef = useRef(null);
 
@@ -276,6 +279,29 @@ export function ConversationScreen({ route }) {
   }, [account?.id, conversationId]);
 
   useEffect(() => {
+    setOtherPhotoUrl(otherParticipant?.profilePhotoUrl || '');
+    setOtherPhotoError(false);
+  }, [otherParticipant?.id, otherParticipant?.profilePhotoUrl]);
+
+  useEffect(() => {
+    let active = true;
+    const hydratePhoto = async () => {
+      if (!token || !otherParticipant?.id || otherPhotoUrl) return;
+      try {
+        const profile = await getPublicProfile(token, otherParticipant.id);
+        if (!active) return;
+        setOtherPhotoUrl(profile?.profilePhotoUrl || '');
+      } catch {
+        // ignore profile photo lookup failure
+      }
+    };
+    hydratePhoto();
+    return () => {
+      active = false;
+    };
+  }, [token, otherParticipant?.id, otherPhotoUrl]);
+
+  useEffect(() => {
     if (!scrollRef.current) return;
     setTimeout(() => scrollRef.current?.scrollToEnd?.({ animated: true }), 100);
   }, [messages]);
@@ -284,6 +310,7 @@ export function ConversationScreen({ route }) {
     if (!otherParticipant?.label) return 'Conversation';
     return getFirstName(otherParticipant.label) || otherParticipant.label;
   }, [otherParticipant]);
+  const resolvedOtherPhoto = otherPhotoUrl ? resolveAssetUrl(otherPhotoUrl) : '';
   const otherOnline = otherParticipant?.id ? presenceMap[otherParticipant.id] : false;
   const otherTypingEntry = otherParticipant?.id ? typingMap[otherParticipant.id] : null;
   const otherTyping =
@@ -377,13 +404,30 @@ export function ConversationScreen({ route }) {
   return (
     <View style={styles.container}>
       <SurfaceCard style={styles.headerCard} tone="soft" animated={false}>
+        <View style={styles.headerIdentityRow}>
+          <View style={styles.headerAvatar}>
+            {resolvedOtherPhoto && !otherPhotoError ? (
+              <Image
+                source={{ uri: resolvedOtherPhoto }}
+                style={styles.headerAvatarImage}
+                onError={() => setOtherPhotoError(true)}
+              />
+            ) : (
+              <Text style={styles.headerAvatarText}>{(title || 'C').charAt(0).toUpperCase()}</Text>
+            )}
+          </View>
+          <View style={styles.headerIdentityText}>
+            <Text style={styles.headerName}>{title}</Text>
+            <Text style={styles.subtitle}>{otherOnline ? 'En ligne' : 'Hors ligne'}</Text>
+          </View>
+        </View>
         <SectionHeader
-          title={title}
+          title="Conversation"
           icon="chatbubble-ellipses-outline"
-          meta={otherOnline ? 'En ligne' : 'Hors ligne'}
+          meta={otherTyping ? 'Ecrit...' : loading ? 'Sync...' : 'OK'}
         />
         <View style={styles.statusRow}>
-          <Text style={styles.subtitle}>{otherTyping ? 'Ecrit...' : loading ? 'Sync...' : 'OK'}</Text>
+          <Text style={styles.subtitle}>Messagerie en temps reel</Text>
           {otherTyping ? <TypingPulse /> : null}
         </View>
         {otherParticipant?.id ? (
@@ -474,6 +518,41 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 12,
     color: colors.slate500,
+  },
+  headerIdentityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: 4,
+  },
+  headerIdentityText: {
+    flex: 1,
+    gap: 2,
+  },
+  headerName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.slate900,
+  },
+  headerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  headerAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  headerAvatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.slate700,
   },
   statusRow: {
     flexDirection: 'row',

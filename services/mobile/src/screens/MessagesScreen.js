@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { getConversations, getMessagingWsUrl } from '../api/messaging';
+import { getPublicProfile } from '../api/bff';
 import { useAuth } from '../auth';
 import { getFirstName } from '../utils/name';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
+import { resolveAssetUrl } from '../config';
 
 function AnimatedListItem({ children, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -52,6 +54,8 @@ export function MessagesScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [presenceMap, setPresenceMap] = useState({});
+  const [participantPhotoMap, setParticipantPhotoMap] = useState({});
+  const hydratedPhotoIdsRef = useRef(new Set());
   const onlineCount = useMemo(() => {
     const uniqueIds = new Set(
       items
@@ -74,7 +78,39 @@ export function MessagesScreen({ navigation }) {
       setError('');
       try {
         const data = await getConversations(account.id);
-        if (active) setItems(Array.isArray(data) ? data : []);
+        if (active) {
+          const itemsList = Array.isArray(data) ? data : [];
+          setItems(itemsList);
+          if (token) {
+            const ids = Array.from(
+              new Set(
+                itemsList
+                  .map((item) => item?.otherParticipant?.id)
+                  .filter((id) => typeof id === 'string' && id.length > 0),
+              ),
+            );
+            const missing = ids.filter((id) => !hydratedPhotoIdsRef.current.has(id));
+            if (missing.length) {
+              const profiles = await Promise.allSettled(
+                missing.map(async (id) => {
+                  const profile = await getPublicProfile(token, id);
+                  return { id, photo: profile?.profilePhotoUrl || '' };
+                }),
+              );
+              if (active) {
+                setParticipantPhotoMap((prev) => {
+                  const next = { ...prev };
+                  profiles.forEach((entry) => {
+                    if (entry.status !== 'fulfilled') return;
+                    hydratedPhotoIdsRef.current.add(entry.value.id);
+                    next[entry.value.id] = entry.value.photo;
+                  });
+                  return next;
+                });
+              }
+            }
+          }
+        }
       } catch (err) {
         if (active) setError('Impossible de charger les messages.');
       } finally {
@@ -147,6 +183,8 @@ export function MessagesScreen({ navigation }) {
         const otherId = item.otherParticipant?.id;
         const online = otherId ? presenceMap[otherId] : false;
         const displayName = getFirstName(item.otherParticipant?.label) || item.otherParticipant?.label || 'Contact';
+        const participantPhoto = otherId ? participantPhotoMap[otherId] : '';
+        const resolvedPhoto = participantPhoto ? resolveAssetUrl(participantPhoto) : '';
         return (
           <AnimatedListItem key={item.id} delay={120 + index * 35}>
             <SurfaceCard style={styles.card} animated={false}>
@@ -154,15 +192,22 @@ export function MessagesScreen({ navigation }) {
               onPress={() =>
                 navigation.navigate('Conversation', {
                   conversationId: item.id,
-                  otherParticipant: item.otherParticipant,
+                  otherParticipant: {
+                    ...item.otherParticipant,
+                    profilePhotoUrl: participantPhoto || null,
+                  },
                 })
               }
             >
               <View style={styles.row}>
                 <View style={[styles.avatar, online && styles.avatarOnline]}>
-                  <Text style={styles.avatarText}>
-                    {displayName.charAt(0).toUpperCase()}
-                  </Text>
+                  {resolvedPhoto ? (
+                    <Image source={{ uri: resolvedPhoto }} style={styles.avatarImage} />
+                  ) : (
+                    <Text style={styles.avatarText}>
+                      {displayName.charAt(0).toUpperCase()}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.cardContent}>
                   <View style={styles.headerRow}>
@@ -215,6 +260,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.slate200,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarOnline: {
     borderColor: colors.emerald500,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, text } from '../theme';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { RideCard } from '../components/RideCard';
 import { searchRides } from '../api/search';
@@ -271,7 +272,26 @@ export function ResultsScreen({ navigation, route }) {
           </View>
         ) : null}
         {visibleRides.map((ride, index) => (
-          <SurfaceCard key={ride.id} style={styles.rideCard} delay={180 + index * 40}>
+          <SurfaceCard
+            key={ride.id}
+            style={styles.rideCard}
+            tone={stats?.cheapest?.id === ride.id ? 'accent' : 'default'}
+            delay={180 + index * 40}
+          >
+            <View style={styles.cardBadgeRow}>
+              {index === 0 ? (
+                <View style={[styles.cardBadge, styles.cardBadgeSoon]}>
+                  <Ionicons name="flash-outline" size={12} color={colors.sky700} />
+                  <Text style={[styles.cardBadgeText, styles.cardBadgeTextSoon]}>Depart le plus tot</Text>
+                </View>
+              ) : null}
+              {stats?.cheapest?.id === ride.id ? (
+                <View style={[styles.cardBadge, styles.cardBadgePrice]}>
+                  <Ionicons name="cash-outline" size={12} color={colors.emerald600} />
+                  <Text style={[styles.cardBadgeText, styles.cardBadgeTextPrice]}>Meilleur prix</Text>
+                </View>
+              ) : null}
+            </View>
             <RideCard
               ride={ride}
               saved={isSaved(ride.id)}
@@ -282,6 +302,7 @@ export function ResultsScreen({ navigation, route }) {
             <View style={styles.cardActions}>
               <PrimaryButton
                 label="Voir le trajet"
+                variant="outline"
                 onPress={() => navigation.navigate('RideDetail', { rideId: ride.id })}
               />
             </View>
@@ -403,6 +424,40 @@ const styles = StyleSheet.create({
   },
   rideCard: {
     gap: spacing.sm,
+  },
+  cardBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  cardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  cardBadgeSoon: {
+    borderColor: colors.sky500,
+    backgroundColor: colors.sky100,
+  },
+  cardBadgePrice: {
+    borderColor: colors.emerald400,
+    backgroundColor: colors.emerald100,
+  },
+  cardBadgeText: {
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '700',
+  },
+  cardBadgeTextSoon: {
+    color: colors.sky700,
+  },
+  cardBadgeTextPrice: {
+    color: colors.emerald600,
   },
   cardActions: {
     flexDirection: 'row',

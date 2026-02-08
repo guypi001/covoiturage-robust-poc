@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, MapPin, Clock, Users, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  CalendarClock,
+  CircleDollarSign,
+  MapPinned,
+  Navigation,
+  Route,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { createRide } from '../api';
 import { useApp } from '../store';
@@ -16,42 +25,129 @@ type FormState = {
 };
 
 type Feedback = { type: 'error' | 'success'; message: string } | null;
+type FieldErrors = Partial<Record<keyof FormState | 'route' | 'departureAt', string>>;
+
+type RouteTemplate = {
+  id: string;
+  originCity: string;
+  destinationCity: string;
+  pricePerSeat: number;
+  seatsTotal: number;
+};
+
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const toIsoUtc = (date: string, time: string) => {
   if (!date || !time) return '';
   const [y, m, d] = date.split('-').map(Number);
   const [hh, mm] = time.split(':').map(Number);
+  if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) return '';
   return new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0)).toISOString();
 };
+
+const toInputDate = (value: Date) => {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const toInputTime = (value: Date) => {
+  const hour = `${value.getHours()}`.padStart(2, '0');
+  const minute = `${value.getMinutes()}`.padStart(2, '0');
+  return `${hour}:${minute}`;
+};
+
+const roundToNextQuarter = (value: Date) => {
+  const copy = new Date(value);
+  copy.setSeconds(0, 0);
+  const minutes = copy.getMinutes();
+  const rounded = Math.ceil(minutes / 15) * 15;
+  copy.setMinutes(rounded);
+  return copy;
+};
+
+const getDefaultDeparture = () => {
+  const now = new Date();
+  now.setHours(now.getHours() + 1);
+  const date = roundToNextQuarter(now);
+  return {
+    date: toInputDate(date),
+    time: toInputTime(date),
+  };
+};
+
+const normalizeText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .toLowerCase();
+
+const ROUTE_TEMPLATES: RouteTemplate[] = [
+  { id: 'abj-yam', originCity: 'Abidjan', destinationCity: 'Yamoussoukro', pricePerSeat: 2000, seatsTotal: 3 },
+  { id: 'abj-bke', originCity: 'Abidjan', destinationCity: 'Bouake', pricePerSeat: 2500, seatsTotal: 3 },
+  { id: 'bke-kgo', originCity: 'Bouake', destinationCity: 'Korhogo', pricePerSeat: 3500, seatsTotal: 3 },
+];
+
+const PRICE_PRESETS = [1500, 2000, 2500, 3000, 4000, 5000];
 
 export default function CreateRide() {
   const navigate = useNavigate();
   const location = useLocation();
-  const setSearch = useApp((state) => state.setSearch);
-  const setResults = useApp((state) => state.setResults);
-  const setLoading = useApp((state) => state.setLoading);
-  const setError = useApp((state) => state.setError);
   const account = useApp((state) => state.account);
+
+  const defaultDeparture = useMemo(() => getDefaultDeparture(), []);
+  const minDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const [form, setForm] = useState<FormState>({
     originCity: 'Abidjan',
     destinationCity: 'Yamoussoukro',
-    date: '',
-    time: '',
+    date: defaultDeparture.date,
+    time: defaultDeparture.time,
     pricePerSeat: 2000,
     seatsTotal: 3,
     liveTrackingEnabled: false,
   });
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [advancedMode, setAdvancedMode] = useState(false);
 
-  const minDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const isCompany = account?.type === 'COMPANY';
 
   const updateForm = (patch: Partial<FormState>) => {
     setForm((prev) => ({ ...prev, ...patch }));
   };
 
-  const isCompany = account?.type === 'COMPANY';
+  const applyTemplate = (template: RouteTemplate) => {
+    setForm((prev) => ({
+      ...prev,
+      originCity: template.originCity,
+      destinationCity: template.destinationCity,
+      pricePerSeat: template.pricePerSeat,
+      seatsTotal: template.seatsTotal,
+    }));
+    setErrors((prev) => ({ ...prev, originCity: undefined, destinationCity: undefined, route: undefined }));
+  };
+
+  const swapRoute = () => {
+    setForm((prev) => ({
+      ...prev,
+      originCity: prev.destinationCity,
+      destinationCity: prev.originCity,
+    }));
+    setErrors((prev) => ({ ...prev, originCity: undefined, destinationCity: undefined, route: undefined }));
+  };
+
+  const applyDeparturePreset = (departureDate: Date) => {
+    updateForm({
+      date: toInputDate(departureDate),
+      time: toInputTime(departureDate),
+    });
+    setErrors((prev) => ({ ...prev, date: undefined, time: undefined, departureAt: undefined }));
+  };
 
   useEffect(() => {
     if (isCompany) {
@@ -62,52 +158,156 @@ export default function CreateRide() {
   useEffect(() => {
     const statePrefill = (location.state as { prefill?: Partial<FormState> } | null)?.prefill;
     if (statePrefill) {
-      setForm((prev) => ({ ...prev, ...statePrefill }));
+      setForm((prev) => ({
+        ...prev,
+        ...statePrefill,
+        seatsTotal: statePrefill.seatsTotal
+          ? clampNumber(Number(statePrefill.seatsTotal), 1, 8)
+          : prev.seatsTotal,
+        pricePerSeat: statePrefill.pricePerSeat
+          ? clampNumber(Number(statePrefill.pricePerSeat), 500, 100000)
+          : prev.pricePerSeat,
+      }));
     }
 
     if (!location.search) return;
     const params = new URLSearchParams(location.search);
     if (![...params.keys()].length) return;
+
+    const seatsParam = Number(params.get('seats'));
+    const priceParam = Number(params.get('price'));
+
     setForm((prev) => ({
       ...prev,
       originCity: params.get('from') || prev.originCity,
       destinationCity: params.get('to') || prev.destinationCity,
       date: params.get('date') || prev.date,
       time: params.get('time') || prev.time,
-      pricePerSeat: params.get('price') ? Number(params.get('price')) : prev.pricePerSeat,
-      seatsTotal: params.get('seats') ? Number(params.get('seats')) : prev.seatsTotal,
+      seatsTotal: Number.isFinite(seatsParam) && seatsParam > 0 ? clampNumber(seatsParam, 1, 8) : prev.seatsTotal,
+      pricePerSeat:
+        Number.isFinite(priceParam) && priceParam > 0
+          ? clampNumber(priceParam, 500, 100000)
+          : prev.pricePerSeat,
       liveTrackingEnabled: params.get('tracking')
         ? params.get('tracking') === 'true'
         : prev.liveTrackingEnabled,
     }));
   }, [location.search, location.state]);
 
-  const validate = (state: FormState): string | null => {
-    if (!state.originCity.trim() || !state.destinationCity.trim()) {
-      return 'Précise la ville de départ et d’arrivée.';
+  const validateStepOne = (state: FormState): FieldErrors => {
+    const nextErrors: FieldErrors = {};
+
+    if (!state.originCity.trim()) nextErrors.originCity = 'Choisis une ville de depart.';
+    if (!state.destinationCity.trim()) nextErrors.destinationCity = "Choisis une ville d'arrivee.";
+
+    if (
+      state.originCity.trim() &&
+      state.destinationCity.trim() &&
+      normalizeText(state.originCity) === normalizeText(state.destinationCity)
+    ) {
+      nextErrors.route = "Le depart et l'arrivee doivent etre differents.";
     }
-    if (!state.date || !state.time) {
-      return 'Choisis une date et une heure de départ.';
+
+    if (!state.date) nextErrors.date = 'Choisis une date.';
+    if (!state.time) nextErrors.time = 'Choisis une heure.';
+
+    const departureIso = toIsoUtc(state.date, state.time);
+    if (!departureIso) {
+      nextErrors.departureAt = 'Date ou heure invalide.';
+    } else if (Date.parse(departureIso) < Date.now() + 5 * 60 * 1000) {
+      nextErrors.departureAt = 'Le depart doit etre dans le futur.';
     }
-    if (!Number.isFinite(state.pricePerSeat) || state.pricePerSeat <= 0) {
-      return 'Le prix par siège doit être supérieur à 0.';
-    }
-    if (!Number.isFinite(state.seatsTotal) || state.seatsTotal <= 0) {
-      return 'Le nombre de sièges doit être positif.';
-    }
-    if (!toIsoUtc(state.date, state.time)) {
-      return 'Date ou heure invalide.';
-    }
-    return null;
+
+    return nextErrors;
   };
+
+  const validateStepTwo = (state: FormState): FieldErrors => {
+    const nextErrors: FieldErrors = {};
+    if (!Number.isFinite(state.pricePerSeat) || state.pricePerSeat < 500) {
+      nextErrors.pricePerSeat = 'Definis un prix d au moins 500 XOF.';
+    }
+    if (!Number.isFinite(state.seatsTotal) || state.seatsTotal < 1 || state.seatsTotal > 8) {
+      nextErrors.seatsTotal = 'Le nombre de sieges doit etre entre 1 et 8.';
+    }
+    return nextErrors;
+  };
+
+  const validateForm = (state: FormState) => ({
+    ...validateStepOne(state),
+    ...validateStepTwo(state),
+  });
+
+  const moveToStepTwo = () => {
+    const stepErrors = validateStepOne(form);
+    if (Object.keys(stepErrors).length) {
+      setErrors(stepErrors);
+      setFeedback({ type: 'error', message: 'Complete d abord les informations de trajet.' });
+      return;
+    }
+    setErrors({});
+    setFeedback(null);
+    setCurrentStep(2);
+  };
+
+  const extractFirstName = (value?: string | null) => {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    return trimmed.split(/\s+/)[0];
+  };
+
+  const previewDriver =
+    extractFirstName(account?.fullName || account?.companyName || account?.email) || 'Profil KariGo';
+
+  const previewDeparture = form.date && form.time ? `${form.date}T${form.time}` : undefined;
+  const previewDepartureLabel = previewDeparture
+    ? new Date(previewDeparture).toLocaleString('fr-FR', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : 'Date et heure a confirmer';
+
+  const previewRouteLabel = `${form.originCity || 'Depart'} -> ${form.destinationCity || 'Arrivee'}`;
+  const previewPriceLabel = `${Number(form.pricePerSeat || 0).toLocaleString('fr-FR')} XOF`;
+  const previewSeatsLabel = `${form.seatsTotal} place${form.seatsTotal > 1 ? 's' : ''}`;
+  const previewEstimatedRevenue = form.pricePerSeat * form.seatsTotal;
+
+  const feedbackStyles =
+    feedback?.type === 'success'
+      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+      : 'bg-red-50 border border-red-200 text-red-700';
+
+  const now = new Date();
+  const tomorrowMorning = new Date(now);
+  tomorrowMorning.setDate(now.getDate() + 1);
+  tomorrowMorning.setHours(8, 0, 0, 0);
+
+  const tomorrowEvening = new Date(now);
+  tomorrowEvening.setDate(now.getDate() + 1);
+  tomorrowEvening.setHours(18, 0, 0, 0);
+
+  const tonight = new Date(now);
+  tonight.setHours(now.getHours() >= 18 ? 20 : 18, 0, 0, 0);
+  if (tonight.getTime() < now.getTime()) {
+    tonight.setDate(tonight.getDate() + 1);
+  }
 
   const handleSubmit = async (evt: React.FormEvent) => {
     evt.preventDefault();
-    setFeedback(null);
 
-    const error = validate(form);
-    if (error) {
-      setFeedback({ type: 'error', message: error });
+    if (currentStep === 1) {
+      moveToStepTwo();
+      return;
+    }
+
+    setFeedback(null);
+    const nextErrors = validateForm(form);
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      setFeedback({ type: 'error', message: 'Corrige les champs obligatoires avant publication.' });
       return;
     }
 
@@ -117,7 +317,7 @@ export default function CreateRide() {
     }
 
     const departureAt = toIsoUtc(form.date, form.time);
-    const seatsTotal = Math.round(form.seatsTotal);
+    const seatsTotal = clampNumber(Math.round(form.seatsTotal), 1, 8);
     const liveTrackingEnabled = isCompany ? true : Boolean(form.liveTrackingEnabled);
     const payload = {
       originCity: form.originCity.trim(),
@@ -136,58 +336,13 @@ export default function CreateRide() {
     try {
       setSubmitting(true);
       await createRide(payload);
-      setFeedback({ type: 'success', message: 'Trajet publié avec succès !' });
-
-      setSearch({
-        from: payload.originCity,
-        to: payload.destinationCity,
-        date: form.date || undefined,
-      });
-      setResults([]);
-      setError(undefined);
-      setLoading(true);
-
-      navigate('/results');
+      navigate('/my-trips?published=1');
     } catch (e: any) {
-      setFeedback({ type: 'error', message: e?.message || 'Échec de la création du trajet.' });
+      setFeedback({ type: 'error', message: e?.message || 'Echec de la creation du trajet.' });
     } finally {
       setSubmitting(false);
     }
   };
-
-  const feedbackStyles =
-    feedback?.type === 'success'
-      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
-      : 'bg-red-50 border border-red-200 text-red-700';
-
-  const previewDeparture = form.date && form.time ? `${form.date}T${form.time}` : undefined;
-  const previewDepartureLabel = previewDeparture
-    ? new Date(previewDeparture).toLocaleString('fr-FR', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : 'Date et heure à confirmer';
-  const previewRouteLabel = `${form.originCity || 'Départ ?'} → ${form.destinationCity || 'Arrivée ?'}`;
-  const previewSeatsLabel = `${form.seatsTotal} siège(s)`;
-  const previewPriceLabel = `${Number(form.pricePerSeat || 0).toLocaleString('fr-FR')} XOF`; 
-  const extractFirstName = (value?: string | null) => {
-    if (!value) return undefined;
-    const trimmed = value.trim();
-    if (!trimmed) return undefined;
-    return trimmed.split(/\s+/)[0];
-  };
-
-  const previewDriver =
-    extractFirstName(account?.fullName || account?.companyName || account?.email) || 'Profil KariGo';
-
-  const steps = [
-    { id: 1, label: 'Itinéraire' },
-    { id: 2, label: 'Logistique' },
-    { id: 3, label: 'Publication' },
-  ];
 
   return (
     <div className="bg-slate-950/5 py-8">
@@ -195,195 +350,302 @@ export default function CreateRide() {
         <div className="space-y-3 text-center md:text-left">
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
             <Sparkles size={12} />
-            Publication express
+            Publication simplifiee
           </div>
-          <h1 className="text-3xl font-semibold text-slate-900">Publier un trajet en quelques étapes</h1>
+          <h1 className="text-3xl font-semibold text-slate-900">Publier un trajet devient tres simple</h1>
           <p className="text-sm text-slate-600 max-w-3xl">
-            Définis l’itinéraire, précise les détails logistiques puis confirme la publication. La fiche
-            est instantanément disponible dans la recherche et partageable par les administrateurs.
+            2 etapes: choisis l'itineraire, puis confirme prix et places. Le trajet apparait ensuite directement dans
+            "Mes trajets".
           </p>
         </div>
 
-        {feedback && (
-          <div className={`px-4 py-3 rounded-xl text-sm ${feedbackStyles}`}>{feedback.message}</div>
-        )}
+        {feedback && <div className={`px-4 py-3 rounded-xl text-sm ${feedbackStyles}`}>{feedback.message}</div>}
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr),320px]">
           <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
-              <div className="flex items-center gap-3">
-                {steps.map((step, index) => (
-                  <div key={step.id} className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-xs font-semibold text-slate-600">
-                      {step.id}
-                    </div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      {step.label}
-                    </span>
-                    {index < steps.length - 1 && <span className="hidden sm:block h-px w-8 bg-slate-200" />}
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-slate-900">1. Définir l’itinéraire</h2>
-                <span className="text-xs text-slate-500">Choisis des villes connues</span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <CityAutocomplete
-                  label="Départ"
-                  placeholder="Ville de départ"
-                  value={form.originCity}
-                  onChange={(value) => updateForm({ originCity: value })}
-                  onSelect={(value) => updateForm({ originCity: value })}
-                />
-                <CityAutocomplete
-                  label="Arrivée"
-                  placeholder="Ville d’arrivée"
-                  value={form.destinationCity}
-                  onChange={(value) => updateForm({ destinationCity: value })}
-                  onSelect={(value) => updateForm({ destinationCity: value })}
-                />
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-slate-900">2. Planifier le départ</h2>
-                <span className="text-xs text-slate-500">Date limite {minDate}</span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
-                  <input
-                    type="date"
-                    className="input w-full"
-                    min={minDate}
-                    value={form.date}
-                    onChange={(e) => updateForm({ date: e.currentTarget.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Heure</label>
-                  <input
-                    type="time"
-                    className="input w-full"
-                    value={form.time}
-                    onChange={(e) => updateForm({ time: e.currentTarget.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    Prix par siège (XOF)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={100}
-                    className="input w-full"
-                    value={form.pricePerSeat}
-                    onChange={(e) => updateForm({ pricePerSeat: Number(e.currentTarget.value || 0) })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    Nombre de sièges
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={7}
-                    className="input w-full"
-                    value={form.seatsTotal}
-                    onChange={(e) => {
-                      const value = Number(e.currentTarget.value || 1);
-                      updateForm({ seatsTotal: Math.max(1, Math.min(7, value)) });
-                    }}
-                    required
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-slate-900">Suivi en direct</h2>
-                <span className="text-xs text-slate-500">Disponible 15 min avant le départ</span>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                {isCompany
-                  ? 'Mode entreprise : le suivi s’active automatiquement 15 min avant le départ, puis bascule en notifications de passage des grandes villes.'
-                  : 'Active le suivi pour permettre au passager de voir ta position exacte jusqu’à l’arrivée.'}
-              </div>
-              {!isCompany && (
-                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={form.liveTrackingEnabled}
-                    onChange={(e) => updateForm({ liveTrackingEnabled: e.currentTarget.checked })}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
-                  />
-                  Activer le suivi en direct pour ce trajet
-                </label>
-              )}
-            </section>
-
-            <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-slate-900">3. Publier et partager</h2>
-                <span className="text-xs text-slate-500">Résumé automatique envoyé aux admins</span>
-              </div>
-              <ul className="text-sm text-slate-600 space-y-2">
-                <li>• Le trajet sera indexé dans la recherche et visible en admin.</li>
-                <li>• Tu peux dupliquer ce formulaire pour planifier une tournée complète.</li>
-                <li>
-                  • Le trajet sera automatiquement associé à ton profil {account?.fullName ?? account?.companyName ?? ''} pour
-                  assurer la traçabilité et les échanges.
-                </li>
-              </ul>
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn-primary px-5 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                  type="button"
+                  onClick={() => setCurrentStep(1)}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                    currentStep === 1
+                      ? 'bg-sky-600 text-white shadow shadow-sky-200/60'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-sky-700'
+                  }`}
                 >
-                  {submitting ? 'Publication…' : 'Publier le trajet'}
+                  1. Itineraire
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(-1)}
-                  className="px-4 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100"
+                  onClick={moveToStepTwo}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                    currentStep === 2
+                      ? 'bg-sky-600 text-white shadow shadow-sky-200/60'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-sky-700'
+                  }`}
                 >
-                  Annuler
+                  2. Prix et publication
                 </button>
               </div>
             </section>
+
+            {currentStep === 1 ? (
+              <>
+                <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-base font-semibold text-slate-900">Etape 1: itineraire</h2>
+                    <span className="text-xs text-slate-500">Utilise un modele en 1 clic</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {ROUTE_TEMPLATES.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => applyTemplate(template)}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-700"
+                      >
+                          {template.originCity}
+                          {' -> '}
+                          {template.destinationCity}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr),auto,minmax(0,1fr)] md:items-end">
+                    <CityAutocomplete
+                      label="Depart"
+                      placeholder="Ville de depart"
+                      value={form.originCity}
+                      onChange={(value) => updateForm({ originCity: value })}
+                      onSelect={(value) => updateForm({ originCity: value })}
+                    />
+                    <button
+                      type="button"
+                      onClick={swapRoute}
+                      className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:border-sky-200 hover:text-sky-700"
+                    >
+                      Inverser
+                    </button>
+                    <CityAutocomplete
+                      label="Arrivee"
+                      placeholder="Ville d'arrivee"
+                      value={form.destinationCity}
+                      onChange={(value) => updateForm({ destinationCity: value })}
+                      onSelect={(value) => updateForm({ destinationCity: value })}
+                    />
+                  </div>
+                  {errors.originCity ? <p className="text-xs text-red-600">{errors.originCity}</p> : null}
+                  {errors.destinationCity ? <p className="text-xs text-red-600">{errors.destinationCity}</p> : null}
+                  {errors.route ? <p className="text-xs text-red-600">{errors.route}</p> : null}
+                </section>
+
+                <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-base font-semibold text-slate-900">Date et heure</h2>
+                    <span className="text-xs text-slate-500">Date min: {minDate}</span>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
+                      <input
+                        type="date"
+                        className="input w-full"
+                        min={minDate}
+                        value={form.date}
+                        onChange={(e) => updateForm({ date: e.currentTarget.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Heure</label>
+                      <input
+                        type="time"
+                        className="input w-full"
+                        value={form.time}
+                        onChange={(e) => updateForm({ time: e.currentTarget.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyDeparturePreset(tonight)}
+                      className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-700"
+                    >
+                      Ce soir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyDeparturePreset(tomorrowMorning)}
+                      className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-700"
+                    >
+                      Demain matin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyDeparturePreset(tomorrowEvening)}
+                      className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-700"
+                    >
+                      Demain soir
+                    </button>
+                  </div>
+                  {errors.date ? <p className="text-xs text-red-600">{errors.date}</p> : null}
+                  {errors.time ? <p className="text-xs text-red-600">{errors.time}</p> : null}
+                  {errors.departureAt ? <p className="text-xs text-red-600">{errors.departureAt}</p> : null}
+                </section>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={moveToStepTwo}
+                    className="btn-primary px-5 py-3 inline-flex items-center gap-2"
+                  >
+                    Continuer <ArrowRight size={16} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-base font-semibold text-slate-900">Etape 2: prix et places</h2>
+                    <button
+                      type="button"
+                      onClick={() => setAdvancedMode((prev) => !prev)}
+                      className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+                    >
+                      {advancedMode ? 'Mode simple' : 'Mode avance'}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-slate-600">Nombre de places</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateForm({ seatsTotal: clampNumber(form.seatsTotal - 1, 1, 8) })}
+                          className="h-11 w-11 rounded-xl border border-slate-200 text-lg font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          -
+                        </button>
+                        <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-center text-lg font-semibold text-slate-900">
+                          {form.seatsTotal}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateForm({ seatsTotal: clampNumber(form.seatsTotal + 1, 1, 8) })}
+                          className="h-11 w-11 rounded-xl border border-slate-200 text-lg font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          +
+                        </button>
+                      </div>
+                      {errors.seatsTotal ? <p className="text-xs text-red-600">{errors.seatsTotal}</p> : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-slate-600">Prix par place (XOF)</label>
+                      <input
+                        type="range"
+                        min={500}
+                        max={15000}
+                        step={100}
+                        value={clampNumber(form.pricePerSeat, 500, 15000)}
+                        onChange={(e) => updateForm({ pricePerSeat: Number(e.currentTarget.value) })}
+                        className="w-full"
+                      />
+                      <input
+                        type="number"
+                        min={500}
+                        max={100000}
+                        step={100}
+                        className="input w-full"
+                        value={form.pricePerSeat}
+                        onChange={(e) =>
+                          updateForm({
+                            pricePerSeat: clampNumber(Number(e.currentTarget.value || 500), 500, 100000),
+                          })
+                        }
+                        required
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        {PRICE_PRESETS.map((price) => (
+                          <button
+                            key={price}
+                            type="button"
+                            onClick={() => updateForm({ pricePerSeat: price })}
+                            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-700"
+                          >
+                            {price.toLocaleString('fr-FR')} XOF
+                          </button>
+                        ))}
+                      </div>
+                      {errors.pricePerSeat ? <p className="text-xs text-red-600">{errors.pricePerSeat}</p> : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    {isCompany
+                      ? 'Mode entreprise: le suivi en direct est active automatiquement.'
+                      : 'Tu peux activer le suivi en direct pour rassurer les passagers.'}
+                  </div>
+
+                  {!isCompany ? (
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={form.liveTrackingEnabled}
+                        onChange={(e) => updateForm({ liveTrackingEnabled: e.currentTarget.checked })}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
+                      />
+                      Activer le suivi en direct
+                    </label>
+                  ) : null}
+
+                  {advancedMode ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500 space-y-1">
+                      <p>Le trajet sera indexe dans la recherche juste apres creation.</p>
+                      <p>Tu pourras le retrouver et le partager depuis "Mes trajets".</p>
+                    </div>
+                  ) : null}
+                </section>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(1)}
+                    className="px-4 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100"
+                  >
+                    Retour
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="btn-primary px-5 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? 'Publication...' : 'Publier le trajet'}
+                  </button>
+                </div>
+              </>
+            )}
           </form>
 
           <aside className="space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Aperçu du trajet
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resume instantane</p>
               <div className="mt-4 space-y-3 text-sm text-slate-600">
                 <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                  <p className="text-xs text-slate-500">Itinéraire</p>
+                  <p className="text-xs text-slate-500">Itineraire</p>
                   <p className="font-semibold text-slate-900 flex items-center gap-2">
-                    <MapPin size={14} className="text-sky-500" />
+                    <MapPinned size={14} className="text-sky-500" />
                     {previewRouteLabel}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                  <p className="text-xs text-slate-500">Départ prévu</p>
+                  <p className="text-xs text-slate-500">Depart prevu</p>
                   <p className="font-semibold text-slate-900 flex items-center gap-2">
-                    <Clock size={14} className="text-slate-500" />
+                    <CalendarClock size={14} className="text-slate-500" />
                     {previewDepartureLabel}
                   </p>
                 </div>
@@ -397,30 +659,35 @@ export default function CreateRide() {
                   </div>
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-xs text-slate-500">Prix</p>
-                    <p className="font-semibold text-slate-900">{previewPriceLabel}</p>
+                    <p className="font-semibold text-slate-900 flex items-center gap-2">
+                      <CircleDollarSign size={14} />
+                      {previewPriceLabel}
+                    </p>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500">
-                  Chauffeur associé : <span className="font-semibold text-slate-900">{previewDriver}</span>
+                  Chauffeur associe: <span className="font-semibold text-slate-900">{previewDriver}</span>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
-                  Suivi en direct :{' '}
-                  <span className="font-semibold text-slate-900">
-                    {isCompany || form.liveTrackingEnabled ? 'Activé' : 'Désactivé'}
-                  </span>
+                  Revenu theorique maximal:{' '}
+                  <span className="font-semibold text-slate-900">{previewEstimatedRevenue.toLocaleString('fr-FR')} XOF</span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500 flex items-center gap-2">
+                  <Route size={14} className="text-slate-400" />
+                  {isCompany || form.liveTrackingEnabled ? 'Suivi en direct active' : 'Suivi en direct desactive'}
                 </div>
               </div>
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 px-5 py-6 text-white shadow-lg">
-              <p className="text-sm font-semibold">Besoin de suivre les réservations ?</p>
+              <p className="text-sm font-semibold">Flux optimise production</p>
               <p className="mt-2 text-xs text-white/80">
-                Les admins peuvent, depuis la page dédiée, envoyer la liste complète des trajets par email
-                ou les fermer en un clic.
+                Ce parcours est adapte a un usage sur adresse publique: formulaire court, validation immediate et
+                redirection directe vers "Mes trajets".
               </p>
               <div className="mt-4 inline-flex items-center gap-2 text-xs font-semibold">
-                Accessible après publication
-                <ArrowRight size={14} />
+                <Navigation size={14} />
+                Pret a publier
               </div>
             </div>
           </aside>

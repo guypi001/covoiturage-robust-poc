@@ -31,7 +31,7 @@ import { createReport } from '../api/identity';
 import { useSavedRides } from '../savedRides';
 import { getConversations, sendMessage } from '../api/messaging';
 import { RouteMiniMap } from '../components/RouteMiniMap';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 import { buildRegionForCoords, resolveCityCoords } from '../utils/geo';
 
 const toCalendarDate = (value) => {
@@ -51,6 +51,89 @@ const addHours = (value, hours = 2) => {
 
 const MOBILE_PROVIDERS = ['Orange Money', 'MTN Money', 'Moov Money'];
 const CARD_PROVIDERS = ['VISA', 'MASTERCARD', 'CARTE'];
+const ROUTE_MAP_STYLE = [
+  {
+    elementType: 'geometry',
+    stylers: [{ color: '#f5f8fc' }],
+  },
+  {
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#475569' }],
+  },
+  {
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#ffffff' }],
+  },
+  {
+    featureType: 'administrative.land_parcel',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#94a3b8' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'geometry',
+    stylers: [{ color: '#edf2f7' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }],
+  },
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#dbe7f2' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#dbeafe' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#bfdbfe' }],
+  },
+  {
+    featureType: 'transit',
+    stylers: [{ visibility: 'off' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#dbeafe' }],
+  },
+];
+
+const haversineKm = (a, b) => {
+  const r = 6371;
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const core = sinDLat * sinDLat + sinDLng * sinDLng * Math.cos(lat1) * Math.cos(lat2);
+  const distance = 2 * r * Math.atan2(Math.sqrt(core), Math.sqrt(1 - core));
+  return Math.round(distance);
+};
+
+const formatDurationLabel = (minutes) => {
+  if (!minutes || minutes <= 0) return '';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
+};
 
 export function RideDetailScreen({ route }) {
   const navigation = useNavigation();
@@ -160,6 +243,10 @@ export function RideDetailScreen({ route }) {
   const originCoord = resolveCityCoords(ride?.originCity || ride?.origin);
   const destinationCoord = resolveCityCoords(ride?.destinationCity || ride?.destination);
   const mapRegion = buildRegionForCoords(originCoord, destinationCoord);
+  const routeDistanceKm = originCoord && destinationCoord ? haversineKm(originCoord, destinationCoord) : 0;
+  const routeDurationMinutes = routeDistanceKm ? Math.max(20, Math.round((routeDistanceKm / 62) * 60)) : 0;
+  const routeDistanceLabel = routeDistanceKm ? `~${routeDistanceKm} km` : '';
+  const routeDurationLabel = routeDurationMinutes ? `~${formatDurationLabel(routeDurationMinutes)}` : '';
 
   const savedRide = ride
     ? {
@@ -491,26 +578,83 @@ export function RideDetailScreen({ route }) {
                 initialRegion={mapRegion}
                 loadingEnabled
                 toolbarEnabled={false}
+                customMapStyle={ROUTE_MAP_STYLE}
+                showsCompass={false}
+                showsIndoorLevelPicker={false}
+                showsTraffic={false}
+                showsBuildings
+                pitchEnabled={false}
+                rotateEnabled={false}
               >
                 {originCoord ? (
-                  <Marker coordinate={originCoord} title="Depart" description={ride?.originCity || ''} />
+                  <Circle
+                    center={originCoord}
+                    radius={1400}
+                    strokeColor="rgba(14, 165, 233, 0.28)"
+                    fillColor="rgba(14, 165, 233, 0.08)"
+                  />
                 ) : null}
                 {destinationCoord ? (
-                  <Marker
-                    coordinate={destinationCoord}
-                    pinColor={colors.emerald500}
-                    title="Arrivee"
-                    description={ride?.destinationCity || ''}
+                  <Circle
+                    center={destinationCoord}
+                    radius={1400}
+                    strokeColor="rgba(16, 185, 129, 0.32)"
+                    fillColor="rgba(16, 185, 129, 0.08)"
+                  />
+                ) : null}
+                {originCoord && destinationCoord ? (
+                  <Polyline
+                    coordinates={[originCoord, destinationCoord]}
+                    strokeColor="rgba(14, 165, 233, 0.2)"
+                    strokeWidth={11}
                   />
                 ) : null}
                 {originCoord && destinationCoord ? (
                   <Polyline
                     coordinates={[originCoord, destinationCoord]}
                     strokeColor={colors.sky600}
-                    strokeWidth={3}
+                    strokeWidth={4}
                   />
                 ) : null}
+                {originCoord && destinationCoord ? (
+                  <Polyline
+                    coordinates={[originCoord, destinationCoord]}
+                    strokeColor={colors.emerald500}
+                    strokeWidth={2}
+                    lineDashPattern={[8, 10]}
+                  />
+                ) : null}
+                {originCoord ? (
+                  <Marker coordinate={originCoord}>
+                    <View style={[styles.mapPin, styles.mapPinStart]}>
+                      <Ionicons name="navigate" size={12} color={colors.white} />
+                    </View>
+                  </Marker>
+                ) : null}
+                {destinationCoord ? (
+                  <Marker coordinate={destinationCoord}>
+                    <View style={[styles.mapPin, styles.mapPinEnd]}>
+                      <Ionicons name="flag" size={12} color={colors.white} />
+                    </View>
+                  </Marker>
+                ) : null}
               </MapView>
+              {(routeDistanceLabel || routeDurationLabel) && (
+                <View style={styles.mapMetricRow} pointerEvents="none">
+                  {routeDistanceLabel ? (
+                    <View style={styles.mapMetricChip}>
+                      <Ionicons name="resize-outline" size={12} color={colors.slate700} />
+                      <Text style={styles.mapMetricText}>{routeDistanceLabel}</Text>
+                    </View>
+                  ) : null}
+                  {routeDurationLabel ? (
+                    <View style={styles.mapMetricChip}>
+                      <Ionicons name="time-outline" size={12} color={colors.slate700} />
+                      <Text style={styles.mapMetricText}>{routeDurationLabel}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
               {!originCoord || !destinationCoord ? (
                 <View style={styles.mapOverlay}>
                   <Text style={styles.mapOverlayText}>
@@ -522,6 +666,8 @@ export function RideDetailScreen({ route }) {
             <RouteMiniMap
               origin={ride?.originCity || ride?.origin}
               destination={ride?.destinationCity || ride?.destination}
+              distanceLabel={routeDistanceLabel}
+              durationLabel={routeDurationLabel}
             />
           </SurfaceCard>
 
@@ -933,7 +1079,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   mapWrapper: {
-    height: 180,
+    height: 204,
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
@@ -943,12 +1089,52 @@ const styles = StyleSheet.create({
   mapView: {
     flex: 1,
   },
+  mapMetricRow: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  mapMetricChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  mapMetricText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.slate700,
+  },
+  mapPin: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.white,
+  },
+  mapPinStart: {
+    backgroundColor: colors.sky600,
+  },
+  mapPinEnd: {
+    backgroundColor: colors.emerald500,
+  },
   mapOverlay: {
     position: 'absolute',
     left: spacing.sm,
     right: spacing.sm,
     bottom: spacing.sm,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    backgroundColor: 'rgba(15, 23, 42, 0.76)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: radius.md,

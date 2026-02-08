@@ -7,9 +7,11 @@ import {
   MessageNotificationSummary,
   fetchConversations,
   fetchConversationMessages,
+  getPublicProfile,
   getMessageNotifications,
   lookupAccountByEmail,
   markConversationRead,
+  resolveIdentityAssetUrl,
   sendChatMessage,
 } from '../api';
 import { useApp } from '../store';
@@ -46,6 +48,11 @@ type PrefillRideContext = {
 type RideContextSummary = PrefillRideContext & {
   dateLabel: string;
   timeLabel: string;
+};
+
+type ParticipantPreview = {
+  label?: string;
+  profilePhotoUrl?: string;
 };
 
 function formatDate(value?: string | null) {
@@ -107,6 +114,8 @@ export default function Messages() {
   const [rideContext, setRideContext] = useState<PrefillRideContext | null>(null);
   const [conversationSearch, setConversationSearch] = useState('');
   const [showComposer, setShowComposer] = useState(false);
+  const [participantsPreview, setParticipantsPreview] = useState<Record<string, ParticipantPreview>>({});
+  const [avatarLoadErrors, setAvatarLoadErrors] = useState<Record<string, boolean>>({});
 
   const selectedConversation = useMemo(
     () => conversations.find((conv) => conv.id === selectedConversationId) ?? null,
@@ -139,6 +148,18 @@ export default function Messages() {
       }),
     };
   }, [rideContext]);
+
+  const getParticipantLabel = (participantId?: string, fallback?: string | null) => {
+    if (!participantId) return fallback || '';
+    const preview = participantsPreview[participantId];
+    return preview?.label || fallback || participantId;
+  };
+
+  const getParticipantAvatarUrl = (participantId?: string) => {
+    if (!participantId) return '';
+    if (avatarLoadErrors[participantId]) return '';
+    return resolveIdentityAssetUrl(participantsPreview[participantId]?.profilePhotoUrl);
+  };
 
   useEffect(() => {
     const state = location.state as { contact?: ContactPrefill; rideContext?: PrefillRideContext } | null;
@@ -189,6 +210,42 @@ export default function Messages() {
     }
   }, [selectedConversationId]);
 
+  const hydrateParticipantPreviews = async (convs: ConversationSummary[]) => {
+    if (!token) return;
+    const ids = Array.from(
+      new Set(
+        convs
+          .map((conv) => conv.otherParticipant?.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ).filter((id) => !participantsPreview[id] || avatarLoadErrors[id]);
+
+    if (!ids.length) return;
+
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        const profile = await getPublicProfile(id, token);
+        return {
+          id,
+          label: profile.fullName || profile.companyName || profile.email || id,
+          profilePhotoUrl: profile.profilePhotoUrl || '',
+        };
+      }),
+    );
+
+    setParticipantsPreview((prev) => {
+      const next = { ...prev };
+      results.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        next[result.value.id] = {
+          label: result.value.label,
+          profilePhotoUrl: result.value.profilePhotoUrl,
+        };
+      });
+      return next;
+    });
+  };
+
   const loadConversations = async () => {
     if (!userId) return;
     setLoadingConversations(true);
@@ -197,6 +254,7 @@ export default function Messages() {
       const [convs, notif] = await Promise.all([fetchConversations(userId), getMessageNotifications(userId)]);
       setConversations(convs);
       setNotifications(notif);
+      void hydrateParticipantPreviews(convs);
       setSelectedConversationId((prev) => {
         if (prev && convs.some((conv) => conv.id === prev)) return prev;
         if (contactPrefill) {
@@ -259,6 +317,7 @@ export default function Messages() {
         const remaining = prev.filter((conv) => conv.id !== response.conversation.id);
         return [response.conversation, ...remaining];
       });
+      void hydrateParticipantPreviews([response.conversation]);
       setSelectedConversationId(response.conversation.id);
       await refreshBadge();
     } catch (err: any) {
@@ -310,6 +369,7 @@ export default function Messages() {
         const others = prev.filter((conv) => conv.id !== response.conversation.id);
         return [response.conversation, ...others];
       });
+      void hydrateParticipantPreviews([response.conversation]);
       setSelectedConversationId(response.conversation.id);
       await refreshBadge();
     } catch (err: any) {
@@ -383,8 +443,10 @@ export default function Messages() {
                 <p className="text-sm text-slate-500 px-1">Aucun échange pour le moment.</p>
               )}
               {filteredConversations.map((conv) => {
-                const label = conv.otherParticipant.label ?? conv.otherParticipant.id;
+                const participantId = conv.otherParticipant.id;
+                const label = getParticipantLabel(participantId, conv.otherParticipant.label);
                 const initials = getInitials(label);
+                const avatarUrl = getParticipantAvatarUrl(participantId);
                 return (
                   <button
                     key={conv.id}
@@ -394,8 +456,19 @@ export default function Messages() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-slate-100 text-slate-600 grid place-items-center font-semibold">
-                        {initials || <UserCircle size={18} />}
+                      <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-slate-600 grid place-items-center font-semibold">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt={`Profil ${label}`}
+                            className="h-full w-full object-cover"
+                            onError={() =>
+                              setAvatarLoadErrors((prev) => ({ ...prev, [participantId]: true }))
+                            }
+                          />
+                        ) : (
+                          initials || <UserCircle size={18} />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-800">
@@ -468,11 +541,42 @@ export default function Messages() {
             {selectedConversation ? (
               <>
                 <header className="border-b border-slate-100 px-5 py-4 flex items-center justify-between gap-3">
-                  <div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-11 w-11 overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-slate-600 grid place-items-center font-semibold">
+                      {getParticipantAvatarUrl(selectedConversation.otherParticipant.id) ? (
+                        <img
+                          src={getParticipantAvatarUrl(selectedConversation.otherParticipant.id)}
+                          alt={`Profil ${
+                            getParticipantLabel(
+                              selectedConversation.otherParticipant.id,
+                              selectedConversation.otherParticipant.label,
+                            ) || selectedConversation.otherParticipant.id
+                          }`}
+                          className="h-full w-full object-cover"
+                          onError={() =>
+                            setAvatarLoadErrors((prev) => ({
+                              ...prev,
+                              [selectedConversation.otherParticipant.id]: true,
+                            }))
+                          }
+                        />
+                      ) : (
+                        getInitials(
+                          getParticipantLabel(
+                            selectedConversation.otherParticipant.id,
+                            selectedConversation.otherParticipant.label,
+                          ),
+                        ) || <UserCircle size={18} />
+                      )}
+                    </div>
+                    <div>
                     <p className="text-xs uppercase text-slate-500">Discussion</p>
                     <h2 className="text-lg font-semibold text-slate-900">
                       <Link to={`/profile/${selectedConversation.otherParticipant.id}`}>
-                        {selectedConversation.otherParticipant.label ?? selectedConversation.otherParticipant.id}
+                        {getParticipantLabel(
+                          selectedConversation.otherParticipant.id,
+                          selectedConversation.otherParticipant.label,
+                        ) || selectedConversation.otherParticipant.id}
                       </Link>
                     </h2>
                     <p className="text-xs text-slate-500">
@@ -480,6 +584,7 @@ export default function Messages() {
                         ? 'Compte entreprise'
                         : 'Compte particulier'}
                     </p>
+                    </div>
                   </div>
                   <div className="text-xs text-slate-400">
                     Dernier message {formatDate(selectedConversation.lastMessageAt)}
@@ -496,17 +601,41 @@ export default function Messages() {
                   {messages.map((message) => {
                     const isMine = message.senderId === userId;
                     const status = message.status === 'READ';
+                    const otherId = selectedConversation.otherParticipant.id;
+                    const otherLabel =
+                      getParticipantLabel(otherId, selectedConversation.otherParticipant.label) || otherId;
+                    const otherAvatar = getParticipantAvatarUrl(otherId);
                     return (
                       <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                          className={`rounded-2xl px-4 py-3 max-w-[75%] text-sm shadow-sm ${
-                            isMine ? 'bg-sky-500 text-white' : 'bg-white text-slate-800 border border-slate-100'
-                          }`}
-                        >
-                          <p className="whitespace-pre-line">{message.body}</p>
-                          <div className="mt-2 flex items-center justify-between text-[11px] opacity-80 gap-4">
-                            <span>{formatDate(message.createdAt)}</span>
-                            {isMine && <CheckCheck size={14} className={status ? 'text-white' : 'text-white/60'} />}
+                        <div className={`flex items-end gap-2 ${isMine ? '' : 'pr-8'}`}>
+                          {!isMine ? (
+                            <div className="h-8 w-8 overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-slate-600 grid place-items-center text-[11px] font-semibold">
+                              {otherAvatar ? (
+                                <img
+                                  src={otherAvatar}
+                                  alt={`Profil ${otherLabel}`}
+                                  className="h-full w-full object-cover"
+                                  onError={() =>
+                                    setAvatarLoadErrors((prev) => ({ ...prev, [otherId]: true }))
+                                  }
+                                />
+                              ) : (
+                                getInitials(otherLabel)
+                              )}
+                            </div>
+                          ) : null}
+                          <div
+                            className={`rounded-2xl px-4 py-3 max-w-[75%] text-sm shadow-sm ${
+                              isMine ? 'bg-sky-500 text-white' : 'bg-white text-slate-800 border border-slate-100'
+                            }`}
+                          >
+                            <p className="whitespace-pre-line">{message.body}</p>
+                            <div className="mt-2 flex items-center justify-between text-[11px] opacity-80 gap-4">
+                              <span>{formatDate(message.createdAt)}</span>
+                              {isMine ? (
+                                <CheckCheck size={14} className={status ? 'text-white' : 'text-white/60'} />
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -557,9 +686,41 @@ export default function Messages() {
               <>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-500">Contact</p>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    {selectedConversation.otherParticipant.label ?? selectedConversation.otherParticipant.id}
-                  </h3>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="h-12 w-12 overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-slate-600 grid place-items-center font-semibold">
+                      {getParticipantAvatarUrl(selectedConversation.otherParticipant.id) ? (
+                        <img
+                          src={getParticipantAvatarUrl(selectedConversation.otherParticipant.id)}
+                          alt={`Profil ${
+                            getParticipantLabel(
+                              selectedConversation.otherParticipant.id,
+                              selectedConversation.otherParticipant.label,
+                            ) || selectedConversation.otherParticipant.id
+                          }`}
+                          className="h-full w-full object-cover"
+                          onError={() =>
+                            setAvatarLoadErrors((prev) => ({
+                              ...prev,
+                              [selectedConversation.otherParticipant.id]: true,
+                            }))
+                          }
+                        />
+                      ) : (
+                        getInitials(
+                          getParticipantLabel(
+                            selectedConversation.otherParticipant.id,
+                            selectedConversation.otherParticipant.label,
+                          ),
+                        ) || <UserCircle size={18} />
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {getParticipantLabel(
+                        selectedConversation.otherParticipant.id,
+                        selectedConversation.otherParticipant.label,
+                      ) || selectedConversation.otherParticipant.id}
+                    </h3>
+                  </div>
                   <p className="text-xs text-slate-500">
                     {selectedConversation.otherParticipant.type === 'COMPANY'
                       ? 'Professionnel'

@@ -232,12 +232,12 @@ services:
       context: ./services/webapp
       dockerfile: Dockerfile
       args:
-        VITE_SEARCH_URL:  http://localhost:3003
-        VITE_BOOKING_URL: http://localhost:3004
-        VITE_RIDE_URL:    http://localhost:3002
-        VITE_PAYMENT_URL: http://localhost:3000
-        VITE_IDENTITY_URL: http://localhost:3000
-        VITE_MESSAGING_URL: http://localhost:3012
+        VITE_SEARCH_URL: /api/search
+        VITE_BOOKING_URL: /api/booking
+        VITE_RIDE_URL: /api/ride
+        VITE_PAYMENT_URL: /api/payment
+        VITE_IDENTITY_URL: /api/identity
+        VITE_MESSAGING_URL: /api/messaging
     depends_on:
       search:
         condition: service_started
