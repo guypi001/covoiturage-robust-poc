@@ -19,12 +19,29 @@ exports.ProxyController = void 0;
 const common_1 = require("@nestjs/common");
 const axios_1 = __importDefault(require("axios"));
 const metrics_1 = require("./metrics");
+const receipt_1 = require("./receipt");
 function normalizeRideUrl(value) {
     if (!value)
         return undefined;
     try {
         const parsed = new URL(value);
         if ((parsed.hostname === 'ride' || parsed.hostname.endsWith('.ride')) && parsed.port === '3002') {
+            parsed.port = '3000';
+            return parsed.toString();
+        }
+        return value;
+    }
+    catch {
+        return value;
+    }
+}
+function normalizeInternalServiceUrl(value, serviceName, legacyPort) {
+    if (!value)
+        return undefined;
+    try {
+        const parsed = new URL(value);
+        if ((parsed.hostname === serviceName || parsed.hostname.endsWith(`.${serviceName}`)) &&
+            parsed.port === legacyPort) {
             parsed.port = '3000';
             return parsed.toString();
         }
@@ -42,11 +59,11 @@ const rideHosts = [
     'http://127.0.0.1:3002',
 ].filter((value) => Boolean(value));
 const RIDE = rideHosts[0] ?? 'http://ride:3000';
-const SEARCH = process.env.SEARCH_URL || 'http://search:3003';
-const BOOKING = process.env.BOOKING_URL || 'http://booking:3004';
-const PAYMENT = process.env.PAYMENT_URL || 'http://payment:3005';
-const WALLET = process.env.WALLET_URL || 'http://wallet:3008';
-const IDENTITY = process.env.IDENTITY_URL || 'http://identity:3000';
+const SEARCH = normalizeInternalServiceUrl(process.env.SEARCH_URL, 'search', '3003') || 'http://search:3000';
+const BOOKING = normalizeInternalServiceUrl(process.env.BOOKING_URL, 'booking', '3004') || 'http://booking:3000';
+const PAYMENT = normalizeInternalServiceUrl(process.env.PAYMENT_URL, 'payment', '3005') || 'http://payment:3000';
+const WALLET = normalizeInternalServiceUrl(process.env.WALLET_URL, 'wallet', '3008') || 'http://wallet:3000';
+const IDENTITY = normalizeInternalServiceUrl(process.env.IDENTITY_URL, 'identity', '3001') || 'http://identity:3000';
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY || 'super-internal-key';
 let ProxyController = class ProxyController {
     async createRide(body, req) {
@@ -64,10 +81,28 @@ let ProxyController = class ProxyController {
         };
         return this.forward(() => axios_1.default.post(`${RIDE}/rides`, payload), 'ride');
     }
+    async myRideBookings(req, rideId) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('auth_required');
+        }
+        if (!rideId?.trim()) {
+            throw new common_1.NotFoundException('ride_not_found');
+        }
+        const rideRes = await axios_1.default.get(`${RIDE}/rides/${rideId}`, { headers: this.internalHeaders() });
+        const ride = rideRes?.data;
+        if (!ride?.id || ride?.driverId !== account.id) {
+            throw new common_1.ForbiddenException('not_ride_owner');
+        }
+        return this.forward(() => axios_1.default.get(`${BOOKING}/admin/bookings`, {
+            params: { rideId: rideId },
+            headers: this.internalHeaders(),
+        }), 'booking');
+    }
     async myPaymentMethods(req) {
         const account = await this.fetchMyAccount(req);
         if (!account?.id) {
-            throw new common_1.ForbiddenException('account_not_found');
+            return [];
         }
         return this.forward(() => axios_1.default.get(`${WALLET}/payment-methods`, {
             params: { ownerId: account.id },
@@ -94,14 +129,213 @@ let ProxyController = class ProxyController {
             headers: this.internalHeaders(),
         }), 'wallet');
     }
+    async setDefaultPaymentMethod(req, id) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.post(`${WALLET}/payment-methods/${id}/default`, {}, {
+            params: { ownerId: account.id },
+            headers: this.internalHeaders(),
+        }), 'wallet');
+    }
+    async getWallet(req) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.get(`${WALLET}/wallets/${account.id}`, { headers: this.internalHeaders() }), 'wallet');
+    }
+    async getWalletTransactions(req, limit) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.get(`${WALLET}/wallets/${account.id}/transactions`, {
+            params: { limit },
+            headers: this.internalHeaders(),
+        }), 'wallet');
+    }
     async search(q) {
         return this.forward(() => axios_1.default.get(`${SEARCH}/search`, { params: q }), 'search');
     }
-    async booking(body) {
-        return this.forward(() => axios_1.default.post(`${BOOKING}/bookings`, body), 'booking');
+    async myProfile(req) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('auth_required');
+        }
+        return account;
     }
-    async capture(body) {
-        return this.forward(() => axios_1.default.post(`${PAYMENT}/mock-capture`, body), 'payment');
+    async booking(body, req) {
+        const account = await this.fetchMyAccount(req);
+        const rideId = body?.rideId;
+        const seatsRaw = body?.seats;
+        const seats = Number(seatsRaw);
+        if (!rideId || typeof rideId !== 'string') {
+            throw new common_1.HttpException({ error: 'ride_id_required' }, 400);
+        }
+        if (!Number.isFinite(seats) || seats <= 0) {
+            throw new common_1.HttpException({ error: 'invalid_seats' }, 400);
+        }
+        const passengerId = (account?.id && typeof account.id === 'string' && account.id.length > 0
+            ? account.id
+            : typeof body?.passengerId === 'string' && body.passengerId.length > 0
+                ? body.passengerId
+                : undefined) ?? `guest-${Date.now()}`;
+        let rideSeatsAvailable;
+        let rideStatus;
+        try {
+            const rideResp = await axios_1.default.get(`${RIDE}/rides/${rideId}`, { headers: this.internalHeaders() });
+            rideSeatsAvailable = Number(rideResp.data?.seatsAvailable ?? 0);
+            rideStatus = rideResp.data?.status;
+            if (!Number.isFinite(rideSeatsAvailable))
+                rideSeatsAvailable = 0;
+        }
+        catch (err) {
+            throw new common_1.HttpException({ error: 'ride_not_found', detail: 'Impossible de récupérer ce trajet pour le moment.' }, common_1.HttpStatus.NOT_FOUND);
+        }
+        if (rideStatus && rideStatus !== 'PUBLISHED') {
+            throw new common_1.HttpException({ error: 'ride_closed', detail: 'Ce trajet n’est plus disponible.' }, common_1.HttpStatus.CONFLICT);
+        }
+        if (!rideSeatsAvailable || rideSeatsAvailable <= 0) {
+            throw new common_1.HttpException({ error: 'not_enough_seats', detail: 'Plus aucun siège n’est disponible.' }, common_1.HttpStatus.CONFLICT);
+        }
+        const normalizedSeats = Math.min(Math.floor(seats), rideSeatsAvailable);
+        if (normalizedSeats < 1) {
+            throw new common_1.HttpException({ error: 'not_enough_seats', detail: 'Plus assez de sièges pour ta demande.' }, common_1.HttpStatus.CONFLICT);
+        }
+        if (normalizedSeats < Math.floor(seats)) {
+            throw new common_1.HttpException({
+                error: 'not_enough_seats',
+                detail: `Il reste uniquement ${rideSeatsAvailable} place(s).`,
+            }, common_1.HttpStatus.CONFLICT);
+        }
+        const passengerName = typeof body?.passengerName === 'string' ? body.passengerName.trim() : undefined;
+        const passengerEmail = typeof body?.passengerEmail === 'string' ? body.passengerEmail.trim() : undefined;
+        const passengerPhone = typeof body?.passengerPhone === 'string' ? body.passengerPhone.trim() : undefined;
+        const payload = {
+            rideId,
+            seats: normalizedSeats,
+            passengerId,
+            passengerName: passengerName || undefined,
+            passengerEmail: passengerEmail || undefined,
+            passengerPhone: passengerPhone || undefined,
+        };
+        try {
+            return await this.forward(() => axios_1.default.post(`${BOOKING}/bookings`, payload), 'booking');
+        }
+        catch (err) {
+            if (err instanceof common_1.HttpException) {
+                const status = err.getStatus?.();
+                if (status === common_1.HttpStatus.BAD_REQUEST) {
+                    const response = err.getResponse();
+                    const detail = typeof response === 'object' ? response?.detail || response?.error : undefined;
+                    const lower = typeof detail === 'string' ? detail.toLowerCase() : '';
+                    if (lower.includes('seat lock')) {
+                        let seatsAvailable;
+                        try {
+                            const ride = await axios_1.default
+                                .get(`${RIDE}/rides/${rideId}`, { headers: this.internalHeaders() })
+                                .then((res) => res.data)
+                                .catch(() => null);
+                            if (ride && typeof ride.seatsAvailable === 'number')
+                                seatsAvailable = ride.seatsAvailable;
+                        }
+                        catch {
+                        }
+                        throw new common_1.HttpException({
+                            error: 'not_enough_seats',
+                            detail: seatsAvailable !== undefined
+                                ? `Il ne reste que ${seatsAvailable} place(s) disponibles`
+                                : 'Plus assez de sièges disponibles',
+                        }, common_1.HttpStatus.CONFLICT);
+                    }
+                }
+            }
+            throw err;
+        }
+    }
+    async lookupBookingReference(req, code) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('auth_required');
+        }
+        const trimmed = code?.trim();
+        if (!trimmed || !/^\d{8}$/.test(trimmed)) {
+            throw new common_1.HttpException({ error: 'invalid_reference' }, common_1.HttpStatus.BAD_REQUEST);
+        }
+        const bookingRes = await axios_1.default.get(`${BOOKING}/admin/bookings/reference/${trimmed}`, {
+            headers: this.internalHeaders(),
+        });
+        const booking = bookingRes?.data;
+        if (!booking) {
+            throw new common_1.NotFoundException('booking_not_found');
+        }
+        const ride = booking.rideId
+            ? await axios_1.default
+                .get(`${RIDE}/rides/${booking.rideId}`, { headers: this.internalHeaders() })
+                .then((resp) => resp.data)
+                .catch(() => null)
+            : null;
+        const isAdmin = account.role === 'ADMIN';
+        const isPassenger = account.id === booking.passengerId;
+        const isDriver = ride?.driverId && account.id === ride.driverId;
+        if (!isAdmin && !isPassenger && !isDriver) {
+            throw new common_1.ForbiddenException('booking_forbidden');
+        }
+        const ids = [booking.passengerId, ride?.driverId].filter(Boolean).join(',');
+        let passengers = [];
+        if (ids) {
+            try {
+                const res = await axios_1.default.get(`${IDENTITY}/internal/accounts`, {
+                    params: { ids },
+                    headers: this.internalHeaders(),
+                });
+                passengers = Array.isArray(res.data?.data) ? res.data.data : [];
+            }
+            catch {
+                passengers = [];
+            }
+        }
+        const passengerProfile = passengers.find((item) => item.id === booking.passengerId);
+        const driverProfile = passengers.find((item) => item.id === ride?.driverId);
+        const passengerName = booking.passengerName ||
+            passengerProfile?.fullName ||
+            passengerProfile?.companyName ||
+            passengerProfile?.email ||
+            'Passager';
+        const driverName = driverProfile?.fullName || driverProfile?.companyName || driverProfile?.email || 'Conducteur';
+        return {
+            referenceCode: booking.referenceCode ?? trimmed,
+            status: booking.status,
+            seats: booking.seats,
+            amount: booking.amount,
+            passenger: {
+                name: passengerName,
+                email: isAdmin ? booking.passengerEmail || passengerProfile?.email : undefined,
+                phone: isAdmin ? booking.passengerPhone : undefined,
+            },
+            driver: {
+                name: driverName,
+            },
+            ride: {
+                originCity: ride?.originCity ?? null,
+                destinationCity: ride?.destinationCity ?? null,
+                departureAt: ride?.departureAt ?? null,
+                status: ride?.status ?? null,
+            },
+        };
+    }
+    async capture(body, req) {
+        const headers = {};
+        if (body.idempotencyKey)
+            headers['Idempotency-Key'] = body.idempotencyKey;
+        const account = await this.fetchMyAccount(req).catch(() => null);
+        const payload = {
+            ...body,
+            payerId: account?.id,
+        };
+        return this.forward(() => axios_1.default.post(`${PAYMENT}/payments/capture`, payload, { headers }), 'payment');
     }
     async myBookings(req, query) {
         const account = await this.fetchMyAccount(req);
@@ -125,15 +359,22 @@ let ProxyController = class ProxyController {
         const items = Array.isArray(bookingPayload?.data) ? bookingPayload.data : [];
         const uniqueRideIds = Array.from(new Set(items.map((booking) => booking?.rideId).filter((rideId) => Boolean(rideId))));
         const rideMap = new Map();
-        await Promise.all(uniqueRideIds.map(async (rideId) => {
+        if (uniqueRideIds.length) {
             try {
-                const ride = await axios_1.default.get(`${RIDE}/rides/${rideId}`);
-                rideMap.set(rideId, ride.data);
+                const payload = await this.forward(() => axios_1.default.get(`${RIDE}/admin/rides/batch`, {
+                    params: { ids: uniqueRideIds.join(',') },
+                    headers: this.internalHeaders(),
+                }), 'ride');
+                const rides = Array.isArray(payload?.data) ? payload.data : [];
+                rides.forEach((ride) => {
+                    if (ride?.id)
+                        rideMap.set(ride.id, ride);
+                });
             }
-            catch (err) {
-                rideMap.set(rideId, null);
+            catch {
+                uniqueRideIds.forEach((rideId) => rideMap.set(rideId, null));
             }
-        }));
+        }
         return {
             ...bookingPayload,
             data: items.map((booking) => ({
@@ -141,6 +382,78 @@ let ProxyController = class ProxyController {
                 ride: rideMap.get(booking?.rideId ?? '') ?? null,
             })),
         };
+    }
+    async cancelBooking(req, id) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        return this.forward(() => axios_1.default.post(`${BOOKING}/bookings/${id}/cancel`, { passengerId: account.id }, { headers: this.internalHeaders() }), 'booking');
+    }
+    async bookingReceipt(req, id, res) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('account_not_found');
+        }
+        let booking;
+        try {
+            const bookingRes = await axios_1.default.get(`${BOOKING}/admin/bookings/${id}`, {
+                headers: this.internalHeaders(),
+            });
+            booking = bookingRes.data;
+        }
+        catch (err) {
+            const status = err?.response?.status;
+            if (status === 404) {
+                throw new common_1.NotFoundException('booking_not_found');
+            }
+            throw new common_1.InternalServerErrorException('booking_receipt_unavailable');
+        }
+        if (!booking || booking.passengerId !== account.id) {
+            throw new common_1.ForbiddenException('booking_forbidden');
+        }
+        let ride = null;
+        if (booking?.rideId) {
+            try {
+                ride = await axios_1.default
+                    .get(`${RIDE}/rides/${booking.rideId}`, {
+                    headers: this.internalHeaders(),
+                })
+                    .then((response) => response.data);
+            }
+            catch {
+                ride = null;
+            }
+        }
+        const paymentMethodLabel = booking.paymentMethod
+            ? booking.paymentMethod === 'CASH'
+                ? 'Especes'
+                : booking.paymentProvider
+                    ? `${booking.paymentMethod} (${booking.paymentProvider})`
+                    : booking.paymentMethod
+            : 'Paiement';
+        const passengerName = booking?.passengerName ||
+            account.fullName ||
+            account.companyName ||
+            account.email ||
+            'Client KariGo';
+        const passengerEmail = booking?.passengerEmail || account.email;
+        const pdfBuffer = (0, receipt_1.buildReceiptPdfBuffer)({
+            bookingId: booking.id,
+            bookingReference: booking.referenceCode ?? undefined,
+            passengerName,
+            passengerEmail,
+            originCity: ride?.originCity ?? undefined,
+            destinationCity: ride?.destinationCity ?? undefined,
+            departureAt: ride?.departureAt ?? undefined,
+            seats: booking.seats,
+            amount: booking.amount,
+            paymentMethod: paymentMethodLabel,
+            issuedAt: new Date().toISOString(),
+        });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="recu-${booking.id}.pdf"`);
+        res.status(common_1.HttpStatus.OK).send(pdfBuffer);
     }
     async myRides(req, query) {
         const account = await this.fetchMyAccount(req);
@@ -166,10 +479,26 @@ let ProxyController = class ProxyController {
             params.origin = query.origin;
         if (query?.destination)
             params.destination = query.destination;
-        const payload = await this.forward(() => axios_1.default.get(`${RIDE}/admin/rides`, {
-            params,
-            headers: this.internalHeaders(),
-        }), 'ride');
+        const authHeaders = this.extractAuthHeaders(req);
+        let payload;
+        try {
+            payload = await this.forward(() => axios_1.default.get(`${RIDE}/rides/mine`, {
+                params,
+                headers: authHeaders,
+            }), 'ride');
+        }
+        catch (err) {
+            const status = err instanceof common_1.HttpException && typeof err.getStatus === 'function'
+                ? err.getStatus()
+                : undefined;
+            if (status !== 404 && status !== 405) {
+                throw err;
+            }
+            payload = await this.forward(() => axios_1.default.get(`${RIDE}/admin/rides`, {
+                params,
+                headers: this.internalHeaders(),
+            }), 'ride');
+        }
         const items = Array.isArray(payload?.data) ? payload.data : [];
         const filtered = items.filter((ride) => ride?.driverId === account.id);
         const ridesWithReservations = await this.attachRideReservations(filtered);
@@ -343,9 +672,54 @@ let ProxyController = class ProxyController {
         const headers = {};
         if (req.headers?.authorization)
             headers['authorization'] = req.headers.authorization;
-        return this.forward(() => axios_1.default.get(`${IDENTITY}/profiles/${id}/public`, {
-            headers,
-        }), 'identity');
+        try {
+            const [profileRes, ratingRes] = await Promise.allSettled([
+                axios_1.default.get(`${IDENTITY}/profiles/${id}/public`, { headers }),
+                axios_1.default.get(`${BOOKING}/ratings/summary/${id}`),
+            ]);
+            if (profileRes.status === 'rejected') {
+                const err = profileRes.reason;
+                if (axios_1.default.isAxiosError(err)) {
+                    const status = err.response?.status ?? common_1.HttpStatus.INTERNAL_SERVER_ERROR;
+                    throw new common_1.HttpException(err.response?.data ?? { error: 'profile_failed' }, status);
+                }
+                throw new common_1.InternalServerErrorException('profile_failed');
+            }
+            const ratingSummary = ratingRes.status === 'fulfilled' ? ratingRes.value.data : null;
+            return {
+                ...profileRes.value.data,
+                ratingSummary,
+            };
+        }
+        catch (err) {
+            if (axios_1.default.isAxiosError(err)) {
+                const status = err.response?.status ?? common_1.HttpStatus.INTERNAL_SERVER_ERROR;
+                throw new common_1.HttpException(err.response?.data ?? { error: 'profile_failed' }, status);
+            }
+            throw new common_1.InternalServerErrorException('profile_failed');
+        }
+    }
+    async createRating(req, body) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('auth_required');
+        }
+        return this.forward(() => axios_1.default.post(`${BOOKING}/ratings`, {
+            ...body,
+            raterId: account.id,
+        }), 'booking');
+    }
+    async ratingSummary(accountId) {
+        return this.forward(() => axios_1.default.get(`${BOOKING}/ratings/summary/${accountId}`), 'booking');
+    }
+    async ratingForBooking(req, bookingId) {
+        const account = await this.fetchMyAccount(req);
+        if (!account?.id) {
+            throw new common_1.ForbiddenException('auth_required');
+        }
+        return this.forward(() => axios_1.default.get(`${BOOKING}/ratings/booking/${bookingId}`, {
+            params: { raterId: account.id },
+        }), 'booking');
     }
     async adminListAccounts(query, req) {
         const headers = {};
@@ -529,9 +903,24 @@ let ProxyController = class ProxyController {
         }
         throw new common_1.InternalServerErrorException('proxy_failure');
     }
-    async fetchMyAccount(req) {
+    async fetchMyAccount(req, options = {}) {
         const headers = this.extractAuthHeaders(req);
-        return this.forward(() => axios_1.default.get(`${IDENTITY}/profiles/me`, { headers }), 'identity');
+        if (!headers.authorization) {
+            if (options.allowAnonymous)
+                return null;
+            throw new common_1.UnauthorizedException('auth_required');
+        }
+        try {
+            return await this.forward(() => axios_1.default.get(`${IDENTITY}/profiles/me`, { headers }), 'identity');
+        }
+        catch (err) {
+            if (err instanceof common_1.HttpException && err.getStatus && err.getStatus() === 401) {
+                if (options.allowAnonymous)
+                    return null;
+                throw new common_1.UnauthorizedException('invalid_token');
+            }
+            throw err;
+        }
     }
     async ensureCompanyAccount(req) {
         const account = await this.fetchMyAccount(req);
@@ -554,7 +943,7 @@ let ProxyController = class ProxyController {
         return headers;
     }
     internalHeaders() {
-        return { 'x-internal-key': INTERNAL_KEY };
+        return { 'x-internal-key': INTERNAL_KEY, 'x-internal-api-key': INTERNAL_KEY };
     }
     computeActivityMetrics(rides, bookings) {
         const now = Date.now();
@@ -605,18 +994,26 @@ let ProxyController = class ProxyController {
             return rides;
         const internalHeaders = this.internalHeaders();
         const reservationsMap = new Map();
-        await Promise.all(rides.map(async (ride) => {
+        const rideIds = rides.map((ride) => ride.id).filter(Boolean);
+        if (rideIds.length) {
             try {
-                const res = await axios_1.default.get(`${BOOKING}/admin/bookings`, {
-                    params: { rideId: ride.id, limit: 200 },
+                const res = await axios_1.default.get(`${BOOKING}/admin/bookings/batch`, {
+                    params: { rideIds: rideIds.join(',') },
                     headers: internalHeaders,
                 });
-                reservationsMap.set(ride.id, Array.isArray(res.data?.data) ? res.data.data : []);
+                const bookings = Array.isArray(res.data?.data) ? res.data.data : [];
+                bookings.forEach((booking) => {
+                    if (!booking?.rideId)
+                        return;
+                    const existing = reservationsMap.get(booking.rideId) ?? [];
+                    existing.push(booking);
+                    reservationsMap.set(booking.rideId, existing);
+                });
             }
-            catch (err) {
-                reservationsMap.set(ride.id, []);
+            catch {
+                rideIds.forEach((rideId) => reservationsMap.set(rideId, []));
             }
-        }));
+        }
         const passengerIds = new Set();
         reservationsMap.forEach((reservations) => {
             reservations.forEach((booking) => {
@@ -625,21 +1022,33 @@ let ProxyController = class ProxyController {
             });
         });
         const passengerMap = new Map();
-        await Promise.all(Array.from(passengerIds).map(async (id) => {
+        const passengerIdList = Array.from(passengerIds);
+        if (passengerIdList.length) {
             try {
-                const res = await axios_1.default.get(`${IDENTITY}/internal/accounts/${id}`, {
+                const res = await axios_1.default.get(`${IDENTITY}/internal/accounts`, {
+                    params: { ids: passengerIdList.join(',') },
                     headers: internalHeaders,
                 });
-                passengerMap.set(id, res.data);
+                const accounts = Array.isArray(res.data?.data) ? res.data.data : [];
+                accounts.forEach((account) => {
+                    if (account?.id)
+                        passengerMap.set(account.id, account);
+                });
             }
             catch {
-                passengerMap.set(id, { id });
+                passengerIdList.forEach((id) => passengerMap.set(id, { id }));
             }
-        }));
+        }
         return rides.map((ride) => {
             const reservations = reservationsMap.get(ride.id) ?? [];
             const detailedReservations = reservations.map((booking) => {
                 const passenger = passengerMap.get(booking.passengerId);
+                const passengerName = booking?.passengerName ||
+                    passenger?.fullName ||
+                    passenger?.companyName ||
+                    passenger?.email ||
+                    null;
+                const passengerEmail = booking?.passengerEmail || passenger?.email || null;
                 return {
                     id: booking.id,
                     rideId: booking.rideId,
@@ -647,8 +1056,10 @@ let ProxyController = class ProxyController {
                     seats: booking.seats,
                     amount: booking.amount,
                     status: booking.status,
-                    passengerName: passenger?.fullName || passenger?.companyName || passenger?.email || null,
-                    passengerEmail: passenger?.email || null,
+                    referenceCode: booking.referenceCode ?? null,
+                    passengerName,
+                    passengerEmail,
+                    passengerPhone: booking?.passengerPhone || null,
                 };
             });
             return {
@@ -667,6 +1078,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "createRide", null);
+__decorate([
+    (0, common_1.Get)('me/rides/:rideId/bookings'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('rideId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "myRideBookings", null);
 __decorate([
     (0, common_1.Get)('me/payment-methods'),
     __param(0, (0, common_1.Req)()),
@@ -691,6 +1110,29 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "deletePaymentMethod", null);
 __decorate([
+    (0, common_1.Post)('me/payment-methods/:id/default'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "setDefaultPaymentMethod", null);
+__decorate([
+    (0, common_1.Get)('me/wallet'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "getWallet", null);
+__decorate([
+    (0, common_1.Get)('me/wallet/transactions'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "getWalletTransactions", null);
+__decorate([
     (0, common_1.Get)('search'),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
@@ -698,17 +1140,34 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "search", null);
 __decorate([
-    (0, common_1.Post)('bookings'),
-    __param(0, (0, common_1.Body)()),
+    (0, common_1.Get)('me/profile'),
+    __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
+], ProxyController.prototype, "myProfile", null);
+__decorate([
+    (0, common_1.Post)('bookings'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "booking", null);
+__decorate([
+    (0, common_1.Get)('booking-reference/:code'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('code')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "lookupBookingReference", null);
 __decorate([
     (0, common_1.Post)('payments/capture'),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "capture", null);
 __decorate([
@@ -719,6 +1178,23 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "myBookings", null);
+__decorate([
+    (0, common_1.Post)('me/bookings/:id/cancel'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "cancelBooking", null);
+__decorate([
+    (0, common_1.Get)('me/bookings/:id/receipt'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "bookingReceipt", null);
 __decorate([
     (0, common_1.Get)('me/rides'),
     __param(0, (0, common_1.Req)()),
@@ -963,6 +1439,29 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], ProxyController.prototype, "publicProfile", null);
+__decorate([
+    (0, common_1.Post)('ratings'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "createRating", null);
+__decorate([
+    (0, common_1.Get)('ratings/summary/:accountId'),
+    __param(0, (0, common_1.Param)('accountId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "ratingSummary", null);
+__decorate([
+    (0, common_1.Get)('ratings/booking/:bookingId'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('bookingId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ProxyController.prototype, "ratingForBooking", null);
 __decorate([
     (0, common_1.Get)('admin/accounts'),
     __param(0, (0, common_1.Query)()),

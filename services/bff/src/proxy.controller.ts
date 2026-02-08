@@ -14,6 +14,7 @@ import {
   Query,
   Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import { upstreamDurationHistogram, upstreamRequestCounter } from './metrics';
@@ -33,6 +34,27 @@ function normalizeRideUrl(value?: string | null) {
   }
 }
 
+function normalizeInternalServiceUrl(
+  value: string | undefined | null,
+  serviceName: string,
+  legacyPort: string,
+) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    if (
+      (parsed.hostname === serviceName || parsed.hostname.endsWith(`.${serviceName}`)) &&
+      parsed.port === legacyPort
+    ) {
+      parsed.port = '3000';
+      return parsed.toString();
+    }
+    return value;
+  } catch {
+    return value;
+  }
+}
+
 const rideHosts = [
   normalizeRideUrl(process.env.RIDE_INTERNAL_URL),
   normalizeRideUrl(process.env.RIDE_URL),
@@ -42,11 +64,11 @@ const rideHosts = [
 ].filter((value): value is string => Boolean(value));
 const RIDE = rideHosts[0] ?? 'http://ride:3000';
 
-const SEARCH = process.env.SEARCH_URL || 'http://search:3003';
-const BOOKING = process.env.BOOKING_URL || 'http://booking:3004';
-const PAYMENT = process.env.PAYMENT_URL || 'http://payment:3005';
-const WALLET = process.env.WALLET_URL || 'http://wallet:3008';
-const IDENTITY = process.env.IDENTITY_URL || 'http://identity:3000';
+const SEARCH = normalizeInternalServiceUrl(process.env.SEARCH_URL, 'search', '3003') || 'http://search:3000';
+const BOOKING = normalizeInternalServiceUrl(process.env.BOOKING_URL, 'booking', '3004') || 'http://booking:3000';
+const PAYMENT = normalizeInternalServiceUrl(process.env.PAYMENT_URL, 'payment', '3005') || 'http://payment:3000';
+const WALLET = normalizeInternalServiceUrl(process.env.WALLET_URL, 'wallet', '3008') || 'http://wallet:3000';
+const IDENTITY = normalizeInternalServiceUrl(process.env.IDENTITY_URL, 'identity', '3001') || 'http://identity:3000';
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY || 'super-internal-key';
 
 type RideAdminItem = {
@@ -648,14 +670,34 @@ export class ProxyController {
     if (query?.origin) params.origin = query.origin;
     if (query?.destination) params.destination = query.destination;
 
-    const payload = await this.forward<{ data: RideAdminItem[]; total: number; summary: any }>(
-      () =>
-        axios.get(`${RIDE}/admin/rides`, {
-          params,
-          headers: this.internalHeaders(),
-        }),
-      'ride',
-    );
+    const authHeaders = this.extractAuthHeaders(req);
+    let payload: { data: RideAdminItem[]; total: number; summary: any };
+    try {
+      payload = await this.forward<{ data: RideAdminItem[]; total: number; summary: any }>(
+        () =>
+          axios.get(`${RIDE}/rides/mine`, {
+            params,
+            headers: authHeaders,
+          }),
+        'ride',
+      );
+    } catch (err) {
+      const status =
+        err instanceof HttpException && typeof err.getStatus === 'function'
+          ? err.getStatus()
+          : undefined;
+      if (status !== 404 && status !== 405) {
+        throw err;
+      }
+      payload = await this.forward<{ data: RideAdminItem[]; total: number; summary: any }>(
+        () =>
+          axios.get(`${RIDE}/admin/rides`, {
+            params,
+            headers: this.internalHeaders(),
+          }),
+        'ride',
+      );
+    }
 
     const items = Array.isArray(payload?.data) ? payload.data : [];
     const filtered = items.filter((ride) => ride?.driverId === account.id);
@@ -1366,8 +1408,15 @@ export class ProxyController {
     throw new InternalServerErrorException('proxy_failure');
   }
 
-  private async fetchMyAccount(req: any): Promise<AccountProfile | null> {
+  private async fetchMyAccount(
+    req: any,
+    options: { allowAnonymous?: boolean } = {},
+  ): Promise<AccountProfile | null> {
     const headers = this.extractAuthHeaders(req);
+    if (!headers.authorization) {
+      if (options.allowAnonymous) return null;
+      throw new UnauthorizedException('auth_required');
+    }
     try {
       return await this.forward<AccountProfile | null>(
         () => axios.get<AccountProfile | null>(`${IDENTITY}/profiles/me`, { headers }),
@@ -1375,7 +1424,8 @@ export class ProxyController {
       );
     } catch (err) {
       if (err instanceof HttpException && err.getStatus && err.getStatus() === 401) {
-        return null;
+        if (options.allowAnonymous) return null;
+        throw new UnauthorizedException('invalid_token');
       }
       throw err;
     }

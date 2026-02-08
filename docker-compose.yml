@@ -132,6 +132,13 @@ services:
     env_file: ./services/bff/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+      RIDE_URL: http://ride:3000
+      SEARCH_URL: http://search:3000
+      BOOKING_URL: http://booking:3000
+      PAYMENT_URL: http://payment:3000
+      WALLET_URL: http://wallet:3000
+      IDENTITY_URL: http://identity:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-super-internal-key}
     depends_on: [ride, search, booking, identity]
     ports: ["3000:3000"]
     restart: unless-stopped
@@ -143,6 +150,7 @@ services:
       KAFKA_BROKERS: redpanda:9092
       APP_PUBLIC_URL: http://82.112.255.155:3006
       MIGRATIONS_RUN: 'true'
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-super-internal-key}
     depends_on: [postgres, redpanda]
     ports: ["3001:3000"]
     restart: unless-stopped
@@ -153,6 +161,8 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:9092
       MIGRATIONS_RUN: 'true'
+      IDENTITY_URL: http://identity:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-super-internal-key}
     depends_on: [postgres, redpanda]
     ports: ["3002:3000"]
     restart: unless-stopped
@@ -174,6 +184,9 @@ services:
       KAFKA_BROKERS: redpanda:9092
       REDIS_URL: redis://redis:6379
       MIGRATIONS_RUN: 'true'
+      RIDE_URL: http://ride:3000
+      WALLET_URL: http://wallet:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-super-internal-key}
     depends_on: [redis, redpanda, ride, wallet, postgres]
     ports: ["3004:3000"]
     restart: unless-stopped

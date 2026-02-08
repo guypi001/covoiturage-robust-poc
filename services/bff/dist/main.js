@@ -50,19 +50,64 @@ function setupMetrics(app) {
     });
     express.get('/health', (_req, res) => res.json({ ok: true }));
 }
+function parseCorsOrigins() {
+    const raw = process.env.CORS_ORIGINS?.trim();
+    if (!raw)
+        return null;
+    return raw
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+}
+function applySecurityHeaders(app) {
+    const express = app.getHttpAdapter().getInstance();
+    express.disable('x-powered-by');
+    express.use((_req, res, next) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+        next();
+    });
+}
+function applyRateLimit(app) {
+    const express = app.getHttpAdapter().getInstance();
+    const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60000);
+    const maxRequests = Number(process.env.RATE_LIMIT_MAX_REQUESTS || 240);
+    const hits = new Map();
+    express.use((req, res, next) => {
+        const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
+        const now = Date.now();
+        const state = hits.get(ip);
+        if (!state || state.resetAt <= now) {
+            hits.set(ip, { count: 1, resetAt: now + windowMs });
+            next();
+            return;
+        }
+        if (state.count >= maxRequests) {
+            res.status(429).json({ error: 'rate_limited' });
+            return;
+        }
+        state.count += 1;
+        next();
+    });
+}
 async function bootstrap() {
     const app = await core_1.NestFactory.create(module_1.AppModule);
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,
         transform: true,
     }));
+    const allowedOrigins = parseCorsOrigins();
     const corsOptions = {
-        origin: true,
+        origin: allowedOrigins ?? true,
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization'],
     };
     app.enableCors(corsOptions);
+    applySecurityHeaders(app);
+    applyRateLimit(app);
     setupMetrics(app);
     const port = Number(process.env.PORT) || 3000;
     await app.listen(port, '0.0.0.0');
