@@ -38,6 +38,14 @@ export function AuthScreen() {
   const [resetMessage, setResetMessage] = useState('');
   const [resetTone, setResetTone] = useState('info');
 
+  const mapMailError = (err, fallback) => {
+    const raw = String(err?.message || '');
+    if (raw === 'otp_email_failed' || raw === 'reset_email_failed') {
+      return "Service email indisponible pour le moment. Reessaie dans quelques minutes.";
+    }
+    return raw || fallback;
+  };
+
   const sanitizeOtpInput = (value, maxLength = 6) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
 
@@ -185,7 +193,7 @@ export function AuthScreen() {
       await requestGmailOtp({ email: pendingEmail.trim() });
       showToast('Code envoye.', 'success');
     } catch (err) {
-      showToast('Impossible d envoyer le code.', 'error');
+      showToast(mapMailError(err, 'Impossible d envoyer le code.'), 'error');
     } finally {
       setOtpBusy(false);
     }
@@ -207,7 +215,7 @@ export function AuthScreen() {
       setResetMessage('Code OTP envoye par email.');
     } catch (err) {
       setResetTone('error');
-      setResetMessage('Impossible d envoyer le code.');
+      setResetMessage(mapMailError(err, 'Impossible d envoyer le code.'));
     } finally {
       setResetBusy(false);
     }

@@ -10,6 +10,14 @@ import { GmailLogo } from '../components/icons/GmailLogo';
 type Mode = 'password' | 'gmail';
 type OtpStep = 'email' | 'code';
 
+const mapMailError = (err: any, fallback: string) => {
+  const message = err?.response?.data?.message || err?.message;
+  if (message === 'reset_email_failed' || message === 'otp_email_failed') {
+    return "Le service d'envoi d'email est indisponible. Réessaie dans quelques minutes.";
+  }
+  return message || fallback;
+};
+
 export default function Login() {
   const navigate = useNavigate();
   const token = useApp((state) => state.token);
@@ -116,7 +124,7 @@ export default function Login() {
       setOtpStep('code');
       setOtpMessage('Code envoyé. Vérifie Gmail ou tes spams.');
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Impossible d’envoyer le code.');
+      setError(mapMailError(err, 'Impossible d’envoyer le code.'));
     } finally {
       setOtpSending(false);
     }

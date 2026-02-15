@@ -151,6 +151,9 @@ services:
       APP_PUBLIC_URL: http://82.112.255.155:3006
       MIGRATIONS_RUN: 'true'
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-super-internal-key}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     depends_on: [postgres, redpanda]
     ports: ["3001:3000"]
     restart: unless-stopped
@@ -226,6 +229,9 @@ services:
     env_file: ./services/notification/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     depends_on: [redpanda]
     ports: ["3010:3000"]
     restart: unless-stopped

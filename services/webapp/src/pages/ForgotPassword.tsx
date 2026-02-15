@@ -5,6 +5,14 @@ import { AuthLayout } from '../components/AuthLayout';
 import { useApp } from '../store';
 import { requestPasswordReset } from '../api';
 
+const mapMailError = (err: any, fallback: string) => {
+  const message = err?.response?.data?.message || err?.message;
+  if (message === 'reset_email_failed' || message === 'otp_email_failed') {
+    return "Le service d'envoi d'email est indisponible. Réessaie dans quelques minutes.";
+  }
+  return message || fallback;
+};
+
 export default function ForgotPassword() {
   const authReady = useApp((state) => state.authReady);
   const initializeAuth = useApp((state) => state.initializeAuth);
@@ -36,7 +44,7 @@ export default function ForgotPassword() {
         'Si un compte est associé à cette adresse, un lien de réinitialisation vient de t’être envoyé.',
       );
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Impossible d’envoyer l’email.');
+      setError(mapMailError(err, 'Impossible d’envoyer l’email.'));
     } finally {
       setSubmitting(false);
     }

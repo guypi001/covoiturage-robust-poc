@@ -17,6 +17,14 @@ type AccountKind = 'individual' | 'company';
 type Method = 'password' | 'gmail';
 type OtpStep = 'email' | 'code';
 
+const mapMailError = (err: any, fallback: string) => {
+  const message = err?.response?.data?.message || err?.message;
+  if (message === 'reset_email_failed' || message === 'otp_email_failed') {
+    return "Le service d'envoi d'email est indisponible. Réessaie dans quelques minutes.";
+  }
+  return message || fallback;
+};
+
 export default function Register() {
   const navigate = useNavigate();
   const token = useApp((state) => state.token);
@@ -162,7 +170,7 @@ export default function Register() {
       await requestGmailOtp({ email: otpEmail.trim().toLowerCase() });
       setOtpMessage('Code envoyé par email.');
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Impossible d’envoyer le code.');
+      setError(mapMailError(err, 'Impossible d’envoyer le code.'));
     } finally {
       setOtpSending(false);
     }
@@ -187,7 +195,7 @@ export default function Register() {
       setOtpStep('code');
       setOtpMessage('Code envoyé sur ta boîte Gmail.');
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Impossible d’envoyer le code.');
+      setError(mapMailError(err, 'Impossible d’envoyer le code.'));
     } finally {
       setOtpSending(false);
     }

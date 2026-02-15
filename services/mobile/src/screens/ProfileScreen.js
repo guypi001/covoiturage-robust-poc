@@ -66,6 +66,14 @@ export function ProfileScreen({ navigation }) {
 
   const MAX_COMPANY_DOC_SIZE = 6 * 1024 * 1024;
 
+  const mapMailError = (err, fallback) => {
+    const raw = String(err?.message || '');
+    if (raw === 'otp_email_failed' || raw === 'reset_email_failed') {
+      return "Service email indisponible pour le moment. Reessaie dans quelques minutes.";
+    }
+    return raw || fallback;
+  };
+
   const sanitizeOtpInput = (value, maxLength = 6) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
 
@@ -852,7 +860,7 @@ export function ProfileScreen({ navigation }) {
                 await requestGmailOtp({ email: account.email });
                 showToast('Code envoye.', 'success');
               } catch (err) {
-                showToast('Impossible d envoyer le code.', 'error');
+                showToast(mapMailError(err, 'Impossible d envoyer le code.'), 'error');
               } finally {
                 setOtpBusy(false);
               }
