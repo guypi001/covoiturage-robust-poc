@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, text } from '../theme';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -19,7 +19,13 @@ const normalizeRide = (ride) => ({
   id: ride.rideId || ride.id,
   origin: ride.originCity,
   destination: ride.destinationCity,
-  departure: new Date(ride.departureAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' }),
+  departure: new Date(ride.departureAt).toLocaleString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }),
   departureRaw: ride.departureAt,
   seats: `${ride.seatsAvailable}/${ride.seatsTotal}`,
   seatsRaw: ride.seatsAvailable,
@@ -71,7 +77,7 @@ export function ResultsScreen({ navigation, route }) {
           setRides(hits.map(normalizeRide));
           setMeta(data?.meta || null);
         }
-      } catch (err) {
+      } catch {
         if (active) setError('Impossible de charger les trajets.');
       } finally {
         if (active) setLoading(false);
@@ -100,9 +106,7 @@ export function ResultsScreen({ navigation, route }) {
         const payload = await getMyBookings(token);
         if (!active) return;
         const list = Array.isArray(payload?.data) ? payload.data : payload?.items || [];
-        const ids = new Set(
-          list.map((booking) => booking?.rideId || booking?.ride?.id).filter(Boolean),
-        );
+        const ids = new Set(list.map((booking) => booking?.rideId || booking?.ride?.id).filter(Boolean));
         setBookedRideIds(ids);
       } catch {
         if (active) setBookedRideIds(new Set());
@@ -136,24 +140,59 @@ export function ResultsScreen({ navigation, route }) {
 
   const visibleRides = useMemo(() => {
     if (!hideUnavailable) return rides;
-    return rides.filter(
-      (ride) => !(Number(ride.seatsAvailable) <= 0 || bookedRideIds.has(ride.id)),
-    );
+    return rides.filter((ride) => !(Number(ride.seatsAvailable) <= 0 || bookedRideIds.has(ride.id)));
   }, [rides, hideUnavailable, bookedRideIds]);
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+  const renderRideCard = ({ item: ride, index }) => (
+    <SurfaceCard
+      style={styles.rideCard}
+      tone={stats?.cheapest?.id === ride.id ? 'accent' : 'default'}
+      delay={180 + index * 40}
+    >
+      <View style={styles.cardBadgeRow}>
+        {index === 0 ? (
+          <View style={[styles.cardBadge, styles.cardBadgeSoon]}>
+            <Ionicons name="flash-outline" size={12} color={colors.sky700} />
+            <Text style={[styles.cardBadgeText, styles.cardBadgeTextSoon]}>Depart le plus tot</Text>
+          </View>
+        ) : null}
+        {stats?.cheapest?.id === ride.id ? (
+          <View style={[styles.cardBadge, styles.cardBadgePrice]}>
+            <Ionicons name="cash-outline" size={12} color={colors.emerald600} />
+            <Text style={[styles.cardBadgeText, styles.cardBadgeTextPrice]}>Meilleur prix</Text>
+          </View>
+        ) : null}
+      </View>
+      <RideCard
+        ride={ride}
+        saved={isSaved(ride.id)}
+        onToggleSave={() => toggleSavedRide(buildSavedRide(ride))}
+        isFull={Number(ride.seatsAvailable) <= 0}
+        isBooked={bookedRideIds.has(ride.id)}
+      />
+      <View style={styles.cardActions}>
+        <PrimaryButton
+          label="Voir le trajet"
+          variant="outline"
+          onPress={() => navigation.navigate('RideDetail', { rideId: ride.id })}
+        />
+      </View>
+    </SurfaceCard>
+  );
+
+  const listHeader = (
+    <View style={styles.content}>
       <View style={styles.header}>
         <Text style={text.title}>Résultats</Text>
         <Text style={text.subtitle}>Trajets disponibles pour {params.from || '?'} → {params.to || '?'}</Text>
       </View>
 
-      {loading && (
+      {loading ? (
         <SurfaceCard style={styles.loadingCard} tone="soft" delay={60}>
           <ActivityIndicator color={colors.sky600} />
           <Text style={styles.loadingText}>Chargement des trajets...</Text>
         </SurfaceCard>
-      )}
+      ) : null}
 
       {error ? <Banner tone="error" message={error} /> : null}
       {saveNotice ? <Banner tone="success" message={saveNotice} /> : null}
@@ -217,7 +256,7 @@ export function ResultsScreen({ navigation, route }) {
                       driverVerified: params.driverVerified,
                     });
                     setSaveNotice('Recherche sauvegardee.');
-                  } catch (err) {
+                  } catch {
                     setSaveNotice('Sauvegarde impossible.');
                   } finally {
                     setSaving(false);
@@ -256,66 +295,41 @@ export function ResultsScreen({ navigation, route }) {
         </Pressable>
       </SurfaceCard>
 
-      <View style={styles.list}>
-        {loading ? (
-          <View style={styles.skeletonList}>
-            {Array.from({ length: 3 }).map((_, index) => (
-              <SurfaceCard key={`sk-${index}`} style={styles.skeletonCard} tone="soft" animated={false}>
-                <SkeletonBlock width="70%" height={14} />
-                <SkeletonBlock width="45%" height={12} />
-                <SkeletonBlock width="55%" height={12} />
-                <View style={styles.skeletonActionRow}>
-                  <SkeletonBlock width={110} height={36} rounded />
-                </View>
-              </SurfaceCard>
-            ))}
-          </View>
-        ) : null}
-        {visibleRides.map((ride, index) => (
-          <SurfaceCard
-            key={ride.id}
-            style={styles.rideCard}
-            tone={stats?.cheapest?.id === ride.id ? 'accent' : 'default'}
-            delay={180 + index * 40}
-          >
-            <View style={styles.cardBadgeRow}>
-              {index === 0 ? (
-                <View style={[styles.cardBadge, styles.cardBadgeSoon]}>
-                  <Ionicons name="flash-outline" size={12} color={colors.sky700} />
-                  <Text style={[styles.cardBadgeText, styles.cardBadgeTextSoon]}>Depart le plus tot</Text>
-                </View>
-              ) : null}
-              {stats?.cheapest?.id === ride.id ? (
-                <View style={[styles.cardBadge, styles.cardBadgePrice]}>
-                  <Ionicons name="cash-outline" size={12} color={colors.emerald600} />
-                  <Text style={[styles.cardBadgeText, styles.cardBadgeTextPrice]}>Meilleur prix</Text>
-                </View>
-              ) : null}
-            </View>
-            <RideCard
-              ride={ride}
-              saved={isSaved(ride.id)}
-              onToggleSave={() => toggleSavedRide(buildSavedRide(ride))}
-              isFull={Number(ride.seatsAvailable) <= 0}
-              isBooked={bookedRideIds.has(ride.id)}
-            />
-            <View style={styles.cardActions}>
-              <PrimaryButton
-                label="Voir le trajet"
-                variant="outline"
-                onPress={() => navigation.navigate('RideDetail', { rideId: ride.id })}
-              />
-            </View>
-          </SurfaceCard>
-        ))}
-        {!loading && visibleRides.length === 0 && !error ? (
+      {loading ? (
+        <View style={styles.skeletonList}>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <SurfaceCard key={`sk-${index}`} style={styles.skeletonCard} tone="soft" animated={false}>
+              <SkeletonBlock width="70%" height={14} />
+              <SkeletonBlock width="45%" height={12} />
+              <SkeletonBlock width="55%" height={12} />
+              <View style={styles.skeletonActionRow}>
+                <SkeletonBlock width={110} height={36} rounded />
+              </View>
+            </SurfaceCard>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <FlatList
+      style={styles.container}
+      contentContainerStyle={styles.listContent}
+      data={loading ? [] : visibleRides}
+      keyExtractor={(item) => item.id}
+      renderItem={renderRideCard}
+      ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+      ListHeaderComponent={listHeader}
+      ListEmptyComponent={
+        !loading && visibleRides.length === 0 && !error ? (
           <SurfaceCard style={styles.emptyCard} tone="soft" delay={120}>
             <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>Essaie d'ajuster les filtres ou de modifier l'horaire.</Text>
           </SurfaceCard>
-        ) : null}
-      </View>
-    </ScrollView>
+        ) : null
+      }
+    />
   );
 }
 
@@ -327,6 +341,9 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.md,
+  },
+  listContent: {
+    paddingBottom: spacing.xl,
   },
   header: {
     gap: 6,
@@ -409,9 +426,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.slate600,
   },
-  list: {
-    gap: spacing.md,
-  },
   skeletonList: {
     gap: spacing.md,
   },
@@ -423,6 +437,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   rideCard: {
+    marginHorizontal: spacing.lg,
     gap: spacing.sm,
   },
   cardBadgeRow: {
@@ -463,7 +478,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
+  itemSeparator: {
+    height: spacing.md,
+  },
   emptyCard: {
+    marginHorizontal: spacing.lg,
     alignItems: 'center',
     gap: spacing.sm,
   },

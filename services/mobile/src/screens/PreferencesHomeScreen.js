@@ -11,8 +11,8 @@ export function PreferencesHomeScreen({ navigation }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={textStyles.title}>Preferences</Text>
-        <Text style={textStyles.subtitle}>Regroupe ici tous les reglages pour eviter les doublons.</Text>
+        <Text style={textStyles.title}>Préférences</Text>
+        <Text style={textStyles.subtitle}>Réglages de l’app regroupés par usage, sans redondance.</Text>
       </View>
 
       <SurfaceCard style={styles.card} tone="soft">
@@ -28,20 +28,15 @@ export function PreferencesHomeScreen({ navigation }) {
       </SurfaceCard>
 
       <SurfaceCard style={styles.card} tone="soft">
-        <SectionHeader title="Compte" icon="person-circle-outline" />
+        <SectionHeader title="Assistance" icon="help-circle-outline" />
         <View style={styles.column}>
-          <PrimaryButton label="Photo de profil" variant="ghost" onPress={() => navigation.navigate('ProfilePhoto')} />
+          <PrimaryButton label="Centre d'aide" variant="secondary" onPress={() => navigation.navigate('HelpCenter')} />
           <PrimaryButton
-            label={token ? 'Modifier les infos du profil' : 'Connexion / inscription'}
+            label={token ? 'Gérer mon compte' : 'Connexion / inscription'}
             variant="ghost"
-            onPress={() => navigation.navigate('ProfileDetails')}
+            onPress={() => navigation.navigate('AccountHome')}
           />
         </View>
-      </SurfaceCard>
-
-      <SurfaceCard style={styles.card} tone="soft">
-        <SectionHeader title="Assistance" icon="help-circle-outline" />
-        <PrimaryButton label="Centre d'aide" variant="secondary" onPress={() => navigation.navigate('HelpCenter')} />
       </SurfaceCard>
     </ScrollView>
   );

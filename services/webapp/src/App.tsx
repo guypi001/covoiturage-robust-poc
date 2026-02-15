@@ -1,27 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, Outlet, useLocation } from 'react-router-dom';
-import Home from './pages/Home';
-import { Results } from './pages/Results';
-import { Booking } from './pages/Booking';
-import CreateRide from './pages/CreateRide';
-import { RideDetail } from './pages/RideDetail';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import Messages from './pages/Messages';
-import AdminAccounts from './pages/AdminAccounts';
-import CompanyFleet from './pages/CompanyFleet';
-import ProfileSettings from './pages/ProfileSettings';
-import PublicProfile from './pages/PublicProfile';
-import MyTrips from './pages/MyTrips';
-import Cart from './pages/Cart';
 import { useApp } from './store';
 import { BrandLogo } from './components/BrandLogo';
 import { AppFooter } from './components/AppFooter';
 import { Menu, X, MessageCircle, LogOut, ShoppingBag } from 'lucide-react';
 import { CookieConsent } from './components/CookieConsent';
 import { resolveIdentityAssetUrl } from './api';
+
+const Home = lazy(() => import('./pages/Home'));
+const Results = lazy(() => import('./pages/Results').then((m) => ({ default: m.Results })));
+const Booking = lazy(() => import('./pages/Booking').then((m) => ({ default: m.Booking })));
+const CreateRide = lazy(() => import('./pages/CreateRide'));
+const RideDetail = lazy(() => import('./pages/RideDetail').then((m) => ({ default: m.RideDetail })));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const Messages = lazy(() => import('./pages/Messages'));
+const AdminAccounts = lazy(() => import('./pages/AdminAccounts'));
+const CompanyFleet = lazy(() => import('./pages/CompanyFleet'));
+const ProfileSettings = lazy(() => import('./pages/ProfileSettings'));
+const PublicProfile = lazy(() => import('./pages/PublicProfile'));
+const MyTrips = lazy(() => import('./pages/MyTrips'));
+const Cart = lazy(() => import('./pages/Cart'));
 
 type AppShellProps = {
   requireAuth?: boolean;
@@ -388,29 +389,37 @@ export default function App() {
   return (
     <BrowserRouter>
       <CookieConsent />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route element={<AppShell requireAuth={false} />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/results" element={<Results />} />
-          <Route path="/ride/:rideId" element={<RideDetail />} />
-          <Route path="/cart" element={<Cart />} />
-        </Route>
-        <Route element={<AppShell requireAuth />}>
-          <Route path="/booking/:rideId" element={<Booking />} />
-          <Route path="/create" element={<CreateRide />} />
-          <Route path="/messages" element={<Messages />} />
-          <Route path="/profile" element={<ProfileSettings />} />
-          <Route path="/profile/:accountId" element={<PublicProfile />} />
-          <Route path="/company/fleet" element={<CompanyFleet />} />
-          <Route path="/admin/accounts" element={<AdminAccounts />} />
-          <Route path="/my-trips" element={<MyTrips />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center text-slate-500">
+            Chargement…
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route element={<AppShell requireAuth={false} />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/ride/:rideId" element={<RideDetail />} />
+            <Route path="/cart" element={<Cart />} />
+          </Route>
+          <Route element={<AppShell requireAuth />}>
+            <Route path="/booking/:rideId" element={<Booking />} />
+            <Route path="/create" element={<CreateRide />} />
+            <Route path="/messages" element={<Messages />} />
+            <Route path="/profile" element={<ProfileSettings />} />
+            <Route path="/profile/:accountId" element={<PublicProfile />} />
+            <Route path="/company/fleet" element={<CompanyFleet />} />
+            <Route path="/admin/accounts" element={<AdminAccounts />} />
+            <Route path="/my-trips" element={<MyTrips />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

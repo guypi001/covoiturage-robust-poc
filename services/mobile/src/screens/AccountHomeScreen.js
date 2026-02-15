@@ -14,7 +14,7 @@ export function AccountHomeScreen({ navigation }) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={textStyles.title}>Compte</Text>
-        <Text style={textStyles.subtitle}>Organise ton compte avec des pages dediees sans redondance.</Text>
+        <Text style={textStyles.subtitle}>Centre de pilotage du profil, sécurité et préférences.</Text>
       </View>
 
       <SurfaceCard style={styles.card} tone="soft">
@@ -44,7 +44,7 @@ export function AccountHomeScreen({ navigation }) {
       </SurfaceCard>
 
       <SurfaceCard style={styles.card} tone="soft">
-        <SectionHeader title="Navigation rapide" icon="apps-outline" />
+        <SectionHeader title="Raccourcis utiles" icon="apps-outline" />
         <View style={styles.buttonColumn}>
           {token ? (
             <>

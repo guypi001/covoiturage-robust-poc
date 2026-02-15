@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, text } from '../theme';
 import { getConversations, getMessagingWsUrl } from '../api/messaging';
 import { getPublicProfile } from '../api/bff';
@@ -9,6 +9,9 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Banner } from '../components/Banner';
 import { resolveAssetUrl } from '../config';
+
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
+const profilePhotoCache = new Map();
 
 function AnimatedListItem({ children, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -41,11 +44,7 @@ function AnimatedListItem({ children, delay = 0 }) {
     ]).start();
   }, [delay, opacity, scale, translateY]);
 
-  return (
-    <Animated.View style={{ opacity, transform: [{ translateY }, { scale }] }}>
-      {children}
-    </Animated.View>
-  );
+  return <Animated.View style={{ opacity, transform: [{ translateY }, { scale }] }}>{children}</Animated.View>;
 }
 
 export function MessagesScreen({ navigation }) {
@@ -56,12 +55,10 @@ export function MessagesScreen({ navigation }) {
   const [presenceMap, setPresenceMap] = useState({});
   const [participantPhotoMap, setParticipantPhotoMap] = useState({});
   const hydratedPhotoIdsRef = useRef(new Set());
+  const refreshTimeoutRef = useRef(null);
+
   const onlineCount = useMemo(() => {
-    const uniqueIds = new Set(
-      items
-        .map((item) => item.otherParticipant?.id)
-        .filter((id) => typeof id === 'string'),
-    );
+    const uniqueIds = new Set(items.map((item) => item.otherParticipant?.id).filter((id) => typeof id === 'string'));
     let count = 0;
     uniqueIds.forEach((id) => {
       if (presenceMap[id]) count += 1;
@@ -72,52 +69,85 @@ export function MessagesScreen({ navigation }) {
   useEffect(() => {
     let active = true;
     let socket;
+
+    const hydratePhotos = async (itemsList) => {
+      if (!token) return;
+      const ids = Array.from(
+        new Set(itemsList.map((item) => item?.otherParticipant?.id).filter((id) => typeof id === 'string' && id.length > 0)),
+      );
+      const now = Date.now();
+      const missing = ids.filter((id) => {
+        if (hydratedPhotoIdsRef.current.has(id)) return false;
+        const cached = profilePhotoCache.get(id);
+        return !cached || cached.expiresAt <= now;
+      });
+
+      if (!missing.length) {
+        setParticipantPhotoMap((prev) => {
+          const next = { ...prev };
+          ids.forEach((id) => {
+            const cached = profilePhotoCache.get(id);
+            if (cached?.url !== undefined) {
+              next[id] = cached.url;
+              hydratedPhotoIdsRef.current.add(id);
+            }
+          });
+          return next;
+        });
+        return;
+      }
+
+      const profiles = await Promise.allSettled(
+        missing.map(async (id) => {
+          const profile = await getPublicProfile(token, id);
+          return { id, photo: profile?.profilePhotoUrl || '' };
+        }),
+      );
+
+      if (!active) return;
+
+      setParticipantPhotoMap((prev) => {
+        const next = { ...prev };
+        profiles.forEach((entry) => {
+          if (entry.status !== 'fulfilled') return;
+          hydratedPhotoIdsRef.current.add(entry.value.id);
+          next[entry.value.id] = entry.value.photo;
+          profilePhotoCache.set(entry.value.id, {
+            url: entry.value.photo,
+            expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+          });
+        });
+        return next;
+      });
+    };
+
     const fetchData = async () => {
       if (!account?.id) return;
       setLoading(true);
       setError('');
       try {
         const data = await getConversations(account.id);
-        if (active) {
-          const itemsList = Array.isArray(data) ? data : [];
-          setItems(itemsList);
-          if (token) {
-            const ids = Array.from(
-              new Set(
-                itemsList
-                  .map((item) => item?.otherParticipant?.id)
-                  .filter((id) => typeof id === 'string' && id.length > 0),
-              ),
-            );
-            const missing = ids.filter((id) => !hydratedPhotoIdsRef.current.has(id));
-            if (missing.length) {
-              const profiles = await Promise.allSettled(
-                missing.map(async (id) => {
-                  const profile = await getPublicProfile(token, id);
-                  return { id, photo: profile?.profilePhotoUrl || '' };
-                }),
-              );
-              if (active) {
-                setParticipantPhotoMap((prev) => {
-                  const next = { ...prev };
-                  profiles.forEach((entry) => {
-                    if (entry.status !== 'fulfilled') return;
-                    hydratedPhotoIdsRef.current.add(entry.value.id);
-                    next[entry.value.id] = entry.value.photo;
-                  });
-                  return next;
-                });
-              }
-            }
-          }
-        }
-      } catch (err) {
+        if (!active) return;
+        const itemsList = Array.isArray(data) ? data : [];
+        setItems(itemsList);
+        await hydratePhotos(itemsList);
+      } catch {
         if (active) setError('Impossible de charger les messages.');
       } finally {
         if (active) setLoading(false);
       }
     };
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) return;
+      refreshTimeoutRef.current = setTimeout(() => {
+        refreshTimeoutRef.current = null;
+        fetchData();
+      }, 300);
+    };
+
     fetchData();
+
     if (account?.id) {
       socket = new WebSocket(getMessagingWsUrl());
       socket.onopen = () => {
@@ -128,7 +158,10 @@ export function MessagesScreen({ navigation }) {
         try {
           const payload = JSON.parse(event.data);
           if (payload?.type === 'message.new') {
-            fetchData();
+            scheduleRefresh();
+          }
+          if (payload?.type === 'message.read') {
+            scheduleRefresh();
           }
           if (payload?.type === 'presence.update') {
             const { userId, online } = payload.data || {};
@@ -141,25 +174,72 @@ export function MessagesScreen({ navigation }) {
         }
       };
     }
+
     return () => {
       active = false;
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
       if (socket) socket.close();
     };
   }, [account?.id, token]);
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={text.title}>Messages</Text>
-      <Text style={text.subtitle}>
-        Conversations recentes. {onlineCount} personne{onlineCount > 1 ? 's' : ''} en ligne.
-      </Text>
+  const renderConversation = ({ item, index }) => {
+    const otherId = item.otherParticipant?.id;
+    const online = otherId ? presenceMap[otherId] : false;
+    const displayName = getFirstName(item.otherParticipant?.label) || item.otherParticipant?.label || 'Contact';
+    const participantPhoto = otherId ? participantPhotoMap[otherId] : '';
+    const resolvedPhoto = participantPhoto ? resolveAssetUrl(participantPhoto) : '';
 
-      {loading && (
+    return (
+      <AnimatedListItem delay={120 + index * 35}>
+        <SurfaceCard style={styles.card} animated={false}>
+          <Pressable
+            onPress={() =>
+              navigation.navigate('Conversation', {
+                conversationId: item.id,
+                otherParticipant: {
+                  ...item.otherParticipant,
+                  profilePhotoUrl: participantPhoto || null,
+                },
+              })
+            }
+          >
+            <View style={styles.row}>
+              <View style={[styles.avatar, online && styles.avatarOnline]}>
+                {resolvedPhoto ? (
+                  <Image source={{ uri: resolvedPhoto }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                )}
+              </View>
+              <View style={styles.cardContent}>
+                <View style={styles.headerRow}>
+                  <Text style={styles.name}>{displayName}</Text>
+                  <Text style={styles.presence}>{online ? 'En ligne' : 'Hors ligne'}</Text>
+                </View>
+                <Text style={styles.preview}>{item.lastMessagePreview || 'Nouvelle conversation'}</Text>
+                <Text style={styles.meta}>Non lus: {item.unreadCount ?? 0}</Text>
+              </View>
+            </View>
+          </Pressable>
+        </SurfaceCard>
+      </AnimatedListItem>
+    );
+  };
+
+  const listHeader = (
+    <View style={styles.content}>
+      <Text style={text.title}>Messages</Text>
+      <Text style={text.subtitle}>Conversations recentes. {onlineCount} personne{onlineCount > 1 ? 's' : ''} en ligne.</Text>
+
+      {loading ? (
         <SurfaceCard style={styles.loadingCard} tone="soft" delay={60}>
           <ActivityIndicator color={colors.sky600} />
           <Text style={styles.loadingText}>Chargement...</Text>
         </SurfaceCard>
-      )}
+      ) : null}
 
       {error ? <Banner tone="error" message={error} /> : null}
 
@@ -178,59 +258,27 @@ export function MessagesScreen({ navigation }) {
           ))}
         </View>
       ) : null}
+    </View>
+  );
 
-      {items.map((item, index) => {
-        const otherId = item.otherParticipant?.id;
-        const online = otherId ? presenceMap[otherId] : false;
-        const displayName = getFirstName(item.otherParticipant?.label) || item.otherParticipant?.label || 'Contact';
-        const participantPhoto = otherId ? participantPhotoMap[otherId] : '';
-        const resolvedPhoto = participantPhoto ? resolveAssetUrl(participantPhoto) : '';
-        return (
-          <AnimatedListItem key={item.id} delay={120 + index * 35}>
-            <SurfaceCard style={styles.card} animated={false}>
-            <Pressable
-              onPress={() =>
-                navigation.navigate('Conversation', {
-                  conversationId: item.id,
-                  otherParticipant: {
-                    ...item.otherParticipant,
-                    profilePhotoUrl: participantPhoto || null,
-                  },
-                })
-              }
-            >
-              <View style={styles.row}>
-                <View style={[styles.avatar, online && styles.avatarOnline]}>
-                  {resolvedPhoto ? (
-                    <Image source={{ uri: resolvedPhoto }} style={styles.avatarImage} />
-                  ) : (
-                    <Text style={styles.avatarText}>
-                      {displayName.charAt(0).toUpperCase()}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.cardContent}>
-                  <View style={styles.headerRow}>
-                    <Text style={styles.name}>{displayName}</Text>
-                    <Text style={styles.presence}>{online ? 'En ligne' : 'Hors ligne'}</Text>
-                  </View>
-                  <Text style={styles.preview}>{item.lastMessagePreview || 'Nouvelle conversation'}</Text>
-                  <Text style={styles.meta}>Non lus: {item.unreadCount ?? 0}</Text>
-                </View>
-              </View>
-            </Pressable>
-            </SurfaceCard>
-          </AnimatedListItem>
-        );
-      })}
-
-      {!loading && items.length === 0 && !error ? (
-        <SurfaceCard style={styles.emptyCard} tone="soft" delay={90}>
-          <Text style={styles.emptyTitle}>Aucune conversation</Text>
-          <Text style={styles.emptyText}>Tu verras ici tes messages recents.</Text>
-        </SurfaceCard>
-      ) : null}
-    </ScrollView>
+  return (
+    <FlatList
+      style={styles.container}
+      contentContainerStyle={styles.listContent}
+      data={loading ? [] : items}
+      keyExtractor={(item) => item.id}
+      renderItem={renderConversation}
+      ListHeaderComponent={listHeader}
+      ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+      ListEmptyComponent={
+        !loading && items.length === 0 && !error ? (
+          <SurfaceCard style={styles.emptyCard} tone="soft" delay={90}>
+            <Text style={styles.emptyTitle}>Aucune conversation</Text>
+            <Text style={styles.emptyText}>Tu verras ici tes messages recents.</Text>
+          </SurfaceCard>
+        ) : null
+      }
+    />
   );
 }
 
@@ -243,7 +291,11 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  listContent: {
+    paddingBottom: spacing.lg,
+  },
   card: {
+    marginHorizontal: spacing.lg,
     gap: 6,
   },
   row: {
@@ -310,6 +362,7 @@ const styles = StyleSheet.create({
     color: colors.slate600,
   },
   emptyCard: {
+    marginHorizontal: spacing.lg,
     alignItems: 'center',
     gap: spacing.sm,
   },
@@ -341,5 +394,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.slate600,
     textAlign: 'center',
+  },
+  itemSeparator: {
+    height: spacing.md,
   },
 });

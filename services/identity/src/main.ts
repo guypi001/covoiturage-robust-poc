@@ -47,10 +47,30 @@ function applyRateLimit(app: any) {
   const express = app.getHttpAdapter().getInstance();
   const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
   const maxRequests = Number(process.env.RATE_LIMIT_MAX_REQUESTS || 180);
+  const maxTrackedIps = Number(process.env.RATE_LIMIT_MAX_TRACKED_IPS || 50_000);
   const hits = new Map<string, { count: number; resetAt: number }>();
+  const cleanupEveryMs = Math.max(15_000, Math.floor(windowMs / 2));
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, state] of hits.entries()) {
+      if (state.resetAt <= now) {
+        hits.delete(ip);
+      }
+    }
+  }, cleanupEveryMs).unref();
   express.use((req: Request, res: Response, next: () => void) => {
     const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
     const now = Date.now();
+    if (hits.size > maxTrackedIps) {
+      let removed = 0;
+      for (const [key, state] of hits.entries()) {
+        if (state.resetAt <= now) {
+          hits.delete(key);
+          removed += 1;
+        }
+        if (hits.size <= maxTrackedIps || removed >= 500) break;
+      }
+    }
     const state = hits.get(ip);
     if (!state || state.resetAt <= now) {
       hits.set(ip, { count: 1, resetAt: now + windowMs });

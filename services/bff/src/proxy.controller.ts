@@ -134,6 +134,12 @@ type AccountProfile = {
   type?: string | null;
   role?: string | null;
 };
+
+type RequestWithAccountCache = {
+  headers?: Record<string, string | undefined>;
+  __myAccountCache?: Promise<AccountProfile | null>;
+};
+
 @Controller()
 export class ProxyController {
   @Post('rides')
@@ -1354,15 +1360,38 @@ export class ProxyController {
     );
   }
 
+  private buildRideRetryUrl(originalUrl: string | undefined, host: string) {
+    if (!originalUrl) return `${host}/rides`;
+    try {
+      const parsed = new URL(originalUrl);
+      const hostUrl = new URL(host);
+      parsed.protocol = hostUrl.protocol;
+      parsed.hostname = hostUrl.hostname;
+      parsed.port = hostUrl.port;
+      return parsed.toString();
+    } catch {
+      const basePath = originalUrl.startsWith('/') ? originalUrl : `/${originalUrl}`;
+      return `${host}${basePath}`;
+    }
+  }
+
   private async forward<T>(call: () => Promise<{ data: T }>, target: string): Promise<T> {
     const end = upstreamDurationHistogram.startTimer({ target });
     const hosts = target === 'ride' ? rideHosts : [undefined];
     let lastError: AxiosError | null = null;
 
-    for (const host of hosts) {
+    for (let index = 0; index < hosts.length; index += 1) {
+      const host = hosts[index];
       const attemptTarget = host ?? target;
       try {
-        const res = await call();
+        const res =
+          target === 'ride' && index > 0 && lastError?.config
+            ? await axios.request<T>({
+                ...lastError.config,
+                url: this.buildRideRetryUrl(lastError.config.url, host || RIDE),
+                baseURL: undefined,
+              })
+            : await call();
         upstreamRequestCounter.inc({ target: attemptTarget, outcome: 'success' });
         end();
         return res.data;
@@ -1409,20 +1438,25 @@ export class ProxyController {
   }
 
   private async fetchMyAccount(
-    req: any,
+    req: RequestWithAccountCache,
     options: { allowAnonymous?: boolean } = {},
   ): Promise<AccountProfile | null> {
+    if (req.__myAccountCache) {
+      return req.__myAccountCache;
+    }
     const headers = this.extractAuthHeaders(req);
     if (!headers.authorization) {
       if (options.allowAnonymous) return null;
       throw new UnauthorizedException('auth_required');
     }
-    try {
-      return await this.forward<AccountProfile | null>(
+    req.__myAccountCache = this.forward<AccountProfile | null>(
         () => axios.get<AccountProfile | null>(`${IDENTITY}/profiles/me`, { headers }),
         'identity',
       );
+    try {
+      return await req.__myAccountCache;
     } catch (err) {
+      req.__myAccountCache = undefined;
       if (err instanceof HttpException && err.getStatus && err.getStatus() === 401) {
         if (options.allowAnonymous) return null;
         throw new UnauthorizedException('invalid_token');

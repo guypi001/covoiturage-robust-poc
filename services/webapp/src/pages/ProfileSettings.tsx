@@ -29,6 +29,8 @@ type AppSettings = {
   soundsEnabled: boolean;
 };
 
+type ProfileSectionId = 'identity' | 'company' | 'preferences' | 'home' | 'security';
+
 const APP_SETTINGS_DEFAULTS: AppSettings = {
   appearance: 'system',
   reducedMotion: false,
@@ -94,6 +96,7 @@ export default function ProfileSettings() {
   const [companyDocUploading, setCompanyDocUploading] = useState(false);
   const [companyDocType, setCompanyDocType] = useState('legal');
   const [appSettings, setAppSettings] = useState<AppSettings>(APP_SETTINGS_DEFAULTS);
+  const [activeSection, setActiveSection] = useState<ProfileSectionId>('identity');
 
   const accountType = account?.type as AccountType | undefined;
 
@@ -178,6 +181,48 @@ export default function ProfileSettings() {
         .filter(Boolean),
     [comfort],
   );
+
+  const sectionOptions = useMemo(
+    () =>
+      [
+        {
+          id: 'identity' as ProfileSectionId,
+          label: 'Profil',
+          description: 'Photo, identité, confort',
+        },
+        ...(accountType === 'COMPANY'
+          ? ([
+              {
+                id: 'company' as ProfileSectionId,
+                label: 'Entreprise',
+                description: 'Documents et vérification',
+              },
+            ] as const)
+          : []),
+        {
+          id: 'preferences' as ProfileSectionId,
+          label: 'App',
+          description: 'Affichage et expérience locale',
+        },
+        {
+          id: 'home' as ProfileSectionId,
+          label: 'Accueil',
+          description: 'Raccourcis et trajets favoris',
+        },
+        {
+          id: 'security' as ProfileSectionId,
+          label: 'Sécurité',
+          description: 'Session et accès',
+        },
+      ] as const,
+    [accountType],
+  );
+
+  useEffect(() => {
+    if (activeSection === 'company' && accountType !== 'COMPANY') {
+      setActiveSection('identity');
+    }
+  }, [activeSection, accountType]);
 
   if (!token) return <Navigate to="/login" replace />;
   if (!account) return null;
@@ -295,7 +340,31 @@ export default function ProfileSettings() {
       </header>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <form onSubmit={handleSubmit} className="space-y-10">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {sectionOptions.map((section) => {
+                const isActive = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      isActive
+                        ? 'border-sky-300 bg-sky-50 text-sky-700 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-sky-700'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">{section.label}</p>
+                    <p className="mt-1 text-xs opacity-80">{section.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {(activeSection === 'identity' || activeSection === 'company') && (
           <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <header className="space-y-1">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Identité</h2>
@@ -366,8 +435,9 @@ export default function ProfileSettings() {
             </div>
             </div>
           </section>
+          )}
 
-          {account.type === 'COMPANY' && (
+          {account.type === 'COMPANY' && activeSection === 'company' && (
             <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <header className="space-y-1">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -455,6 +525,7 @@ export default function ProfileSettings() {
             </section>
           )}
 
+        {activeSection === 'identity' && (
         <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div>
             <label className="text-xs font-semibold uppercase text-slate-500">
@@ -490,7 +561,9 @@ export default function ProfileSettings() {
             </div>
           )}
         </section>
+        )}
 
+        {activeSection === 'preferences' && (
         <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <header>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -566,7 +639,9 @@ export default function ProfileSettings() {
             </label>
           </div>
         </section>
+        )}
 
+        {activeSection === 'security' && (
         <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <header>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -592,7 +667,9 @@ export default function ProfileSettings() {
             </button>
           </div>
         </section>
+        )}
 
+        {activeSection === 'home' && (
         <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <header>
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
@@ -713,6 +790,7 @@ export default function ProfileSettings() {
             Afficher les encarts de conseils sur la page d’accueil
           </label>
         </section>
+        )}
 
         {error && (
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -782,6 +860,35 @@ export default function ProfileSettings() {
                 <span className="font-semibold text-slate-900">{account.loginCount ?? 0}</span>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Navigation paramètres
+            </p>
+            <div className="grid gap-2">
+              {sectionOptions.map((section) => {
+                const isActive = activeSection === section.id;
+                return (
+                  <button
+                    key={`aside-${section.id}`}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                      isActive
+                        ? 'border-sky-300 bg-sky-50 text-sky-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-sky-700'
+                    }`}
+                  >
+                    <span className="font-semibold">{section.label}</span>
+                    <span className="block text-xs opacity-80">{section.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-500">
+              Conseil: modifie une section puis clique sur <span className="font-semibold">Sauvegarder</span>.
+            </p>
           </div>
         </aside>
       </div>

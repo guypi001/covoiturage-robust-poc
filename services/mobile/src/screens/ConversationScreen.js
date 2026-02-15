@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
-import { Animated, Easing, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, text } from '../theme';
@@ -153,7 +153,7 @@ export function ConversationScreen({ route }) {
   const [lastSentId, setLastSentId] = useState('');
   const [otherPhotoUrl, setOtherPhotoUrl] = useState(otherParticipant?.profilePhotoUrl || '');
   const [otherPhotoError, setOtherPhotoError] = useState(false);
-  const scrollRef = useRef(null);
+  const messageListRef = useRef(null);
   const socketRef = useRef(null);
 
   const sendTyping = (active) => {
@@ -302,8 +302,11 @@ export function ConversationScreen({ route }) {
   }, [token, otherParticipant?.id, otherPhotoUrl]);
 
   useEffect(() => {
-    if (!scrollRef.current) return;
-    setTimeout(() => scrollRef.current?.scrollToEnd?.({ animated: true }), 100);
+    if (!messageListRef.current) return;
+    const timer = setTimeout(() => {
+      messageListRef.current?.scrollToEnd?.({ animated: true });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   const title = useMemo(() => {
@@ -401,6 +404,43 @@ export function ConversationScreen({ route }) {
     }
   };
 
+  const renderMessage = ({ item: msg, index }) => {
+    const isMine = msg.senderId === account?.id;
+    return (
+      <AnimatedMessage
+        delay={index * 35}
+        fromRight={isMine}
+        emphasis={isMine && msg.id === lastSentId}
+      >
+        <View style={[styles.messageRow, isMine && styles.messageRowMine]}>
+          <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+            {msg.attachmentUrl ? (
+              <View style={styles.attachment}>
+                <Text style={styles.attachmentText}>
+                  Piece jointe: {msg.attachmentName || 'fichier'}
+                </Text>
+                <Text style={styles.attachmentLink}>{resolveAssetUrl(msg.attachmentUrl)}</Text>
+              </View>
+            ) : null}
+            {msg.body ? <Text style={styles.messageText}>{msg.body}</Text> : null}
+            <Text style={styles.metaText}>
+              {formatTime(msg.createdAt)}
+              {isMine && msg.status === 'READ' ? (
+                <Text style={styles.readCheck}>{` · ✓✓`}</Text>
+              ) : null}
+              {isMine && msg.status === 'DELIVERED' ? (
+                <Text style={styles.deliveredCheck}>{` · ✓✓`}</Text>
+              ) : null}
+              {isMine && msg.status === 'SENT' ? (
+                <Text style={styles.sentCheck}>{` · ✓`}</Text>
+              ) : null}
+            </Text>
+          </View>
+        </View>
+      </AnimatedMessage>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <SurfaceCard style={styles.headerCard} tone="soft" animated={false}>
@@ -439,45 +479,14 @@ export function ConversationScreen({ route }) {
         ) : null}
       </SurfaceCard>
 
-      <ScrollView ref={scrollRef} style={styles.list} contentContainerStyle={styles.listContent}>
-        {messages.map((msg, index) => {
-          const isMine = msg.senderId === account?.id;
-          return (
-            <AnimatedMessage
-              key={msg.id}
-              delay={index * 35}
-              fromRight={isMine}
-              emphasis={isMine && msg.id === lastSentId}
-            >
-              <View style={[styles.messageRow, isMine && styles.messageRowMine]}>
-                <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
-                  {msg.attachmentUrl ? (
-                    <View style={styles.attachment}>
-                      <Text style={styles.attachmentText}>
-                        Piece jointe: {msg.attachmentName || 'fichier'}
-                      </Text>
-                      <Text style={styles.attachmentLink}>{resolveAssetUrl(msg.attachmentUrl)}</Text>
-                    </View>
-                  ) : null}
-                  {msg.body ? <Text style={styles.messageText}>{msg.body}</Text> : null}
-                  <Text style={styles.metaText}>
-                    {formatTime(msg.createdAt)}
-                    {isMine && msg.status === 'READ' ? (
-                      <Text style={styles.readCheck}>{` · ✓✓`}</Text>
-                    ) : null}
-                    {isMine && msg.status === 'DELIVERED' ? (
-                      <Text style={styles.deliveredCheck}>{` · ✓✓`}</Text>
-                    ) : null}
-                    {isMine && msg.status === 'SENT' ? (
-                      <Text style={styles.sentCheck}>{` · ✓`}</Text>
-                    ) : null}
-                  </Text>
-                </View>
-              </View>
-            </AnimatedMessage>
-          );
-        })}
-      </ScrollView>
+      <FlatList
+        ref={messageListRef}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        data={messages}
+        keyExtractor={(item) => item.id}
+        renderItem={renderMessage}
+      />
 
       <View style={styles.composer}>
         <Pressable style={styles.attachButton} onPress={handleAttachment} disabled={sending}>
