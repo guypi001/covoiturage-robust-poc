@@ -17,6 +17,13 @@ export class MailerService {
   private transporter?: nodemailer.Transporter;
   private readonly from: string;
   private readonly smtpLogOnly: boolean;
+  private readonly smtpHost?: string;
+  private readonly smtpService?: string;
+  private readonly smtpPort: number;
+  private readonly smtpSecure: boolean;
+  private smtpReady = false;
+  private lastSmtpError: string | null = null;
+  private lastVerifyAt: string | null = null;
 
   private parseBoolean(value: string | undefined, fallback = false) {
     if (value === undefined) return fallback;
@@ -35,6 +42,10 @@ export class MailerService {
     const pass = process.env.SMTP_PASS;
     const port = this.parseNumber(process.env.SMTP_PORT, 587);
     const secure = this.parseBoolean(process.env.SMTP_SECURE, port === 465);
+    this.smtpHost = host;
+    this.smtpService = service;
+    this.smtpPort = port;
+    this.smtpSecure = secure;
     this.smtpLogOnly = this.parseBoolean(process.env.SMTP_LOG_ONLY);
     const fromName = process.env.SMTP_FROM_NAME?.trim();
     const fromEmail = process.env.SMTP_FROM?.trim() || user || 'noreply@example.com';
@@ -71,11 +82,53 @@ export class MailerService {
     void this.transporter
       .verify()
       .then(() => {
+        this.smtpReady = true;
+        this.lastSmtpError = null;
+        this.lastVerifyAt = new Date().toISOString();
         this.logger.log(`SMTP ready (${service || host}:${port}, secure=${secure})`);
       })
       .catch((err) => {
-        this.logger.error(`SMTP verify failed: ${(err as Error)?.message || err}`);
+        this.smtpReady = false;
+        this.lastSmtpError = (err as Error)?.message || String(err);
+        this.lastVerifyAt = new Date().toISOString();
+        this.logger.error(`SMTP verify failed: ${this.lastSmtpError}`);
       });
+  }
+
+  getSmtpStatus() {
+    return {
+      enabled: Boolean(this.transporter),
+      logOnly: this.smtpLogOnly,
+      ready: this.smtpReady,
+      host: this.smtpHost || null,
+      service: this.smtpService || null,
+      port: this.smtpPort,
+      secure: this.smtpSecure,
+      from: this.from,
+      lastVerifyAt: this.lastVerifyAt,
+      lastError: this.lastSmtpError,
+    };
+  }
+
+  async verifySmtpNow() {
+    if (!this.transporter) {
+      this.smtpReady = false;
+      this.lastSmtpError = 'smtp_not_configured';
+      this.lastVerifyAt = new Date().toISOString();
+      return false;
+    }
+    try {
+      await this.transporter.verify();
+      this.smtpReady = true;
+      this.lastSmtpError = null;
+      this.lastVerifyAt = new Date().toISOString();
+      return true;
+    } catch (err) {
+      this.smtpReady = false;
+      this.lastSmtpError = (err as Error)?.message || String(err);
+      this.lastVerifyAt = new Date().toISOString();
+      return false;
+    }
   }
 
   private isTransientSmtpError(err: unknown) {
@@ -95,9 +148,13 @@ export class MailerService {
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
         await this.transporter.sendMail(mail);
+        this.smtpReady = true;
+        this.lastSmtpError = null;
         return true;
       } catch (err) {
         if (attempt >= retries || !this.isTransientSmtpError(err)) {
+          this.smtpReady = false;
+          this.lastSmtpError = (err as Error)?.message || String(err);
           this.logger.error(
             `Email send failed (attempt ${attempt + 1}/${retries + 1}) to ${mail.to}: ${
               (err as Error)?.message || err
