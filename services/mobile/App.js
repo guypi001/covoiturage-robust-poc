@@ -28,6 +28,7 @@ import { SearchHubScreen } from './src/screens/SearchHubScreen';
 import { TripsHubScreen } from './src/screens/TripsHubScreen';
 import { MessagesHubScreen } from './src/screens/MessagesHubScreen';
 import { HelpCenterScreen } from './src/screens/HelpCenterScreen';
+import { CreateRideScreen } from './src/screens/CreateRideScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/auth';
 import { ToastProvider } from './src/ui/ToastContext';
@@ -81,6 +82,7 @@ function TripsStackNavigator() {
   return (
     <TripsStack.Navigator screenOptions={sectionHeaderOptions}>
       <TripsStack.Screen name="TripsHub" component={TripsHubScreen} options={{ title: 'Mes trajets' }} />
+      <TripsStack.Screen name="CreateRide" component={CreateRideScreen} options={{ title: 'Publier un trajet' }} />
       <TripsStack.Screen name="TripsList" component={TripsScreen} options={{ title: 'Historique' }} />
       <TripsStack.Screen name="Favorites" component={FavoritesScreen} options={{ title: 'Favoris' }} />
       <TripsStack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Aide' }} />

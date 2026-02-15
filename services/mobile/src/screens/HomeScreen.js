@@ -158,6 +158,15 @@ export function HomeScreen({ navigation }) {
             <Text style={styles.actionMeta}>Gere tes reservations</Text>
           </Pressable>
         </View>
+        {token ? (
+          <Pressable
+            style={styles.actionTileWide}
+            onPress={() => navigation.navigate('Trips', { screen: 'CreateRide' })}
+          >
+            <Text style={styles.actionTitle}>Publier un trajet</Text>
+            <Text style={styles.actionMeta}>Creation guidee en quelques etapes</Text>
+          </Pressable>
+        ) : null}
       </SurfaceCard>
 
       {token ? (
@@ -293,6 +302,13 @@ const styles = StyleSheet.create({
     borderColor: colors.sky100,
     padding: spacing.md,
     backgroundColor: colors.brandSoft,
+  },
+  actionTileWide: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    padding: spacing.md,
+    backgroundColor: colors.white,
   },
   actionTitle: {
     fontSize: 14,

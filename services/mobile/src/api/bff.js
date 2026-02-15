@@ -25,6 +25,14 @@ export async function getMyRides(token) {
   });
 }
 
+export async function createRide(token, payload) {
+  return apiFetch(`${ENDPOINTS.bff}/rides`, {
+    method: 'POST',
+    headers: withAuth(token),
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getRideBookings(token, rideId) {
   return apiFetch(`${ENDPOINTS.bff}/me/rides/${rideId}/bookings`, {
     headers: withAuth(token),

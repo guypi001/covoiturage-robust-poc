@@ -15,6 +15,7 @@ export function TripsHubScreen({ navigation }) {
       <SurfaceCard style={styles.card} tone="soft">
         <SectionHeader title="Mon espace trajets" icon="car-outline" />
         <View style={styles.column}>
+          <PrimaryButton label="Publier un trajet" onPress={() => navigation.navigate('CreateRide')} />
           <PrimaryButton label="Historique complet" onPress={() => navigation.navigate('TripsList')} />
           <PrimaryButton label="Mes favoris" variant="ghost" onPress={() => navigation.navigate('Favorites')} />
           <PrimaryButton label="Trouver un nouveau trajet" variant="secondary" onPress={() => navigation.navigate('Search')} />

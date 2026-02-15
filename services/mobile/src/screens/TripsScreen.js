@@ -8,6 +8,7 @@ import { useToast } from '../ui/ToastContext';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { SkeletonBlock } from '../components/Skeleton';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { formatBookingStatus, formatPaymentStatus, formatRideStatus } from '../utils/status';
 
 const TABS = [
@@ -100,6 +101,7 @@ export function TripsScreen({ navigation }) {
         <Text style={text.title}>Mes trajets</Text>
         <Text style={text.subtitle}>Retrouve tes trajets a venir, en cours ou passes.</Text>
       </View>
+      <PrimaryButton label="Publier un trajet" onPress={() => navigation.navigate('CreateRide')} />
 
       <View style={styles.tabRow}>
         {TABS.map((item) => {
