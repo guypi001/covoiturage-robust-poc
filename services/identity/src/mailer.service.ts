@@ -16,31 +16,104 @@ export class MailerService {
   private readonly logger = new Logger(MailerService.name);
   private transporter?: nodemailer.Transporter;
   private readonly from: string;
+  private readonly smtpLogOnly: boolean;
+
+  private parseBoolean(value: string | undefined, fallback = false) {
+    if (value === undefined) return fallback;
+    return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+  }
+
+  private parseNumber(value: string | undefined, fallback: number) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  }
 
   constructor() {
     const host = process.env.SMTP_HOST;
+    const service = process.env.SMTP_SERVICE;
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
-    const port = Number(process.env.SMTP_PORT || 587);
-    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-    this.from = process.env.SMTP_FROM || user || 'noreply@example.com';
+    const port = this.parseNumber(process.env.SMTP_PORT, 587);
+    const secure = this.parseBoolean(process.env.SMTP_SECURE, port === 465);
+    this.smtpLogOnly = this.parseBoolean(process.env.SMTP_LOG_ONLY);
+    const fromName = process.env.SMTP_FROM_NAME?.trim();
+    const fromEmail = process.env.SMTP_FROM?.trim() || user || 'noreply@example.com';
+    this.from =
+      fromName && !fromEmail.includes('<')
+        ? `${fromName} <${fromEmail}>`
+        : fromEmail;
 
     if (!host || !user || !pass) {
       this.logger.warn('SMTP credentials missing (SMTP_HOST / SMTP_USER / SMTP_PASS). Emails will not be sent.');
       return;
     }
 
-    this.transporter = nodemailer.createTransport({
+    const transportConfig: Record<string, any> = {
       host,
       port,
       secure,
+      pool: this.parseBoolean(process.env.SMTP_POOL, true),
+      requireTLS: this.parseBoolean(process.env.SMTP_REQUIRE_TLS, !secure),
+      connectionTimeout: this.parseNumber(process.env.SMTP_CONNECTION_TIMEOUT_MS, 12_000),
+      greetingTimeout: this.parseNumber(process.env.SMTP_GREETING_TIMEOUT_MS, 10_000),
+      socketTimeout: this.parseNumber(process.env.SMTP_SOCKET_TIMEOUT_MS, 20_000),
+      tls: {
+        rejectUnauthorized: this.parseBoolean(process.env.SMTP_TLS_REJECT_UNAUTHORIZED, true),
+      },
       auth: { user, pass },
-    });
+    };
+    if (service) {
+      transportConfig.service = service;
+    }
+    this.transporter = nodemailer.createTransport(transportConfig);
+
+    // Proactive connectivity check to surface SMTP issues at startup in logs.
+    void this.transporter
+      .verify()
+      .then(() => {
+        this.logger.log(`SMTP ready (${service || host}:${port}, secure=${secure})`);
+      })
+      .catch((err) => {
+        this.logger.error(`SMTP verify failed: ${(err as Error)?.message || err}`);
+      });
+  }
+
+  private isTransientSmtpError(err: unknown) {
+    const code = (err as any)?.code;
+    const responseCode = Number((err as any)?.responseCode);
+    return (
+      ['ETIMEDOUT', 'ECONNECTION', 'ECONNRESET', 'EAI_AGAIN'].includes(code) ||
+      responseCode === 421 ||
+      responseCode === 450 ||
+      responseCode === 451 ||
+      responseCode === 452
+    );
+  }
+
+  private async sendWithRetry(mail: nodemailer.SendMailOptions, retries = 1) {
+    if (!this.transporter) return false;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        await this.transporter.sendMail(mail);
+        return true;
+      } catch (err) {
+        if (attempt >= retries || !this.isTransientSmtpError(err)) {
+          this.logger.error(
+            `Email send failed (attempt ${attempt + 1}/${retries + 1}) to ${mail.to}: ${
+              (err as Error)?.message || err
+            }`,
+          );
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      }
+    }
+    return false;
   }
 
   async sendOtpEmail(to: string, code: string, ttlMinutes: number) {
     if (!this.transporter) {
-      if (process.env.SMTP_LOG_ONLY === 'true') {
+      if (this.smtpLogOnly) {
         this.logger.warn(`sendOtpEmail log-only. OTP for ${to}: ${code}`);
         return true;
       }
@@ -64,26 +137,23 @@ export class MailerService {
       previewText: 'Ton code de connexion KariGo',
     });
 
-    try {
-      await this.transporter.sendMail({
+    return this.sendWithRetry(
+      {
         from: this.from,
         to,
         subject,
         text,
         html,
-      });
-      return true;
-    } catch (err) {
-      this.logger.error(`sendOtpEmail failed for ${to}: ${(err as Error)?.message || err}`);
-      return false;
-    }
+      },
+      1,
+    );
   }
 
   async sendWelcomeEmail(to: string, context: { name: string; type: 'INDIVIDUAL' | 'COMPANY' }) {
     const friendlyName = context.name?.trim() || 'nouvel utilisateur';
     if (!this.transporter) {
       this.logger.warn(`sendWelcomeEmail skipped (no transporter). Welcome for ${to}`);
-      return process.env.SMTP_LOG_ONLY === 'true';
+      return this.smtpLogOnly;
     }
 
     const subject = 'Bienvenue chez KariGo';
@@ -111,19 +181,16 @@ export class MailerService {
       previewText: 'Bienvenue sur la plateforme KariGo',
     });
 
-    try {
-      await this.transporter.sendMail({
+    return this.sendWithRetry(
+      {
         from: this.from,
         to,
         subject,
         text,
         html,
-      });
-      return true;
-    } catch (err) {
-      this.logger.error(`sendWelcomeEmail failed for ${to}: ${(err as Error)?.message || err}`);
-      return false;
-    }
+      },
+      1,
+    );
   }
 
   async sendRideDigestEmail(to: string, payload: {
@@ -137,20 +204,17 @@ export class MailerService {
       return false;
     }
 
-    try {
-      await this.transporter.sendMail({
+    return this.sendWithRetry(
+      {
         from: this.from,
         to,
         subject: payload.subject,
         text: payload.text,
         html: payload.html,
         attachments: payload.attachments,
-      });
-      return true;
-    } catch (err) {
-      this.logger.error(`sendRideDigestEmail failed for ${to}: ${(err as Error)?.message || err}`);
-      return false;
-    }
+      },
+      1,
+    );
   }
 
   async sendPasswordResetEmail(
@@ -158,7 +222,7 @@ export class MailerService {
     context: { name?: string | null; resetUrl: string; expiresAt: Date },
   ) {
     if (!this.transporter) {
-      if (process.env.SMTP_LOG_ONLY === 'true') {
+      if (this.smtpLogOnly) {
         this.logger.warn(`sendPasswordResetEmail log-only. Link for ${to}: ${context.resetUrl}`);
         return true;
       }
@@ -189,19 +253,16 @@ export class MailerService {
       previewText: 'Réinitialise ton mot de passe KariGo',
     });
 
-    try {
-      await this.transporter.sendMail({
+    return this.sendWithRetry(
+      {
         from: this.from,
         to,
         subject,
         text,
         html,
-      });
-      return true;
-    } catch (err) {
-      this.logger.error(`sendPasswordResetEmail failed for ${to}: ${(err as Error)?.message || err}`);
-      return false;
-    }
+      },
+      1,
+    );
   }
 
   async sendReportEmail(
@@ -253,19 +314,16 @@ export class MailerService {
       previewText: 'Nouveau signalement KariGo',
     });
 
-    try {
-      await this.transporter.sendMail({
+    return this.sendWithRetry(
+      {
         from: this.from,
         to,
         subject,
         text,
         html,
-      });
-      return true;
-    } catch (err) {
-      this.logger.error(`sendReportEmail failed for ${to}: ${(err as Error)?.message || err}`);
-      return false;
-    }
+      },
+      1,
+    );
   }
 
   renderTemplate(options: EmailTemplateOptions) {
