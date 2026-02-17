@@ -58,6 +58,8 @@ const PASSWORD_SALT_ROUNDS = 10;
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const PASSWORD_RESET_SECRET_BYTES = Number(process.env.PASSWORD_RESET_SECRET_BYTES || 32);
 const PASSWORD_RESET_MAX_ATTEMPTS = Number(process.env.PASSWORD_RESET_MAX_ATTEMPTS || 5);
+const PASSWORD_RESET_EMAIL_RETRY_ATTEMPTS = Number(process.env.PASSWORD_RESET_EMAIL_RETRY_ATTEMPTS || 3);
+const PASSWORD_RESET_EMAIL_RETRY_DELAY_MS = Number(process.env.PASSWORD_RESET_EMAIL_RETRY_DELAY_MS || 2000);
 function looksLocalUrl(value?: string | null) {
   if (!value) return false;
   try {
@@ -224,6 +226,34 @@ export class AuthService implements OnModuleInit {
       return url.toString();
     } catch {
       return `${base.replace(/\/+$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+    }
+  }
+
+  private queuePasswordResetEmailRetry(
+    to: string,
+    context: { name?: string | null; resetUrl: string; expiresAt: Date },
+  ) {
+    const attempts = Math.max(1, PASSWORD_RESET_EMAIL_RETRY_ATTEMPTS);
+    const baseDelay = Math.max(500, PASSWORD_RESET_EMAIL_RETRY_DELAY_MS);
+    const timer = setTimeout(() => {
+      void (async () => {
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+          if (attempt > 1) {
+            await new Promise((resolve) => setTimeout(resolve, baseDelay * attempt));
+          }
+          const sent = await this.mailer.sendPasswordResetEmail(to, context);
+          if (sent) {
+            this.logger.log(`Password reset email delivered after retry ${attempt}/${attempts} for ${to}`);
+            return;
+          }
+        }
+        this.logger.error(
+          `Password reset email still failing after ${attempts} retries for ${to}. Check SMTP configuration and connectivity.`,
+        );
+      })();
+    }, baseDelay);
+    if (typeof timer?.unref === 'function') {
+      timer.unref();
     }
   }
 
@@ -806,7 +836,14 @@ export class AuthService implements OnModuleInit {
       expiresAt,
     });
     if (!sent) {
-      throw new ServiceUnavailableException('reset_email_failed');
+      this.logger.warn(
+        `Immediate password reset email delivery failed for ${account.email}. Scheduling background retries.`,
+      );
+      this.queuePasswordResetEmailRetry(account.email, {
+        name: this.formatAccountDisplayName(account),
+        resetUrl,
+        expiresAt,
+      });
     }
     await this.cleanupExpiredResetTokens();
     return { success: true };
