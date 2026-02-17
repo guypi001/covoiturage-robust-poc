@@ -148,8 +148,8 @@ services:
     env_file: ./services/identity/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
-      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://82.112.255.155:3006}
-      FRONTEND_URL: ${FRONTEND_URL:-http://82.112.255.155:3006}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://82.112.255.155}
+      FRONTEND_URL: ${FRONTEND_URL:-http://82.112.255.155}
       MIGRATIONS_RUN: 'true'
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-super-internal-key}
     dns:
@@ -230,7 +230,7 @@ services:
     env_file: ./services/notification/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
-      FRONTEND_URL: ${FRONTEND_URL:-http://82.112.255.155:3006}
+      FRONTEND_URL: ${FRONTEND_URL:-http://82.112.255.155}
     dns:
       - 1.1.1.1
       - 8.8.8.8
@@ -246,6 +246,12 @@ services:
       MIGRATIONS_RUN: 'true'
     depends_on: [postgres, redpanda]
     ports: ["3012:3012"]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3012/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
     restart: unless-stopped
 
   webapp:
@@ -264,6 +270,8 @@ services:
         condition: service_started
       booking:
         condition: service_started
+      messaging:
+        condition: service_healthy
     ports: ["3006:80"]
     restart: unless-stopped
     networks:
@@ -271,10 +279,10 @@ services:
       - proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.webapp.rule=Host(`${WEBAPP_HOST:-localhost}`)
+      - traefik.http.routers.webapp.rule=Host(`${WEBAPP_HOST:-82.112.255.155}`)
       - traefik.http.routers.webapp.entrypoints=websecure
       - traefik.http.routers.webapp.tls.certresolver=letsencrypt
-      - traefik.http.routers.webapp-http.rule=Host(`${WEBAPP_HOST:-localhost}`)
+      - traefik.http.routers.webapp-http.rule=Host(`${WEBAPP_HOST:-82.112.255.155}`)
       - traefik.http.routers.webapp-http.entrypoints=web
       - traefik.http.routers.webapp-http.middlewares=webapp-https-redirect
       - traefik.http.middlewares.webapp-https-redirect.redirectscheme.scheme=https

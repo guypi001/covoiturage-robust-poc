@@ -90,10 +90,10 @@ const fallbackPort =
   process.env.APP_PUBLIC_PORT?.trim() ||
   extractPort(process.env.APP_BASE_URL?.trim()) ||
   extractPort(process.env.FRONTEND_URL?.trim()) ||
-  '3006';
+  '';
 
 const DEFAULT_PUBLIC_URL = `${process.env.APP_PUBLIC_PROTOCOL || 'http'}://${
-  process.env.APP_PUBLIC_HOST || 'localhost'
+  process.env.APP_PUBLIC_HOST || '82.112.255.155'
 }${fallbackPort ? `:${fallbackPort}` : ''}`;
 
 const APP_PUBLIC_URL = (() => {
@@ -217,7 +217,7 @@ export class AuthService implements OnModuleInit {
   }
 
   private buildPasswordResetLink(token: string) {
-    const base = APP_PUBLIC_URL || 'http://82.112.255.155:3006';
+    const base = APP_PUBLIC_URL || 'http://82.112.255.155';
     try {
       const url = new URL('/reset-password', base);
       url.searchParams.set('token', token);

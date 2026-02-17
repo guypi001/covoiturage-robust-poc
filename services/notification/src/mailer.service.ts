@@ -57,7 +57,7 @@ export class MailerService {
     const port = Number(process.env.SMTP_PORT || 587);
     const secure = process.env.SMTP_SECURE === 'true' || port === 465;
     this.from = process.env.SMTP_FROM || user || 'noreply@example.com';
-    this.frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    this.frontendUrl = process.env.FRONTEND_URL || 'http://82.112.255.155';
 
     if (!host || !user || !pass) {
       this.logger.warn('SMTP credentials missing (SMTP_HOST / SMTP_USER / SMTP_PASS). Emails disabled.');
