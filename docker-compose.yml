@@ -280,12 +280,11 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.webapp.rule=Host(`${WEBAPP_HOST:-82.112.255.155}`)
-      - traefik.http.routers.webapp.entrypoints=websecure
-      - traefik.http.routers.webapp.tls.certresolver=letsencrypt
-      - traefik.http.routers.webapp-http.rule=Host(`${WEBAPP_HOST:-82.112.255.155}`)
-      - traefik.http.routers.webapp-http.entrypoints=web
-      - traefik.http.routers.webapp-http.middlewares=webapp-https-redirect
-      - traefik.http.middlewares.webapp-https-redirect.redirectscheme.scheme=https
+      - traefik.http.routers.webapp.entrypoints=web
+      - traefik.http.routers.webapp-secure.rule=Host(`${WEBAPP_HOST:-82.112.255.155}`)
+      - traefik.http.routers.webapp-secure.entrypoints=websecure
+      - traefik.http.routers.webapp-secure.tls=true
+      - traefik.http.routers.webapp-secure.tls.certresolver=letsencrypt
       - traefik.http.services.webapp.loadbalancer.server.port=80
 
 
