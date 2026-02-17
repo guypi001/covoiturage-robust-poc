@@ -25,6 +25,17 @@ const mapMailError = (err: any, fallback: string) => {
   return message || fallback;
 };
 
+const mapRegisterError = (err: any, fallback: string) => {
+  const message = err?.response?.data?.message || err?.message;
+  if (message === 'email_already_exists') {
+    return 'Cet email est déjà utilisé. Connecte-toi ou utilise "Mot de passe oublié".';
+  }
+  if (message === 'email_already_exists_other_account_type') {
+    return 'Cet email est déjà lié à un autre type de compte. Connecte-toi avec cet email.';
+  }
+  return mapMailError(err, fallback);
+};
+
 export default function Register() {
   const navigate = useNavigate();
   const token = useApp((state) => state.token);
@@ -153,7 +164,7 @@ export default function Register() {
       }
       navigate('/', { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Inscription impossible.');
+      setError(mapRegisterError(err, 'Inscription impossible.'));
       clearSession();
     } finally {
       setSubmitting(false);

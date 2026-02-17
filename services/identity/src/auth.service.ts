@@ -10,11 +10,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, Not, Repository } from 'typeorm';
+import { In, LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import {
   Account,
   AccountRole,
   AccountStatus,
+  AccountType,
   HomePreferences,
   PasswordResetToken,
   PaymentPreferences,
@@ -162,9 +163,36 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  private async ensureEmailAvailable(email: string) {
-    const existing = await this.accounts.findOne({ where: { email } });
-    if (existing) {
+  private isEmailUniqueViolation(error: unknown) {
+    if (!(error instanceof QueryFailedError)) return false;
+    const driverError = (error as QueryFailedError & { driverError?: any }).driverError ?? {};
+    const code = String(driverError?.code || (error as any)?.code || '');
+    const detail = String(driverError?.detail || (error as any)?.detail || '');
+    const constraint = String(driverError?.constraint || (error as any)?.constraint || '');
+    if (code !== '23505') return false;
+    return (
+      constraint.includes('accounts_email') ||
+      constraint.includes('accounts_email_key') ||
+      detail.includes('(email)')
+    );
+  }
+
+  private async saveAccountWithConflictGuard(account: Account) {
+    try {
+      return await this.accounts.save(account);
+    } catch (err) {
+      if (this.isEmailUniqueViolation(err)) {
+        throw new ConflictException('email_already_exists');
+      }
+      throw err;
+    }
+  }
+
+  private assertEmailReusableForRegistration(existing: Account, targetType: AccountType) {
+    if (existing.type !== targetType) {
+      throw new ConflictException('email_already_exists_other_account_type');
+    }
+    if (existing.emailVerifiedAt) {
       throw new ConflictException('email_already_exists');
     }
   }
@@ -678,66 +706,180 @@ export class AuthService implements OnModuleInit {
 
   async registerIndividual(dto: RegisterIndividualDto) {
     const email = this.normalizeEmail(dto.email);
-    await this.ensureEmailAvailable(email);
+    const existing = await this.accounts.findOne({ where: { email } });
+    let created = false;
+    let account: Account;
+    let rollback:
+      | {
+          passwordHash: string;
+          fullName: string | null;
+          comfortPreferences: string[] | null;
+          tagline: string | null;
+          profileAnswers: Record<string, boolean> | null;
+          status: AccountStatus;
+          emailVerifiedAt: Date | null;
+        }
+      | undefined;
 
-    const account = this.accounts.create({
-      email,
-      passwordHash: await this.hashPassword(dto.password),
-      type: 'INDIVIDUAL',
-      fullName: dto.fullName.trim(),
-      comfortPreferences: this.formatPreferences(dto.comfortPreferences),
-      tagline: dto.tagline?.trim() || null,
-      profileAnswers: this.sanitizeProfileAnswersInput(dto.profileAnswers),
-      role: 'USER',
-      status: 'SUSPENDED',
-      emailVerifiedAt: null,
-      loginCount: 0,
-      profilePhotoUrl: null,
-      homePreferences: null,
-    });
-    await this.ensureAdminBootstrap(account);
-    const saved = await this.accounts.save(account);
+    if (existing) {
+      this.assertEmailReusableForRegistration(existing, 'INDIVIDUAL');
+      rollback = {
+        passwordHash: existing.passwordHash,
+        fullName: existing.fullName ?? null,
+        comfortPreferences: existing.comfortPreferences ? [...existing.comfortPreferences] : null,
+        tagline: existing.tagline ?? null,
+        profileAnswers: existing.profileAnswers ? { ...existing.profileAnswers } : null,
+        status: existing.status,
+        emailVerifiedAt: existing.emailVerifiedAt ?? null,
+      };
+      existing.passwordHash = await this.hashPassword(dto.password);
+      existing.fullName = dto.fullName.trim();
+      existing.comfortPreferences = this.formatPreferences(dto.comfortPreferences);
+      existing.tagline = dto.tagline?.trim() || null;
+      existing.profileAnswers = this.sanitizeProfileAnswersInput(dto.profileAnswers);
+      existing.status = 'SUSPENDED';
+      existing.emailVerifiedAt = null;
+      account = await this.saveAccountWithConflictGuard(existing);
+    } else {
+      created = true;
+      const fresh = this.accounts.create({
+        email,
+        passwordHash: await this.hashPassword(dto.password),
+        type: 'INDIVIDUAL',
+        fullName: dto.fullName.trim(),
+        comfortPreferences: this.formatPreferences(dto.comfortPreferences),
+        tagline: dto.tagline?.trim() || null,
+        profileAnswers: this.sanitizeProfileAnswersInput(dto.profileAnswers),
+        role: 'USER',
+        status: 'SUSPENDED',
+        emailVerifiedAt: null,
+        loginCount: 0,
+        profilePhotoUrl: null,
+        homePreferences: null,
+      });
+      await this.ensureAdminBootstrap(fresh);
+      account = await this.saveAccountWithConflictGuard(fresh);
+    }
+
     try {
       await this.otp.requestOtp(email);
     } catch (err) {
-      await this.accounts.delete({ id: saved.id });
+      if (created) {
+        await this.accounts.delete({ id: account.id });
+      } else if (rollback) {
+        try {
+          account.passwordHash = rollback.passwordHash;
+          account.fullName = rollback.fullName;
+          account.comfortPreferences = rollback.comfortPreferences;
+          account.tagline = rollback.tagline;
+          account.profileAnswers = rollback.profileAnswers;
+          account.status = rollback.status;
+          account.emailVerifiedAt = rollback.emailVerifiedAt;
+          await this.accounts.save(account);
+        } catch (rollbackErr) {
+          this.logger.error(
+            `Failed to rollback individual registration update for ${email}: ${
+              (rollbackErr as Error)?.message ?? rollbackErr
+            }`,
+          );
+        }
+      }
       throw err;
     }
-    accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
-    await this.refreshAccountMetrics();
-    return { pending: true, email };
+    if (created) {
+      accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
+      await this.refreshAccountMetrics();
+    }
+    return { pending: true, email, reused: !created };
   }
 
   async registerCompany(dto: RegisterCompanyDto) {
     const email = this.normalizeEmail(dto.email);
-    await this.ensureEmailAvailable(email);
+    const existing = await this.accounts.findOne({ where: { email } });
+    let created = false;
+    let account: Account;
+    let rollback:
+      | {
+          passwordHash: string;
+          companyName: string | null;
+          registrationNumber: string | null;
+          contactName: string | null;
+          contactPhone: string | null;
+          status: AccountStatus;
+          emailVerifiedAt: Date | null;
+        }
+      | undefined;
 
-    const account = this.accounts.create({
-      email,
-      passwordHash: await this.hashPassword(dto.password),
-      type: 'COMPANY',
-      companyName: dto.companyName.trim(),
-      registrationNumber: dto.registrationNumber?.trim() || null,
-      contactName: dto.contactName?.trim() || null,
-      contactPhone: dto.contactPhone?.trim() || null,
-      role: 'USER',
-      status: 'SUSPENDED',
-      emailVerifiedAt: null,
-      loginCount: 0,
-      profilePhotoUrl: null,
-      homePreferences: null,
-    });
-    await this.ensureAdminBootstrap(account);
-    const saved = await this.accounts.save(account);
+    if (existing) {
+      this.assertEmailReusableForRegistration(existing, 'COMPANY');
+      rollback = {
+        passwordHash: existing.passwordHash,
+        companyName: existing.companyName ?? null,
+        registrationNumber: existing.registrationNumber ?? null,
+        contactName: existing.contactName ?? null,
+        contactPhone: existing.contactPhone ?? null,
+        status: existing.status,
+        emailVerifiedAt: existing.emailVerifiedAt ?? null,
+      };
+      existing.passwordHash = await this.hashPassword(dto.password);
+      existing.companyName = dto.companyName.trim();
+      existing.registrationNumber = dto.registrationNumber?.trim() || null;
+      existing.contactName = dto.contactName?.trim() || null;
+      existing.contactPhone = dto.contactPhone?.trim() || null;
+      existing.status = 'SUSPENDED';
+      existing.emailVerifiedAt = null;
+      account = await this.saveAccountWithConflictGuard(existing);
+    } else {
+      created = true;
+      const fresh = this.accounts.create({
+        email,
+        passwordHash: await this.hashPassword(dto.password),
+        type: 'COMPANY',
+        companyName: dto.companyName.trim(),
+        registrationNumber: dto.registrationNumber?.trim() || null,
+        contactName: dto.contactName?.trim() || null,
+        contactPhone: dto.contactPhone?.trim() || null,
+        role: 'USER',
+        status: 'SUSPENDED',
+        emailVerifiedAt: null,
+        loginCount: 0,
+        profilePhotoUrl: null,
+        homePreferences: null,
+      });
+      await this.ensureAdminBootstrap(fresh);
+      account = await this.saveAccountWithConflictGuard(fresh);
+    }
+
     try {
       await this.otp.requestOtp(email);
     } catch (err) {
-      await this.accounts.delete({ id: saved.id });
+      if (created) {
+        await this.accounts.delete({ id: account.id });
+      } else if (rollback) {
+        try {
+          account.passwordHash = rollback.passwordHash;
+          account.companyName = rollback.companyName;
+          account.registrationNumber = rollback.registrationNumber;
+          account.contactName = rollback.contactName;
+          account.contactPhone = rollback.contactPhone;
+          account.status = rollback.status;
+          account.emailVerifiedAt = rollback.emailVerifiedAt;
+          await this.accounts.save(account);
+        } catch (rollbackErr) {
+          this.logger.error(
+            `Failed to rollback company registration update for ${email}: ${
+              (rollbackErr as Error)?.message ?? rollbackErr
+            }`,
+          );
+        }
+      }
       throw err;
     }
-    accountCreatedCounter.inc({ type: 'COMPANY' });
-    await this.refreshAccountMetrics();
-    return { pending: true, email };
+    if (created) {
+      accountCreatedCounter.inc({ type: 'COMPANY' });
+      await this.refreshAccountMetrics();
+    }
+    return { pending: true, email, reused: !created };
   }
 
   async login(dto: LoginDto) {

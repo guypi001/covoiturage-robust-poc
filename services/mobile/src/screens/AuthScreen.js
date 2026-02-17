@@ -46,6 +46,17 @@ export function AuthScreen() {
     return raw || fallback;
   };
 
+  const mapAuthError = (err, fallback) => {
+    const raw = String(err?.message || '');
+    if (raw === 'email_already_exists') {
+      return 'Cet email existe deja. Connecte-toi ou reinitialise ton mot de passe.';
+    }
+    if (raw === 'email_already_exists_other_account_type') {
+      return 'Cet email est deja associe a un autre type de compte. Connecte-toi.';
+    }
+    return raw || fallback;
+  };
+
   const sanitizeOtpInput = (value, maxLength = 6) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
 
@@ -159,7 +170,11 @@ export function AuthScreen() {
         showToast('Utilise une adresse Gmail valide.', 'error');
         return;
       }
-      showToast(raw, 'error');
+      if (raw === 'email_already_exists' || raw === 'email_already_exists_other_account_type') {
+        setMode('login');
+        setForgotMode(false);
+      }
+      showToast(mapAuthError(err, 'Impossible de continuer.'), 'error');
     } finally {
       setBusy(false);
     }
