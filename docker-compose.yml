@@ -145,7 +145,9 @@ services:
 
   identity:
     build: ./services/identity
-    env_file: ./services/identity/.env
+    env_file:
+      - ./.env
+      - ./services/identity/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://82.112.255.155}
@@ -227,7 +229,9 @@ services:
 
   notification:
     build: ./services/notification
-    env_file: ./services/notification/.env
+    env_file:
+      - ./.env
+      - ./services/notification/.env
     environment:
       KAFKA_BROKERS: redpanda:9092
       FRONTEND_URL: ${FRONTEND_URL:-http://82.112.255.155}
