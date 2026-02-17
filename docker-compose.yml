@@ -275,7 +275,7 @@ services:
       booking:
         condition: service_started
       messaging:
-        condition: service_healthy
+        condition: service_started
     ports: ["3006:80"]
     restart: unless-stopped
     networks:
