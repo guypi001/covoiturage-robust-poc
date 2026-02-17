@@ -135,7 +135,11 @@ export default function Register() {
           setPendingOtp(true);
           setOtpEmail(email.trim().toLowerCase());
           setOtpStep('code');
-          setOtpMessage('Code envoyé par email.');
+          setOtpMessage(
+            res.existing
+              ? 'Compte déjà existant détecté. Code de connexion envoyé par email.'
+              : 'Code envoyé par email.',
+          );
           return;
         }
         setSession(res.token, res.account);
@@ -157,7 +161,11 @@ export default function Register() {
           setPendingOtp(true);
           setOtpEmail(email.trim().toLowerCase());
           setOtpStep('code');
-          setOtpMessage('Code envoyé par email.');
+          setOtpMessage(
+            res.existing
+              ? 'Compte déjà existant détecté. Code de connexion envoyé par email.'
+              : 'Code envoyé par email.',
+          );
           return;
         }
         setSession(res.token, res.account);

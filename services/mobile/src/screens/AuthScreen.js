@@ -145,7 +145,10 @@ export function AuthScreen() {
         });
         if (res?.pending) {
           setPendingEmail(emailTrimmed);
-          showToast('Code OTP envoye.', 'success');
+          showToast(
+            res?.existing ? 'Compte existant detecte. Code de connexion envoye.' : 'Code OTP envoye.',
+            'success',
+          );
           return;
         }
         showToast('Compte cree.', 'success');

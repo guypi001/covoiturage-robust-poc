@@ -642,7 +642,9 @@ export type AuthResponse = {
   account: Account;
 };
 
-export type RegisterResponse = AuthResponse | { pending: true; email: string };
+export type RegisterResponse =
+  | AuthResponse
+  | { pending: true; email: string; reused?: boolean; existing?: boolean };
 
 export type AccountListStats = {
   byStatus: Record<AccountStatus, number>;

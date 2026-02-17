@@ -188,13 +188,14 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private assertEmailReusableForRegistration(existing: Account, targetType: AccountType) {
-    if (existing.type !== targetType) {
-      throw new ConflictException('email_already_exists_other_account_type');
-    }
+  private resolveExistingRegistrationFlow(existing: Account, _targetType: AccountType) {
     if (existing.emailVerifiedAt) {
-      throw new ConflictException('email_already_exists');
+      if (existing.status !== 'ACTIVE') {
+        throw new ForbiddenException('account_suspended');
+      }
+      return 'OTP_LOGIN' as const;
     }
+    return 'REUSE_PENDING' as const;
   }
 
   private normalizeEmail(email: string) {
@@ -709,10 +710,16 @@ export class AuthService implements OnModuleInit {
     const existing = await this.accounts.findOne({ where: { email } });
     let created = false;
     let account: Account;
+    let flow: 'OTP_LOGIN' | 'REUSE_PENDING' | undefined;
     let rollback:
       | {
+          type: AccountType;
           passwordHash: string;
           fullName: string | null;
+          companyName: string | null;
+          registrationNumber: string | null;
+          contactName: string | null;
+          contactPhone: string | null;
           comfortPreferences: string[] | null;
           tagline: string | null;
           profileAnswers: Record<string, boolean> | null;
@@ -722,18 +729,32 @@ export class AuthService implements OnModuleInit {
       | undefined;
 
     if (existing) {
-      this.assertEmailReusableForRegistration(existing, 'INDIVIDUAL');
+      flow = this.resolveExistingRegistrationFlow(existing, 'INDIVIDUAL');
+      if (flow === 'OTP_LOGIN') {
+        await this.otp.requestOtp(email);
+        return { pending: true, email, reused: true, existing: true };
+      }
       rollback = {
+        type: existing.type,
         passwordHash: existing.passwordHash,
         fullName: existing.fullName ?? null,
+        companyName: existing.companyName ?? null,
+        registrationNumber: existing.registrationNumber ?? null,
+        contactName: existing.contactName ?? null,
+        contactPhone: existing.contactPhone ?? null,
         comfortPreferences: existing.comfortPreferences ? [...existing.comfortPreferences] : null,
         tagline: existing.tagline ?? null,
         profileAnswers: existing.profileAnswers ? { ...existing.profileAnswers } : null,
         status: existing.status,
         emailVerifiedAt: existing.emailVerifiedAt ?? null,
       };
+      existing.type = 'INDIVIDUAL';
       existing.passwordHash = await this.hashPassword(dto.password);
       existing.fullName = dto.fullName.trim();
+      existing.companyName = null;
+      existing.registrationNumber = null;
+      existing.contactName = null;
+      existing.contactPhone = null;
       existing.comfortPreferences = this.formatPreferences(dto.comfortPreferences);
       existing.tagline = dto.tagline?.trim() || null;
       existing.profileAnswers = this.sanitizeProfileAnswersInput(dto.profileAnswers);
@@ -768,8 +789,13 @@ export class AuthService implements OnModuleInit {
         await this.accounts.delete({ id: account.id });
       } else if (rollback) {
         try {
+          account.type = rollback.type;
           account.passwordHash = rollback.passwordHash;
           account.fullName = rollback.fullName;
+          account.companyName = rollback.companyName;
+          account.registrationNumber = rollback.registrationNumber;
+          account.contactName = rollback.contactName;
+          account.contactPhone = rollback.contactPhone;
           account.comfortPreferences = rollback.comfortPreferences;
           account.tagline = rollback.tagline;
           account.profileAnswers = rollback.profileAnswers;
@@ -790,7 +816,7 @@ export class AuthService implements OnModuleInit {
       accountCreatedCounter.inc({ type: 'INDIVIDUAL' });
       await this.refreshAccountMetrics();
     }
-    return { pending: true, email, reused: !created };
+    return { pending: true, email, reused: !created, existing: !created };
   }
 
   async registerCompany(dto: RegisterCompanyDto) {
@@ -798,34 +824,54 @@ export class AuthService implements OnModuleInit {
     const existing = await this.accounts.findOne({ where: { email } });
     let created = false;
     let account: Account;
+    let flow: 'OTP_LOGIN' | 'REUSE_PENDING' | undefined;
     let rollback:
       | {
+          type: AccountType;
           passwordHash: string;
+          fullName: string | null;
           companyName: string | null;
           registrationNumber: string | null;
           contactName: string | null;
           contactPhone: string | null;
+          comfortPreferences: string[] | null;
+          tagline: string | null;
+          profileAnswers: Record<string, boolean> | null;
           status: AccountStatus;
           emailVerifiedAt: Date | null;
         }
       | undefined;
 
     if (existing) {
-      this.assertEmailReusableForRegistration(existing, 'COMPANY');
+      flow = this.resolveExistingRegistrationFlow(existing, 'COMPANY');
+      if (flow === 'OTP_LOGIN') {
+        await this.otp.requestOtp(email);
+        return { pending: true, email, reused: true, existing: true };
+      }
       rollback = {
+        type: existing.type,
         passwordHash: existing.passwordHash,
+        fullName: existing.fullName ?? null,
         companyName: existing.companyName ?? null,
         registrationNumber: existing.registrationNumber ?? null,
         contactName: existing.contactName ?? null,
         contactPhone: existing.contactPhone ?? null,
+        comfortPreferences: existing.comfortPreferences ? [...existing.comfortPreferences] : null,
+        tagline: existing.tagline ?? null,
+        profileAnswers: existing.profileAnswers ? { ...existing.profileAnswers } : null,
         status: existing.status,
         emailVerifiedAt: existing.emailVerifiedAt ?? null,
       };
+      existing.type = 'COMPANY';
       existing.passwordHash = await this.hashPassword(dto.password);
+      existing.fullName = null;
       existing.companyName = dto.companyName.trim();
       existing.registrationNumber = dto.registrationNumber?.trim() || null;
       existing.contactName = dto.contactName?.trim() || null;
       existing.contactPhone = dto.contactPhone?.trim() || null;
+      existing.comfortPreferences = null;
+      existing.tagline = null;
+      existing.profileAnswers = null;
       existing.status = 'SUSPENDED';
       existing.emailVerifiedAt = null;
       account = await this.saveAccountWithConflictGuard(existing);
@@ -857,11 +903,16 @@ export class AuthService implements OnModuleInit {
         await this.accounts.delete({ id: account.id });
       } else if (rollback) {
         try {
+          account.type = rollback.type;
           account.passwordHash = rollback.passwordHash;
+          account.fullName = rollback.fullName;
           account.companyName = rollback.companyName;
           account.registrationNumber = rollback.registrationNumber;
           account.contactName = rollback.contactName;
           account.contactPhone = rollback.contactPhone;
+          account.comfortPreferences = rollback.comfortPreferences;
+          account.tagline = rollback.tagline;
+          account.profileAnswers = rollback.profileAnswers;
           account.status = rollback.status;
           account.emailVerifiedAt = rollback.emailVerifiedAt;
           await this.accounts.save(account);
@@ -879,7 +930,7 @@ export class AuthService implements OnModuleInit {
       accountCreatedCounter.inc({ type: 'COMPANY' });
       await this.refreshAccountMetrics();
     }
-    return { pending: true, email, reused: !created };
+    return { pending: true, email, reused: !created, existing: !created };
   }
 
   async login(dto: LoginDto) {
